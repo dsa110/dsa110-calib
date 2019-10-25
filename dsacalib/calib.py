@@ -103,7 +103,7 @@ def calc_uvw(b, tobs, src_epoch, src_lon, src_lat):
             
     return bu.T,bv.T,bw.T
     
-def visibility_model(b, sources, tobs, fobs, pt_dec, phase_only=False):
+def visibility_model(b, sources, tobs, fobs, phase_only=False):
     """
     Calculates the model of the visibilities along a baseline.
     Parameters:
@@ -114,7 +114,6 @@ def visibility_model(b, sources, tobs, fobs, pt_dec, phase_only=False):
              be a src class instance)
     tobs   : time of observation in mjd, float or array
     fobs   : frequency of observation in GHz
-    pt_dec : declination of the pointing, astropy quantity
     Returns:
     --------
     vis_model : array, the modelled visibilities, dimensions 

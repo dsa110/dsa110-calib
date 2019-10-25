@@ -85,7 +85,7 @@ def plot_vis_freq(vis,fobs,bname,outname=None,show=True):
 
 def plot_vis_time(vis,mjd,bname,outname=None,show=True):
     """Plots visibility against time of observation for 
-    all baselines.  Bins to 125 points for each baseline.
+    all baselines.  
     Parameters:
     -----------
     vis      : complex array, the visibilities, dimensions 
@@ -103,10 +103,8 @@ def plot_vis_time(vis,mjd,bname,outname=None,show=True):
     """
     fig,ax = plt.subplots(9,5,figsize=(8*5,8*9))
     ax = ax.flatten()
-    dplot = vis[:,:vis.shape[1]//125*125,:].mean(-1).reshape(
-        45,125,-1).mean(-1)
+    dplot = vis.mean(-1)
     x = ((mjd-mjd[0])*u.d).to_value(u.min)
-    x = x[:x.shape[0]//125*125].reshape(125,-1).mean(-1)
     for i in range(45):
         ax[i].plot(x,dplot[i].real,label='real')
         ax[i].plot(x,dplot[i].imag,label='imag')
