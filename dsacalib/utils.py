@@ -15,7 +15,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 from astropy.time import Time
 import os
-import dsa_constants as ct
+from . import constants as ct
 
 def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
     """ Returns important header info from a visibility fits file.
@@ -189,7 +189,7 @@ def plotFreqAmp(f,tmid=None,tspan=10*u.s,f1=None,f2=None):
 
     return (freqs,amps)
 
-def convert_to_ms(src, vis, obstm, ofile, bname, nint=1,
+def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
                   antpos='data/antpos_ITRF.txt',model=None):
     """ Writes visibilities to an ms. 
     Uses the casa simulator tool to write the metadata to an ms,
@@ -206,20 +206,47 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=1,
     bname : list, the list of baselines names in the form [[ant1, ant2],...]
             where ant1 and ant2 are integers
     nint  : integer, the number of time bins to integrate before saving
-            to a measurement set
+            to a measurement set, default 25
+    antpos: str, the full path to the text file containing itrf antenna
+            positions
+    model : array, same shape as visibilities, the model to write to the 
+            measurement set (and against which gain calibration will be done),
+            if not provided an array of ones will be used at the model
     Returns Nothing
-    ---------------
     """
     me = cc.measures.measures()
     qa = cc.quanta.quanta()
 
-
-    # define parameters - hardcoded for DSA-10
+    # Observatory parameters 
     tname   = 'OVRO_MMA'
     diam    = 4.5 # m
     obs     = 'OVRO_MMA'
     mount   = 'alt-az'
     pos_obs = me.observatory(obs)
+    
+    # Backend
+    spwname   = 'L_BAND'
+    freq      = '1.4871533196875GHz'
+    deltafreq = '-0.244140625MHz'
+    freqresolution = deltafreq
+    nchannels = 625
+    
+    # Rebin visibilities 
+    integrationtime = '{0}s'.format(ct.tsamp*nint) 
+    if nint != 1:
+        npad = nint - vis.shape[1]%nint
+        if npad == nint: npad = 0 
+        vis = np.nanmean(np.pad(vis,((0,0),(0,npad),
+                    (0,0)),mode='constant',constant_values=
+                    (np.nan,)).reshape(vis.shape[0],-1,nint,
+                    vis.shape[2]),axis=2)
+        if model is not None:
+            model = np.nanmean(np.pad(model,((0,0),(0,npad),
+                    (0,0)),mode='constant',constant_values=
+                    (np.nan,)).reshape(model.shape[0],-1,nint,
+                    model.shape[2]),axis=2)
+        obstm += ct.tsamp*nint/2/ct.seconds_per_day
+    stoptime  = '{0}s'.format(vis.shape[1]*ct.tsamp*nint)
     
     # Read in baseline info and order it as needed
     anum,xx,yy,zz = np.loadtxt(antpos).transpose()
@@ -237,20 +264,10 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=1,
     for i in range(len(anum)):
         for j in range(i+1,len(anum)):
             idx_order += [bname.index([anum[i],anum[j]])]
-    if idx_order != list(np.arange(45,dtype=int)):
-        raise ValueError('Visibilities not ordered by baseline')
-    
+    assert idx_order == list(np.arange(45,dtype=int)), \
+        'Visibilities not ordered by baseline'
     anum = [str(a) for a in anum]
-
-    # Backend
-    spwname   = 'L_BAND'
-    freq      = '1.4871533196875GHz'
-    deltafreq = '-0.244140625MHz'
-    freqresolution = deltafreq
-    nchannels = 625
-    integrationtime = '{0}s'.format(ct.tsamp*nint) #'0.402653184s'
-    stoptime  = '{0}s'.format(vis.shape[1]*ct.tsamp*nint)
-
+    
     # make new ms 
     sm = cc.simulator.simulator()
     sm.open(ofile)
@@ -275,16 +292,15 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=1,
     ms.open(ofile,nomodify=False)
     ms.selectinit(datadescid=0)
     rec = ms.getdata(["data"]) 
-    if model is None:
-        model = rec['data'][0,...].copy()
-    else:
-        model = model.T.reshape((nchannels,-1))
+    
     # rec['data'] has shape [scan, channel, [time*baseline]]
     vis = vis.T.reshape((nchannels,-1))
-    #vis /= np.abs(vis)
-    #vis[np.isnan(vis)] = 0.
     rec['data'][0,:,:] = vis
     ms.putdata(rec)
+    if model is None:
+        model = np.ones(vis.shape,dtype=complex)
+    else:
+        model = model.T.reshape((nchannels,-1))
     rec = ms.getdata(["model_data"])
     rec['model_data'][0,...] = model
     ms.putdata(rec)
@@ -300,8 +316,10 @@ def extract_vis_from_ms(ms_name):
     ms_name : str, the name of the measurement set (will open <ms>.ms)
     Returns:
     -----------
-    vis_uncal : array, the uncalibrated 
-    vis_cal
+    vis_uncal : array, the 'observed' data from the measurement set, 
+                (baselines,time,freq)
+    vis_cal   : array, the 'corrected' data from the measurement set
+                (baselines,time,freq)
     """
     error = 0
     ms = cc.ms.ms()
