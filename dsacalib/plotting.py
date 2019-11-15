@@ -12,6 +12,27 @@ import __casac__ as cc
 
 def plot_dyn_spec(vis,fobs,mjd,bname,normalize=False,
                   outname=None,show=True):
+    """Plots the dynamic spectrum of the real part for each visibility
+    
+    Args:
+        vis: complex arr
+          the visibilities to plot the dynamic spectra of
+        fobs: real arr
+          the midpoint frequency of each channel in GHz
+        mjd: real arr
+          the midpoint mjd of each subintegration
+        bname: list(str)
+          the name for each baseline
+        normalize: boolean
+          whether to normalize the visibilities before plotting
+        outname: str
+          if not None the plot will be saved to a file <outname>_dynspec.png
+        show: boolean
+          if False the plot will be closed.  If using a notebook
+          and show is True, the plot will show in the notebook
+          
+    Returns:
+    """
     fig,ax = plt.subplots(9,5,figsize=(8*5,8*9))
     ax = ax.flatten()
     dplot = (np.nanmean(np.nanmean(vis[:,:vis.shape[1]//125*125,:].reshape(
@@ -49,28 +70,33 @@ def plot_dyn_spec(vis,fobs,mjd,bname,normalize=False,
 def plot_vis_freq(vis,fobs,bname,outname=None,show=True):
     """Plots visibility against frequency of observation for 
     all baselines.  Bins to 125 points for each baseline.
-    Parameters:
-    -----------
-    vis      : complex array, the visibilities, dimensions 
-               (baselines, time, frequency)
-    fobs     : real array, the frequency of observation in GHz
-    bname    : list, the name of each baseline 
-    outname  : string, optional the base to use for the name of the 
-               png file the plot is saved to.  The plot will 
-               be saved to <outname>_freq.png if an outname is
-               provided, otherwise no plot will be saved.
-    show     : boolean, optional, default True.  If true, the plot
-               will be shown in an inline notebook.  If not using 
-               a notebook, the plot will never be shown.
-    Returns none
+    
+    Args:
+        vis: complex arr
+          the visibilities, dimensions (pol,baselines, time, frequency)
+        fobs: real arr
+          the midpoint frequency of each channel in GHz
+        bname: list(str)
+          the name of each baseline 
+        outname: str, optional 
+          the base to use for the name of the 
+          png file the plot is saved to.  The plot will 
+          be saved to <outname>_freq.png if an outname is
+          provided, otherwise no plot will be saved.
+        show: boolean, optional
+          if False the plot will be closed.  If using a notebook
+          and show is True, the plot will show in the notebook
+
+    Returns:
     """
+    dplot = vis.mean(1).reshape(45,125,5,2).mean(-2)
+    x = fobs.reshape(125,5).mean(-1)
+    
     fig,ax = plt.subplots(9,5,figsize=(8*5,8*9))
     ax = ax.flatten()
-    dplot = vis.mean(1).reshape(45,125,5).mean(-1)
-    x = fobs.reshape(125,5).mean(-1)
     for i in range(45):
-        ax[i].plot(x,dplot[i].real,label='real')
-        ax[i].plot(x,dplot[i].imag,label='imag')
+        ax[i].plot(x,np.abs(dplot[i,:,0]),label='A')
+        ax[i].plot(x,np.abs(dplot[i,:,1]),label='B')
         ax[i].text(0.1,0.9,bname[i],transform=ax[i].transAxes,
                   size=22)
     plt.subplots_adjust(wspace=0.1,hspace=0.1)
@@ -78,7 +104,23 @@ def plot_vis_freq(vis,fobs,bname,outname=None,show=True):
     for i in range(45-5,45):
         ax[i].set_xlabel('freq (GHz)')
     if outname is not None:
-        plt.savefig('{0}_freq.png'.format(outname))
+        plt.savefig('{0}_amp_freq.png'.format(outname))
+    if not show:
+        plt.close()
+        
+    fig,ax = plt.subplots(9,5,figsize=(8*5,8*9))
+    ax = ax.flatten()
+    for i in range(45):
+        ax[i].plot(x,np.angle(dplot[i,:,0]),label='A')
+        ax[i].plot(x,np.angle(dplot[i,:,1]),label='B')
+        ax[i].text(0.1,0.9,bname[i],transform=ax[i].transAxes,
+                  size=22)
+    plt.subplots_adjust(wspace=0.1,hspace=0.1)
+    ax[0].legend()
+    for i in range(45-5,45):
+        ax[i].set_xlabel('freq (GHz)')
+    if outname is not None:
+        plt.savefig('{0}_phase_freq.png'.format(outname))
     if not show:
         plt.close()
     return
@@ -86,28 +128,33 @@ def plot_vis_freq(vis,fobs,bname,outname=None,show=True):
 def plot_vis_time(vis,mjd,bname,outname=None,show=True):
     """Plots visibility against time of observation for 
     all baselines.  
-    Parameters:
-    -----------
-    vis      : complex array, the visibilities, dimensions 
-               (baselines, time, frequency)
-    mjd      : real array, the MJD of each integration
-    bname    : list, the name of each baseline 
-    outname  : string, optional the base to use for the name of the 
-               png file the plot is saved to.  The plot will 
-               be saved to <outname>_freq.png if an outname is
-               provided, otherwise no plot will be saved.
-    show     : boolean, optional, default True.  If true, the plot
-               will be shown in an inline notebook.  If not using 
-               a notebook, the plot will never be shown.
-    Returns none
+    
+    Args:
+        vis: complex arr
+          the visibilities, dimensions (pol,baselines, time, frequency)
+        mjd: real arr
+          the midpoint MJD of each subintegration
+        bname: list(str)
+          the name of each baseline 
+        outname: str
+          the base to use for the name of the 
+          png files the plots is saved to.  The plots will 
+          be saved to <outname>_amp_time.png and outname_phase_time.png
+          if an outname is provided; otherwise no plot will be saved.
+        show: boolean
+          if False the plot will be closed.  If using a notebook
+          and show is True, the plot will show in the notebook
+               
+    Returns:
     """
+    dplot = vis.mean(-2)
+    x = ((mjd-mjd[0])*u.d).to_value(u.min)
+    
     fig,ax = plt.subplots(9,5,figsize=(8*5,8*9))
     ax = ax.flatten()
-    dplot = vis.mean(-1)
-    x = ((mjd-mjd[0])*u.d).to_value(u.min)
     for i in range(45):
-        ax[i].plot(x,dplot[i].real,label='real')
-        ax[i].plot(x,dplot[i].imag,label='imag')
+        ax[i].plot(x,np.abs(dplot[i,:,0]),label='A')
+        ax[i].plot(x,np.abs(dplot[i,:,1]),label='B')
         ax[i].text(0.1,0.9,bname[i],transform=ax[i].transAxes,
                   size=22)
     plt.subplots_adjust(wspace=0.1,hspace=0.1)
@@ -115,27 +162,47 @@ def plot_vis_time(vis,mjd,bname,outname=None,show=True):
     for i in range(45-5,45):
         ax[i].set_xlabel('time (min)')
     if outname is not None:
-        plt.savefig('{0}_time.png'.format(outname))
+        plt.savefig('{0}_abs_time.png'.format(outname))
+    if not show:
+        plt.close()
+        
+    fig,ax = plt.subplots(9,5,figsize=(8*5,8*9))
+    ax = ax.flatten()
+    for i in range(45):
+        ax[i].plot(x,np.angle(dplot[i,:,0]),label='A')
+        ax[i].plot(x,np.angle(dplot[i,:,1]),label='B')
+        ax[i].text(0.1,0.9,bname[i],transform=ax[i].transAxes,
+                  size=22)
+    plt.subplots_adjust(wspace=0.1,hspace=0.1)
+    ax[0].legend()
+    for i in range(45-5,45):
+        ax[i].set_xlabel('time (min)')
+    if outname is not None:
+        plt.savefig('{0}_phase_time.png'.format(outname))
     if not show:
         plt.close()
     return
 
 def plot_uv_track(bu,bv,outname=None,show=True):
     """Plots the uv track provided
-    Parameters:
-    -----------
-    bu      : real array, the values of u of the baselines in m,
-              dimensions (baselines,time)
-    bv      : real array, the values of v of the baselines in m,
-              dimension (baselines, time)
-    outname : string, optional the base to use for the name of the 
-              png file the plot is saved to.  The plot will 
-              be saved to <outname>_freq.png if an outname is
-              provided, otherwise no plot will be saved.
-    show    : boolean, optional, default True.  If true, the plot
-              will be shown in an inline notebook.  If not using 
-              a notebook, the plot will never be shown.
-    Returns none
+    
+    Args:
+        bu: real arr
+          the values of u of the baselines in m,
+          dimensions (baselines,time)
+        bv: real arr
+          the values of v of the baselines in m,
+          dimension (baselines, time)
+        outname: str
+          the base to use for the name of the 
+          png file the plot is saved to.  The plot will 
+          be saved to <outname>_freq.png if an outname is
+          provided, otherwise no plot will be saved.
+        show: boolean
+          If true, the plot will be shown in an inline 
+          notebook.  If not using a notebook, the plot will never be shown.
+
+    Returns:
     """
     fig,ax = plt.subplots(1,1,figsize=(8,8))
     for i in range(bu.shape[0]):
@@ -154,14 +221,18 @@ def plot_uv_track(bu,bv,outname=None,show=True):
 def rebin_vis(arr,nb1,nb2):
     """ Rebins a 2-D array for plotting.  Excess bins along either axis
     are discarded.
-    Parameters:
-    -----------
-    arr : two-dimensional array
-    nb1 : the number of bins to rebin by along the 0th axis
-    nb2 : the number of bins to rebin by along the 1st axis
+    
+    Args:
+        arr: arr
+          the two-dimensional array to rebin
+        nb1: int
+          the number of bins to rebin by along the 0th axis
+        nb2: int
+          the number of bins to rebin by along the 1st axis
+
     Returns:
-    -----------
-    arr : the rebinned array
+        arr: arr
+          the rebinned array
     """
     arr = arr[:arr.shape[0]//nb1*nb1,:arr.shape[1]//nb2*nb2].reshape(
         -1,nb1,arr.shape[1]).mean(1)
@@ -170,23 +241,28 @@ def rebin_vis(arr,nb1,nb2):
 
 def plot_calibrated_vis(vis,vis_cal,mjd,fobs,bidx,
                         outname='None',show=True):
-    """Plots two visibilities for comparison
-    Parameters:
-    -----------
-    vis     : complex array, dimensions (time, freq), the uncalibrated
-              visibility to plot
-    vis_cal : complex array, dimensions (time, freq), the calibrated
-              visibility to plot
-    mjd     : array, the MJD of each subintegration
-    fobs    : array, the frequency of each channel in GHz
-    outname : string, optional the base to use for the name of the 
-              png file the plot is saved to.  The plot will 
-              be saved to <outname>_freq.png if an outname is
-              provided, otherwise no plot will be saved.
-    show    : boolean, optional, default True.  If true, the plot
-              will be shown in an inline notebook.  If not using 
-              a notebook, the plot will never be shown.
-    Returns none
+    """Plots two visibilities for comparison for e.g. a calibrated
+    and uncalibrated visibility
+    
+    Args:
+        vis: complex arr
+          dimensions (time, freq), the uncalibrated visibility to plot
+        vis_cal: complex arr
+          dimensions (time, freq), the calibrated visibility to plot
+        mjd: real arr
+          the midpoint MJD of each subintegration
+        fobs: real arr
+          the midpoint frequency of each channel in GHz
+        outname: str
+          the base to use for the name of the 
+          png file the plot is saved to.  The plot will 
+          be saved to <outname>_cal_vis.png if an outname is
+          provided, otherwise no plot will be saved.
+        show: boolean
+          if False the plot will be closed.  If using a notebook
+          and show is True, the plot will show in the notebook
+
+    Returns:
     """
     x = mjd[:mjd.shape[0]//128*128].reshape(-1,128).mean(-1)
     x = ((x-x[0])*u.d).to_value(u.min)
@@ -234,21 +310,26 @@ def plot_calibrated_vis(vis,vis_cal,mjd,fobs,bidx,
 
 def plot_delays(vis_ft,labels,delay_arr,bname,outname='None',show=True):
     """Make amp vs delay plots for each visibility
-    Parameters:
-    -----------
-    vis_ft  : complex array, the visibilities, dimensions 
-              (vis, baselines, delay)
-    labels  : list of strings, the labels for the visibilities passed
-    delay_arr : array, the delay bins in nanoseconds
-    bname   : list of baselines labels
-    outname : string, optional the base to use for the name of the 
-              png file the plot is saved to.  The plot will 
-              be saved to <outname>_freq.png if an outname is
-              provided, otherwise no plot will be saved.
-    show    : boolean, optional, default True.  If true, the plot
-              will be shown in an inline notebook.  If not using 
-              a notebook, the plot will never be shown.
-    Returns Nothing
+
+    Args:
+        vis_ft: complex arr
+          the visibilities, dimensions (vis, baselines, delay)
+        labels: list(str)
+          the labels for the visibilities passed
+        delay_arr: real array
+          the delay bins in nanoseconds
+        bname: list(str)
+          the baseline labels
+        outname: str
+          the base to use for the name of the 
+          png file the plot is saved to.  The plot will 
+          be saved to <outname>_delays.png if an outname is
+          provided, otherwise no plot will be saved.
+        show: boolean
+          if False the plot will be closed.  If using a notebook
+          and show is True, the plot will show in the notebook
+
+    Returns:
     """
     nvis = vis_ft.shape[0]
     alpha = 0.5 if nvis>2 else 1
@@ -274,23 +355,29 @@ def plot_delays(vis_ft,labels,delay_arr,bname,outname='None',show=True):
 def plot_image(msname,imtype,sr0,verbose=False,outname=None,
                show=True,npix=256):
     """Uses CASA to grid an image and the plot the image.
-    Parameters:
-    ----------
-    msname  : str, the prefix of the measurement set 
-    imtype  : str, the type of image to produce.  Can be 'observed', 
-              'corrected', or 'model'
-    sr0     : src class, the source to use as the phase center in the image
-    verbose : Boolean, whether to print information about the
-              produced image, default False
-    outname : string, optional the base to use for the name of the 
-              png file the plot is saved to.  The plot will 
-              be saved to <outname>_freq.png if an outname is
-              provided, otherwise no plot will be saved.
-    show    : boolean, optional, default True.  If true, the plot
-              will be shown in an inline notebook.  If not using 
-              a notebook, the plot will never be shown.
-    npix    : int, the number of pixels per side to plot
-    Returns Nothing
+    
+    Args:
+        msname: str
+          the prefix of the measurement set 
+        imtype: str
+          the type of image to produce.  Can be 'observed', 
+          'corrected', or 'model'
+        sr0: src class
+          the source to use as the phase center in the image
+        verbose: boolean
+          whether to print information about the produced image
+        outname: str
+          the base to use for the name of the 
+          png file the plot is saved to.  The plot will 
+          be saved to <outname>_<imtype>.png if an outname is
+          provided, otherwise no plot will be saved.
+        show: boolean
+          if False the plot will be closed.  If using a notebook
+          and show is True, the plot will show in the notebook
+        npix: int
+          the number of pixels per side to plot
+
+    Returns:
     """
     error = 0
     im = cc.imager.imager()
@@ -341,41 +428,56 @@ def plot_image(msname,imtype,sr0,verbose=False,outname=None,
     return
 
 def plot_antenna_delays(source,antenna_order,outname=None,show=True):
-    """
-    Parameters:
-    -----------
-    source  : src class, the calibrator
-    antenna_order : int, array, the order of the antennas 
-    outname : string, optional the base to use for the name of the 
-              png file the plot is saved to.  The plot will 
-              be saved to <outname>_freq.png if an outname is
-              provided, otherwise no plot will be saved.
-    show    : boolean, optional, default True.  If true, the plot
-              will be shown in an inline notebook.  If not using 
-              a notebook, the plot will never be shown.
+    """Plots the antenna delays on a 59s timescale relative to the antenna
+    delays used in the calibration solution
+    
+    Args:
+        source: src class
+          the calibrator
+        antenna_order: int array or list(int)
+          the order of the antennas 
+        outname: str
+          the base to use for the name of the 
+          png file the plot is saved to.  The plot will 
+          be saved to <outname>_antdelays.png if an outname is
+          provided, otherwise no plot will be saved.
+        show: boolean
+          if False the plot will be closed.  If using a notebook
+          and show is True, the plot will show in the notebook
+
     Returns:
-    --------
-    times : array, in s past mjd=0, the times at which the 
-            antenna delays are calculated
-    antenna_delays : the delays of the antennas solved every 59s
-    kcorr : the applied delay correction using the entire time
+        times: arr, real
+          the times at which the antenna delays are calculated in mjd
+        antenna_delays: arr, real
+          the delays of the antennas solved every 59s
+        kcorr: arr, real
+          the applied delay correction calculated using the entire time
     """
+    nant = len(antenna_order)
+    ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
     error = 0
+    
     # Pull the solutions for the entire timerange and the 
     # 60-s data from the measurement set tables
     tb = cc.table.table()
     error += not tb.open('{0}2kcal'.format(source.name))
-    antenna_delays = tb.getcol('FPARAM')[0][0].reshape(-1,10)
-    times = tb.getcol('TIME').reshape(-1,10)[:,0]
+    antenna_delays = tb.getcol('FPARAM')
+    npol = antenna_delays.shape[0]
+    antenna_delays = antenna_delays.reshape(npol,-1,nant)
+    times = (tb.getcol('TIME').reshape(-1,nant)[:,0]*u.s).to_value(u.d)
     error += not tb.close()
     tb = cc.table.table()
     error += not tb.open('{0}kcal'.format(source.name))
-    kcorr = tb.getcol('FPARAM')[0][0]
+    kcorr = tb.getcol('FPARAM').reshape(npol,-1,nant)
     error += not tb.close()
+    
     fig,ax = plt.subplots(1,1,figsize=(10,8))
-    for i in range(10):
-        plt.plot(antenna_delays[:,i]-kcorr[i],'.',
-            label=antenna_order[i],alpha=0.5)
+    for i in range(nant):
+        plt.plot(antenna_delays[0,:,i]-kcorr[0,0,i],'.',
+            label=antenna_order[i],alpha=0.5,
+                color=ccyc[i%len(ccyc)])
+        plt.plot(antenna_delays[1,:,i]-kcorr[1,0,i],'x',
+            alpha=0.5,color=ccyc[i%len(ccyc)])
     plt.ylim(-5,5)
     plt.ylabel('delay (ns)')
     plt.legend(ncol=3,fontsize='medium')
@@ -383,7 +485,7 @@ def plot_antenna_delays(source,antenna_order,outname=None,show=True):
     plt.axhline(1.5)
     plt.axhline(-1.5)
     if outname is not None:
-        plt.savefig('{0}_{1}.png'.format(msname,imtype))
+        plt.savefig('{0}_antdelays.png'.format(msname))
     if not show:
         plt.close()
     if error > 0:
@@ -392,44 +494,79 @@ def plot_antenna_delays(source,antenna_order,outname=None,show=True):
 
 def plot_gain_calibration(source,antenna_order,
                           outname=None,show=True):
+    """Plot the gain calibration solution
+    
+    Args:
+        source: src class
+          the calibrator
+        antenna_order: arr(int) or list(int)
+          the order of the antennas 
+        outname: str
+          the base to use for the name of the 
+          png file the plot is saved to.  The plot will 
+          be saved to <outname>_gaincal.png if an outname is
+          provided, otherwise no plot will be saved.
+        show: boolean
+          if False the plot will be closed.  If using a notebook
+          and show is True, the plot will show in the notebook
+    
+    Returns:
     """
-    Parameters:
-    -----------
-    source  : src class, the calibrator
-    antenna_order : int, array, the order of the antennas 
-    outname : string, optional the base to use for the name of the 
-              png file the plot is saved to.  The plot will 
-              be saved to <outname>_freq.png if an outname is
-              provided, otherwise no plot will be saved.
-    show    : boolean, optional, default True.  If true, the plot
-              will be shown in an inline notebook.  If not using 
-              a notebook, the plot will never be shown.
-    """
+    nant = len(antenna_order)
+    ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
     error = 0
+    
     tb = cc.table.table()
     error += not tb.open('{0}gpcal'.format(source.name))
-    gain_phase = tb.getcol('CPARAM')[0,...]
-    gain_phase = gain_phase.reshape(-1,10)
+    gain_phase = tb.getcol('CPARAM')
+    npol = gain_phase.shape[0]
+    gain_phase = gain_phase.reshape(npol,-1,nant)
     error += not tb.close()
 
     tb = cc.table.table()
     error += not tb.open('{0}gacal'.format(source.name))
-    gain_amp = tb.getcol('CPARAM')[0,...]
-    gain_amp = gain_amp.reshape(-1,10)
+    gain_amp = tb.getcol('CPARAM')
+    gain_amp = gain_amp.reshape(npol,-1,nant)
+    time = tb.getcol('TIME').reshape(-1,nant)[:,0]
     error += not tb.close()
+    time = ((time - time[0])*u.s).to_value(u.min)
+    
     fig,ax = plt.subplots(1,2,figsize=(16,6))
-    for i in range(10):
-        ax[0].plot(np.abs(gain_amp[:,i]),label=antenna_order[i])
-        ax[1].plot([0,gain_amp.shape[0]],[np.angle(gain_phase[:,i]),
-                  np.angle(gain_phase[:,i])],alpha=1 
-                   if antenna_order[i]==6 else 0.5)
+    for i in range(nant):
+        if gain_amp.shape[1]>1:
+            ax[0].plot(time,np.abs(gain_amp[0,:,i]),
+                       label=antenna_order[i],
+                       color=ccyc[i%len(ccyc)])
+            ax[0].plot(time,np.abs(gain_amp[1,:,i]),
+                       color=ccyc[i%len(ccyc)],
+                      ls=':')
+            ax[1].plot([time[0],time[-1]],
+                   [np.angle(gain_phase[0,:,i]),
+                  np.angle(gain_phase[0,:,i])],
+                       color=ccyc[i%len(ccyc)])
+            ax[1].plot([time[0],time[-1]],
+                   [np.angle(gain_phase[1,:,i]),
+                  np.angle(gain_phase[1,:,i])],
+                       color=ccyc[i%len(ccyc)],
+                  ls = ':')
+        else:
+            ax[0].axvline(np.abs(gain_amp[0,0,i]),
+                          color=ccyc[i%len(ccyc)])
+            ax[0].axvline(np.abs(gain_amp[1,0,i])
+                          ,color=ccyc[i%len(ccyc)],ls = ':')
+            ax[1].axvline(np.angle(gain_phase[0,0,i]),
+                  color=ccyc[i%len(ccyc)])
+            ax[1].axvline(np.angle(gain_phase[1,0,i]),
+                          color=ccyc[i%len(ccyc)],ls = ':')
+            ax[0].set_xlim(time[0],time[-1])
+            ax[1].set_xlim(time[0],time[-1])
     ax[0].legend(ncol=3,fontsize=12)
-    ax[0].set_xlabel('time bin (10 min)')
-    ax[1].set_xlabel('time bin (10 min)')
+    ax[0].set_xlabel('time (min)')
+    ax[1].set_xlabel('time (min)')
     ax[0].set_ylabel('Abs of gain')
     ax[1].set_ylabel('Phase of gain')
     if outname is not None:
-        plt.savefig('{0}_{1}.png'.format(msname,imtype))
+        plt.savefig('{0}_gaincal.png'.format(msname))
     if not show:
         plt.close()
     if error > 0:

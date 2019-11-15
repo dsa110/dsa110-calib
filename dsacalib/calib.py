@@ -254,7 +254,7 @@ def flag_antenna(ms,antenna):
         print('{0} errors occured during calibration'.format(error))
     return
 
-def flag_badtimes(ms,times,bad,verbose=False):
+def flag_badtimes(ms,times,bad,nant,verbose=False):
     """Flag antennas in a measurement set using CASA
     Parameters:
     -----------
@@ -269,15 +269,33 @@ def flag_badtimes(ms,times,bad,verbose=False):
     ag = cc.agentflagger.agentflagger()
     error += not ag.open('{0}.ms'.format(ms))
     error += not ag.selectdata()
-    for i in range(10):
+    for i in range(nant):
         rec = {}
         rec['mode']='clip'
         rec['clipoutside']=False
         rec['datacolumn']='data'
         rec['antenna']=str(i)
+        rec['polarization_type']='XX'
         tstr = ''
         for j in range(len(times)):
-            if bad[j,i]:
+            if bad[0,j,i]:
+                if len(tstr)>0:
+                    tstr += '; '
+                tstr += '{0}~{1}'.format(times[j]-tdiff/2,times[j]+tdiff/2)
+        if verbose:
+            print('For antenna {0}, flagged: {1}'.format(i,tstr))
+        error += not ag.parseagentparameters(rec)
+        error += not ag.init()
+        error += not ag.run()
+        rec['datacolum']='corrected'
+        error += not ag.parseagentparameters(rec)
+        error += not ag.init()
+        error += not ag.run()
+        
+        rec['polarization_type']='YY'
+        tstr = ''
+        for j in range(len(times)):
+            if bad[1,j,i]:
                 if len(tstr)>0:
                     tstr += '; '
                 tstr += '{0}~{1}'.format(times[j]-tdiff/2,times[j]+tdiff/2)
@@ -327,13 +345,14 @@ def calc_delays(vis,df,nfavg=5,tavg=True):
     
     return vis_ft, delay_arr
 
-def get_bad_times(source):
+def get_bad_times(source,nant):
     """Use delays on short time periods to flag bad antenna/time
     pairs in the calibrator data. These won't be used in the 
     gain calibration.
     Parameters:
     -----------
     source: src class
+    nant  : int, the number of antennas in the array
     Returns:
     ---------
     bad_times: boolean array, (ntimes, nant), whether a time-antenna 
@@ -353,16 +372,19 @@ def get_bad_times(source):
     # 60-s data from the measurement set tables
     tb = cc.table.table()
     error += not tb.open('{0}2kcal'.format(source.name))
-    antenna_delays = tb.getcol('FPARAM')[0][0].reshape(-1,10)
-    times = tb.getcol('TIME').reshape(-1,10)[:,0]
+    antenna_delays = tb.getcol('FPARAM')
+    npol = antenna_delays.shape[0]
+    antenna_delays = antenna_delays.reshape(npol,-1,nant)
+    times = tb.getcol('TIME').reshape(-1,nant)[:,0]
     error += not tb.close()
     tb = cc.table.table()
     error += not tb.open('{0}kcal'.format(source.name))
-    kcorr = tb.getcol('FPARAM')[0][0]
+    kcorr = tb.getcol('FPARAM').reshape(npol,-1,nant)
     error += not tb.close()
+    threshold = nant*npol//2
     bad_times = (np.abs(antenna_delays-kcorr)>1.5)
-    bad_times[np.sum(bad_times,axis=1)>3,:] = \
-        np.ones(bad_times.shape[1])
+    bad_times[:,np.sum(np.sum(bad_times,axis=0),axis=1)
+              >threshold,:] = np.ones((npol,1,nant))
     if error > 0:
         print('{0} errors occured during calibration'.format(error))
     return bad_times,times
