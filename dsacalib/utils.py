@@ -17,6 +17,45 @@ from astropy.time import Time
 import os
 from . import constants as ct
 
+def read_psrfits_file(fl,source,antpos='./data/antpos_ITRF.txt'):
+    """Reads in the psrfits header and data
+    Parameters:
+    -----------
+    fl     : str, the full path to the psrfits file
+    source : src class for the source to retrieve data for
+    antpos : str, the location of the text file containing the 
+             antenna positions
+    Returns:
+    ---------
+    fobs   : array, float, the frequency of the channels in GHz
+    blen   : array, float, the itrf coordinates of the baselines,
+             shape (nbaselines, 3)
+    bname  : list, int, the station pairs for each baseline (in the same 
+             order as blen), shape (nbaselines, 2)
+    tstart : float, the start time in MJD
+    tstop  : float, the stop time in MJD
+    vis    : complex array, the requested visibilities, dimensions
+              (baselines, time, frequency)
+    mjd     : array, the central mjd of each integration in the visibilities
+    transit_idx : integer, the index of the transit in the time 
+              axis of the visibilities
+    """
+    # Open the file and get info from the header and visibilities
+    fo = pf.open(fl,ignore_missing_end=True)
+    f  = fo[1]
+    nchan, fobs, nt, blen, bname, tstart, tstop = \
+        get_header_info(f,verbose=True,
+            antpos=antpos)
+    vis,lst,mjd,transit_idx = extractVis(f,source.ra.to_value(u.rad),
+                                  (25*u.min*(15*u.deg/u.h)).
+                                     to_value(u.rad),'A')
+    fo.close()
+    # Reorder the visibilities to fit with CASA ms convention
+    vis = vis[::-1,...]
+    bname = bname[::-1]
+    blen = blen[::-1,...]
+    return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx
+
 def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
     """ Returns important header info from a visibility fits file.
     Parameters:
@@ -25,7 +64,6 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
     antpos  : str, the location of the text file containing the 
              antenna positions
     verbose : Boolean, default False
-    
     Returns:
     -----------
     nchan  : int, the number of frequency channels
@@ -96,10 +134,10 @@ def extractVis(f,stmid,seg_len,pol,quiet=True):
     
     st0 = Time(mjd0, format='mjd').sidereal_time(
         'apparent',longitude=ct.ovro_lon).radian 
-    mjd = mjd0 + np.arange(nt) * ct.tsamp / ct.seconds_per_day
+    mjd = mjd0 + (np.arange(nt)+0.5) * ct.tsamp / ct.seconds_per_day
     
     st  = np.angle(np.exp(1j*(st0 + 2*np.pi/ct.seconds_per_sidereal_day*
-                          np.arange(nt)*ct.tsamp)))
+                          np.arange(nt+0.5)*ct.tsamp)))
     
     st1 = Time(mjd1,format='mjd').sidereal_time(
             'apparent',longitude=ct.ovro_lon).radian
@@ -245,7 +283,6 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
                     (0,0)),mode='constant',constant_values=
                     (np.nan,)).reshape(model.shape[0],-1,nint,
                     model.shape[2]),axis=2)
-        obstm += ct.tsamp*nint/2/ct.seconds_per_day
     stoptime  = '{0}s'.format(vis.shape[1]*ct.tsamp*nint)
     
     # Read in baseline info and order it as needed

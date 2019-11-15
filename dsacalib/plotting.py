@@ -339,3 +339,99 @@ def plot_image(msname,imtype,sr0,verbose=False,outname=None,
     if error > 0:
         print('{0} errors occured during imaging'.format(error))
     return
+
+def plot_antenna_delays(source,antenna_order,outname=None,show=True):
+    """
+    Parameters:
+    -----------
+    source  : src class, the calibrator
+    antenna_order : int, array, the order of the antennas 
+    outname : string, optional the base to use for the name of the 
+              png file the plot is saved to.  The plot will 
+              be saved to <outname>_freq.png if an outname is
+              provided, otherwise no plot will be saved.
+    show    : boolean, optional, default True.  If true, the plot
+              will be shown in an inline notebook.  If not using 
+              a notebook, the plot will never be shown.
+    Returns:
+    --------
+    times : array, in s past mjd=0, the times at which the 
+            antenna delays are calculated
+    antenna_delays : the delays of the antennas solved every 59s
+    kcorr : the applied delay correction using the entire time
+    """
+    error = 0
+    # Pull the solutions for the entire timerange and the 
+    # 60-s data from the measurement set tables
+    tb = cc.table.table()
+    error += not tb.open('{0}2kcal'.format(source.name))
+    antenna_delays = tb.getcol('FPARAM')[0][0].reshape(-1,10)
+    times = tb.getcol('TIME').reshape(-1,10)[:,0]
+    error += not tb.close()
+    tb = cc.table.table()
+    error += not tb.open('{0}kcal'.format(source.name))
+    kcorr = tb.getcol('FPARAM')[0][0]
+    error += not tb.close()
+    fig,ax = plt.subplots(1,1,figsize=(10,8))
+    for i in range(10):
+        plt.plot(antenna_delays[:,i]-kcorr[i],'.',
+            label=antenna_order[i],alpha=0.5)
+    plt.ylim(-5,5)
+    plt.ylabel('delay (ns)')
+    plt.legend(ncol=3,fontsize='medium')
+    plt.xlabel('time (min)')
+    plt.axhline(1.5)
+    plt.axhline(-1.5)
+    if outname is not None:
+        plt.savefig('{0}_{1}.png'.format(msname,imtype))
+    if not show:
+        plt.close()
+    if error > 0:
+        print('{0} errors occured'.format(error))
+    return times, antenna_delays, kcorr
+
+def plot_gain_calibration(source,antenna_order,
+                          outname=None,show=True):
+    """
+    Parameters:
+    -----------
+    source  : src class, the calibrator
+    antenna_order : int, array, the order of the antennas 
+    outname : string, optional the base to use for the name of the 
+              png file the plot is saved to.  The plot will 
+              be saved to <outname>_freq.png if an outname is
+              provided, otherwise no plot will be saved.
+    show    : boolean, optional, default True.  If true, the plot
+              will be shown in an inline notebook.  If not using 
+              a notebook, the plot will never be shown.
+    """
+    error = 0
+    tb = cc.table.table()
+    error += not tb.open('{0}gpcal'.format(source.name))
+    gain_phase = tb.getcol('CPARAM')[0,...]
+    gain_phase = gain_phase.reshape(-1,10)
+    error += not tb.close()
+
+    tb = cc.table.table()
+    error += not tb.open('{0}gacal'.format(source.name))
+    gain_amp = tb.getcol('CPARAM')[0,...]
+    gain_amp = gain_amp.reshape(-1,10)
+    error += not tb.close()
+    fig,ax = plt.subplots(1,2,figsize=(16,6))
+    for i in range(10):
+        ax[0].plot(np.abs(gain_amp[:,i]),label=antenna_order[i])
+        ax[1].plot([0,gain_amp.shape[0]],[np.angle(gain_phase[:,i]),
+                  np.angle(gain_phase[:,i])],alpha=1 
+                   if antenna_order[i]==6 else 0.5)
+    ax[0].legend(ncol=3,fontsize=12)
+    ax[0].set_xlabel('time bin (10 min)')
+    ax[1].set_xlabel('time bin (10 min)')
+    ax[0].set_ylabel('Abs of gain')
+    ax[1].set_ylabel('Phase of gain')
+    if outname is not None:
+        plt.savefig('{0}_{1}.png'.format(msname,imtype))
+    if not show:
+        plt.close()
+    if error > 0:
+        print('{0} errors occured'.format(error))
+    return
