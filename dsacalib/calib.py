@@ -176,6 +176,52 @@ def delay_calibration(ms,refant=0,t='inf',prefix=''):
         print('{0} errors occured during calibration'.format(error))
     return
 
+def gain_calibration(source):
+    """Use Self-Cal to calibrate gains and save to calibration tables
+    Parameters:
+    -----------
+    source: src class, the calibrator
+    """
+    error = 0
+    # Solve for phase calibration over entire obs
+    cb = cc.calibrater.calibrater()
+    error += not cb.open('{0}.ms'.format(source.name))
+    error += not cb.setapply(type='K',table='{0}kcal'.
+                             format(source.name))
+    error += not cb.setsolve(type='G',table='{0}gpcal'.
+                             format(source.name),t='inf',
+                     minblperant=1,refant='0',apmode='p')
+    error += not cb.solve()
+    error += not cb.close()
+
+    # Solve for gain calibration on 10 minute timescale
+    cb = cc.calibrater.calibrater()
+    error += not cb.open('{0}.ms'.format(source.name))
+    error += not cb.setapply(type='K',table='{0}kcal'.
+                             format(source.name))
+    error += not cb.setapply(type='G',table='{0}gpcal'.
+                             format(source.name))
+    error += not cb.setsolve(type='G',table='{0}gacal'.
+                             format(source.name), t='600s',
+                     minblperant=1,refant='0',apmode='a')
+    error += not cb.solve()
+    error += not cb.close()
+
+    # Apply calibration
+    cb = cc.calibrater.calibrater()
+    error += not cb.open('{0}.ms'.format(source.name))
+    error += not cb.setapply(type='K',table='{0}kcal'.
+                             format(source.name))
+    error += not cb.setapply(type='G',table='{0}gpcal'.
+                             format(source.name))
+    error += not cb.setapply(type='G',table='{0}gacal'.
+                             format(source.name))
+    error += not cb.correct()
+    error += not cb.close()
+    if error > 0:
+        print('{0} errors occured during calibration'.format(error))
+    return
+
 def flag_antenna(ms,antenna):
     """Flag antennas in a measurement set using CASA
     Parameters:
@@ -281,3 +327,65 @@ def calc_delays(vis,df,nfavg=5,tavg=True):
     
     return vis_ft, delay_arr
 
+def get_bad_times(source):
+    """Use delays on short time periods to flag bad antenna/time
+    pairs in the calibrator data. These won't be used in the 
+    gain calibration.
+    Parameters:
+    -----------
+    source: src class
+    Returns:
+    ---------
+    bad_times: boolean array, (ntimes, nant), whether a time-antenna 
+           pair should be flagged
+    times: array, the time (in s, past the boolean day) for each 
+           delay solution
+    """
+    error = 0
+    # Solve the calibrator data on minute timescales
+    cb = cc.calibrater.calibrater()
+    error += not cb.open('{0}.ms'.format(source.name))
+    error += not cb.setsolve(type='K',t='59s',
+        refant=0,table='{0}2kcal'.format(source.name))
+    error += not cb.solve()
+    error += not cb.close()
+    # Pull the solutions for the entire timerange and the 
+    # 60-s data from the measurement set tables
+    tb = cc.table.table()
+    error += not tb.open('{0}2kcal'.format(source.name))
+    antenna_delays = tb.getcol('FPARAM')[0][0].reshape(-1,10)
+    times = tb.getcol('TIME').reshape(-1,10)[:,0]
+    error += not tb.close()
+    tb = cc.table.table()
+    error += not tb.open('{0}kcal'.format(source.name))
+    kcorr = tb.getcol('FPARAM')[0][0]
+    error += not tb.close()
+    bad_times = (np.abs(antenna_delays-kcorr)>1.5)
+    bad_times[np.sum(bad_times,axis=1)>3,:] = \
+        np.ones(bad_times.shape[1])
+    if error > 0:
+        print('{0} errors occured during calibration'.format(error))
+    return bad_times,times
+
+def apply_calibration(source,cal):
+    """Apply the calibration solution from the calibrator
+    to the source.
+    Parameters:
+    -----------
+    source : src class, the target source
+    cal    : src class, the calibrator source
+    """
+    error = 0
+    cb = cc.calibrater.calibrater()
+    error += not cb.open('{0}.ms'.format(source.name))
+    error += not cb.setapply(type='K',
+                             table='{0}kcal'.format(cal.name))
+    error += not cb.setapply(type='G',
+                             table='{0}gacal'.format(cal.name))
+    error += not cb.setapply(type='G',
+                             table='{0}gpcal'.format(cal.name))
+    error += not cb.correct()
+    error += not cb.close()
+    if error > 0:
+        print('{0} errors occured during calibration'.format(error))
+    return
