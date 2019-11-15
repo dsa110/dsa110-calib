@@ -17,12 +17,13 @@ from astropy.time import Time
 import os
 from . import constants as ct
 
-def read_psrfits_file(fl,source,antpos='./data/antpos_ITRF.txt'):
+def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt'):
     """Reads in the psrfits header and data
     Parameters:
     -----------
     fl     : str, the full path to the psrfits file
     source : src class for the source to retrieve data for
+    dur    : astropy quantity, amount of time to extract
     antpos : str, the location of the text file containing the 
              antenna positions
     Returns:
@@ -47,8 +48,8 @@ def read_psrfits_file(fl,source,antpos='./data/antpos_ITRF.txt'):
         get_header_info(f,verbose=True,
             antpos=antpos)
     vis,lst,mjd,transit_idx = extractVis(f,source.ra.to_value(u.rad),
-                                  (25*u.min*(15*u.deg/u.h)).
-                                     to_value(u.rad),'A')
+                                  (dur/2*(15*u.deg/u.h)).
+                                     to_value(u.rad))
     fo.close()
     # Reorder the visibilities to fit with CASA ms convention
     vis = vis[::-1,...]
@@ -103,7 +104,7 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
         
     return nchan, fobs, nt, blen, bname, tstart, tstop
 
-def extractVis(f,stmid,seg_len,pol,quiet=True):
+def extractVis(f,stmid,seg_len,quiet=True):
     """ Routine to extract visibilities from a fits file output
     by the DSA-10 system.
     Based on clip.extract_segment from DSA-10 routines
@@ -112,7 +113,6 @@ def extractVis(f,stmid,seg_len,pol,quiet=True):
     f       : the pyfits handler for the fits Visibility table
     stmid   : float, the LST around which to extract visibilities, in rad
     seg_len : float, the duration of visibilities to extract, in rad
-    pol     : str, 'A' or 'B', the polarization to extract
     quiet   : boolean, default True
     Returns:
     -----------
@@ -165,8 +165,7 @@ def extractVis(f,stmid,seg_len,pol,quiet=True):
     basels = [1,3,4,6,7,8,10,11,12,13,15,16,17,18,19,21,
               22,23,24,25,26,28,29,30,31,32,33,34,36,37,
               38,39,40,41,42,43,45,46,47,48,49,50,51,52,53]
-    opol = 0 if pol == 'A' else 1 
-    odata = dat[:,basels,:,opol,0]+ 1j*dat[:,basels,:,opol,1]
+    odata = dat[:,basels,:,:,0]+ 1j*dat[:,basels,:,:,1]
 
     return odata,st,mjd,I0-I1
 
@@ -267,7 +266,8 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
     freq      = '1.4871533196875GHz'
     deltafreq = '-0.244140625MHz'
     freqresolution = deltafreq
-    nchannels = 625
+    nchannels = vis.shape[-2]
+    npol      = vis.shape[-1]
     
     # Rebin visibilities 
     integrationtime = '{0}s'.format(ct.tsamp*nint) 
@@ -275,14 +275,16 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
         npad = nint - vis.shape[1]%nint
         if npad == nint: npad = 0 
         vis = np.nanmean(np.pad(vis,((0,0),(0,npad),
-                    (0,0)),mode='constant',constant_values=
+                    (0,0),(0,0)),
+                            mode='constant',constant_values=
                     (np.nan,)).reshape(vis.shape[0],-1,nint,
-                    vis.shape[2]),axis=2)
+                    vis.shape[2],vis.shape[3]),axis=2)
         if model is not None:
             model = np.nanmean(np.pad(model,((0,0),(0,npad),
-                    (0,0)),mode='constant',constant_values=
+                    (0,0),(0,0)),
+                    mode='constant',constant_values=
                     (np.nan,)).reshape(model.shape[0],-1,nint,
-                    model.shape[2]),axis=2)
+                    model.shape[2],model.shape[3]),axis=2)
     stoptime  = '{0}s'.format(vis.shape[1]*ct.tsamp*nint)
     
     # Read in baseline info and order it as needed
@@ -313,7 +315,7 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
                  coordsystem='global', referencelocation=pos_obs)
     sm.setspwindow(spwname=spwname, freq=freq, deltafreq=deltafreq, 
                    freqresolution=freqresolution, 
-                   nchannels=nchannels, stokes='I')
+                   nchannels=nchannels, stokes='XX YY')
     sm.settimes(integrationtime=integrationtime, usehourangle=False, 
                 referencetime=me.epoch('utc', qa.quantity(obstm,'d')))
     sm.setfield(sourcename=src.name, 
@@ -331,15 +333,15 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
     rec = ms.getdata(["data"]) 
     
     # rec['data'] has shape [scan, channel, [time*baseline]]
-    vis = vis.T.reshape((nchannels,-1))
-    rec['data'][0,:,:] = vis
+    vis = vis.T.reshape((npol,nchannels,-1))
+    rec['data'] = vis
     ms.putdata(rec)
     if model is None:
         model = np.ones(vis.shape,dtype=complex)
     else:
-        model = model.T.reshape((nchannels,-1))
+        model = model.T.reshape((npol,nchannels,-1))
     rec = ms.getdata(["model_data"])
-    rec['model_data'][0,...] = model
+    rec['model_data'] = model
     ms.putdata(rec)
     ms.close()
     
