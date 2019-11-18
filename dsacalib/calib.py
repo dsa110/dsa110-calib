@@ -1,6 +1,8 @@
 """
 DSA_CALIB.PY
+
 Dana Simard, dana.simard@astro.caltech.edu, 10/2019
+
 Casa-based routines to calibrate visibilities using point sources
 """
 
@@ -12,12 +14,14 @@ from scipy.fftpack import fft,fftshift,fftfreq
 
 def to_deg(string):
     """ Converts a string direction to degrees.
-    Parameters:
-    -----------
-    string : string, of format e.g. "12h00m19.21s" or "+73d00m45.7s"
+
+    Args:
+        string: str
+          ra or dec in string format e.g. "12h00m19.21s" or "+73d00m45.7s"
+
     Returns:
-    --------
-    deg : the input angle in degrees, astropy quantity
+        deg: astropy quantity
+          the angle in degrees
     """
     if 'h' in string:
         h,m,s = string.strip('s').strip('s').replace('h','m').split('m')
@@ -30,16 +34,20 @@ def to_deg(string):
 
 class src():
     """ Simple class for holding source parameters.
-    Parameters:
-    -----------
-    name : some ascii identifier of your source
-    I    : the flux in Jy, float
-    ra   : the right ascension in a string format 
-           e.g. "12h00m19.21s"
-    dec  : the declination in a string format
-           e.g. "+73d00m45.7s"
-    epoch : the epoch of the ra and dec, string, 
-           default "J2000"
+    
+    Args:
+        name: str
+          identifier for your source
+        I: float
+          the flux in Jy
+        ra: str
+          right ascension e.g. "12h00m19.21s"
+        dec: str
+          declination e.g. "+73d00m45.7s"
+        epoch: str
+          the epoch of the ra and dec, default "J2000"
+           
+    Returns:
     """
     def __init__(self,name,I,ra,dec,epoch='J2000'):
         self.name = name
@@ -50,20 +58,27 @@ class src():
 
 def calc_uvw(b, tobs, src_epoch, src_lon, src_lat):
     """ Calculates the uvw coordinates of a source.
-    Parameters:
-    -----------
-    b       : baseline, array of shape (nbaselines, 3), 
-              units m in ITRF coords
-    tobs    : time of observation in mjd; 1-d array
-    src_epoch : str, casa-recognized descriptor of the source coordinates
-              e.g. 'J2000' or 'HADEC'
-    src_lon : longitude of source, astropy quantity
-    src_lat : latitute of source, astropy quantity
+    
+    Args:
+        b: real array
+          the baseline, shape (nbaselines, 3), m in ITRF coords
+        tobs: real array
+          times to calculate coordinates at
+        src_epoch: str
+          casa-recognized descriptor of the source coordinates
+          e.g. 'J2000' or 'HADEC'
+        src_lon: astropy quantity
+          longitude of source
+        src_lat: astropy quantity
+          latitute of source
+
     Returns:
-    ---------
-    u : u, array of shape (nbaselines, ntimes), units m
-    v : v, array of shape (nbaselines, ntimes), units m
-    w : w, array of shape (nbaselines, ntimes), units m
+        u: real array
+          u, shape (nbaselines, ntimes), units m
+        v: real array
+          v, shape (nbaselines, ntimes), units m
+        w: real array 
+          w, shape (nbaselines, ntimes), units m
     """
     if type(tobs)!=np.ndarray: tobs = np.array(tobs)
     if tobs.ndim < 1: tobs = tobs[np.newaxis]
@@ -106,18 +121,21 @@ def calc_uvw(b, tobs, src_epoch, src_lon, src_lat):
 def visibility_model(b, sources, tobs, fobs, phase_only=False):
     """
     Calculates the model of the visibilities along a baseline.
-    Parameters:
-    -----------
-    b     : baseline, numpy array shape (nbaselines, 3), 
-            units m in ITRF coords
-    src_model : list of sources in the field (each source should 
-             be a src class instance)
-    tobs   : time of observation in mjd, float or array
-    fobs   : frequency of observation in GHz
+    
+    Args:
+        b: real array
+          baselines to calculate visibilities for, shape (nbaselines, 3), 
+          units m in ITRF coords
+        src_model: list(src)
+          list of sources to include in the sky model 
+        tobs: float or arr(float)
+          times to calculate visibility model for, mjd
+        fobs: float or arr(float)
+          frequency to calculate model for, in GHz
+    
     Returns:
-    --------
-    vis_model : array, the modelled visibilities, dimensions 
-             (baselines, frequency, time)
+        vis_model: complex array
+          the modelled visibilities, dimensions (baselines, frequency, time)
     """
   
     # Calculate the total visibility by adding each source
@@ -154,14 +172,18 @@ def visibility_model(b, sources, tobs, fobs, phase_only=False):
     return vis_model
 
 def delay_calibration(ms,refant=0,t='inf',prefix=''):
-    """Calibrate delays using CASA and writes the calibrated 
+    """Calibrate delays using CASA and write the calibrated 
     visibilities to the corrected_data column of the measurement set
-    Parameters:
-    -----------
-    ms : str, the name of the measurement set (will open <ms>.ms)
-    refant : int, the index of the reference antenna
-    t  : str, a CASA-understood time to integrate by
-    Returns nothing
+    
+    Args:
+        ms: str
+          the name of the measurement set (will open <ms>.ms)
+        refant: int
+          the index of the reference antenna
+        t: str
+          a CASA-understood time to integrate by
+
+    Returns:
     """
     error = 0
     cb = cc.calibrater.calibrater()
@@ -178,9 +200,14 @@ def delay_calibration(ms,refant=0,t='inf',prefix=''):
 
 def gain_calibration(source):
     """Use Self-Cal to calibrate gains and save to calibration tables
-    Parameters:
-    -----------
-    source: src class, the calibrator
+    
+    Args:
+        source: src class instance
+          the calibrator, will open <src.name>.ms and save the tables to
+          <src.name>kcal (for delays), <src.name>gpcal (for phases) and
+          <src.name>gacal (for amplitudes)
+    
+    Returns:
     """
     error = 0
     # Solve for phase calibration over entire obs
@@ -223,13 +250,16 @@ def gain_calibration(source):
     return
 
 def flag_antenna(ms,antenna):
-    """Flag antennas in a measurement set using CASA
-    Parameters:
-    -----------
-    ms : str, the name of the measurement set (will open <ms>.ms)
-    antenna : str (a CASA-understood list of antennas to flag) or int 
-         (the index of a single antenna to flag)
-    Returns nothing
+    """Flag antennas in a measurement set using CASA.
+    
+    Args:
+        ms: str
+          the name of the measurement set (will open <ms>.ms)
+        antenna: str or int 
+          if str, a CASA-understood list of antennas to flag. If int,
+          the index of a single antenna to flag
+
+    Returns:
     """
     if type(antenna) is int:
         antenna = str(antenna)
@@ -315,18 +345,22 @@ def flag_badtimes(ms,times,bad,nant,verbose=False):
 
 
 def calc_delays(vis,df,nfavg=5,tavg=True):
-    """Calculate delays from the visibilities
-    Parameters:
-    -----------
-    vis    : complex array, the visibilities
-    df     : float, the size of a single frequency channel
-             in GHz
-    nfavg  : the number of frequency channels to avg by
+    """Calculate delays from the visibilities.
+    
+    Args:
+        vis: complex array
+          the visibilities
+        df: float
+          the size of a single frequency channel in GHz
+        nfavg: int
+          the number of frequency channels to avg by
+    
     Returns:
-    -----------
-    vis_ft     : complex array, the Fourier transform of the time-averaged 
-                 visibilities, dimensions (baselines, delay)
-    delay_arr  : array, the values of the delay pixels
+        vis_ft: complex array
+          the Fourier transform of the time-averaged 
+          visibilities, dimensions (baselines, delay)
+        delay_arr: real array
+          the values of the delay pixels in nanoseconds
     """
     nfbins = vis.shape[-1]//nfavg*nfavg
     if tavg:
@@ -349,16 +383,20 @@ def get_bad_times(source,nant):
     """Use delays on short time periods to flag bad antenna/time
     pairs in the calibrator data. These won't be used in the 
     gain calibration.
-    Parameters:
-    -----------
-    source: src class
-    nant  : int, the number of antennas in the array
+    
+    Args:
+        source: src class
+          the calibrator. will create and read 
+          calibration tables that are prefixed by src.name
+        nant: int
+          the number of antennas in the array
+    
     Returns:
-    ---------
-    bad_times: boolean array, (ntimes, nant), whether a time-antenna 
-           pair should be flagged
-    times: array, the time (in s, past the boolean day) for each 
-           delay solution
+        bad_times: boolean array 
+          shape (ntimes, nant), whether a time-antenna 
+          pair should be flagged
+        times: float array
+          the time (mjd) for each delay solution
     """
     error = 0
     # Solve the calibrator data on minute timescales
@@ -375,7 +413,7 @@ def get_bad_times(source,nant):
     antenna_delays = tb.getcol('FPARAM')
     npol = antenna_delays.shape[0]
     antenna_delays = antenna_delays.reshape(npol,-1,nant)
-    times = tb.getcol('TIME').reshape(-1,nant)[:,0]
+    times = (tb.getcol('TIME').reshape(-1,nant)[:,0]*u.s).to_value(u.d)
     error += not tb.close()
     tb = cc.table.table()
     error += not tb.open('{0}kcal'.format(source.name))
@@ -392,10 +430,17 @@ def get_bad_times(source,nant):
 def apply_calibration(source,cal):
     """Apply the calibration solution from the calibrator
     to the source.
-    Parameters:
-    -----------
-    source : src class, the target source
-    cal    : src class, the calibrator source
+    
+    Args:
+        source: src class instance
+          the target source.  Will open the measurement set 
+          <src.name>.ms
+        cal: src class instance
+          the calibrator source.  Will open calibration
+          tables prefixed with <src.name> and ending in kcal,
+          gacal and gpcal
+          
+    Returns:
     """
     error = 0
     cb = cc.calibrater.calibrater()

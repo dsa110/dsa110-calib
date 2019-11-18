@@ -1,5 +1,7 @@
 """DSA_CONSTANTS.PY
+
 Dana Simard, dana.simard@astro.caltech.edu, 10/2019
+
 Constants used for the DSA analysis
 """
 import astropy.units as u
