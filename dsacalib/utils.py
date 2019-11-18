@@ -1,5 +1,6 @@
 """
 DSA_UTILS.PY
+
 Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 
 Modified for python3 from DSA-10 routines written by 
@@ -19,27 +20,36 @@ from . import constants as ct
 
 def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt'):
     """Reads in the psrfits header and data
-    Parameters:
-    -----------
-    fl     : str, the full path to the psrfits file
-    source : src class for the source to retrieve data for
-    dur    : astropy quantity, amount of time to extract
-    antpos : str, the location of the text file containing the 
+    
+    Args:
+        fl: str
+          the full path to the psrfits file
+        source: src class 
+          the source to retrieve data for
+        dur: astropy quantity in minutes or equivalent
+          amount of time to extract
+        antpos: str
+          the full path of the text file containing the 
              antenna positions
+             
     Returns:
-    ---------
-    fobs   : array, float, the frequency of the channels in GHz
-    blen   : array, float, the itrf coordinates of the baselines,
-             shape (nbaselines, 3)
-    bname  : list, int, the station pairs for each baseline (in the same 
-             order as blen), shape (nbaselines, 2)
-    tstart : float, the start time in MJD
-    tstop  : float, the stop time in MJD
-    vis    : complex array, the requested visibilities, dimensions
-              (baselines, time, frequency)
-    mjd     : array, the central mjd of each integration in the visibilities
-    transit_idx : integer, the index of the transit in the time 
-              axis of the visibilities
+        fobs: arr(float)
+          the frequency of the channels in GHz
+        blen: arr(float) 
+          the itrf coordinates of the baselines, shape (nbaselines, 3)
+        bname: list(int)
+          the station pairs for each baseline (in the same order as blen)
+          shape (nbaselines, 2)
+        tstart: float
+          the start time in MJD
+        tstop: float
+          the stop time in MJD
+        vis: complex array
+          the requested visibilities, dimensions (baselines, time, frequency)
+        mjd: arr(float)
+          the midpoint mjd of each integration in the visibilities
+        transit_idx: int
+          the index of the transit in the time axis of the visibilities
     """
     # Open the file and get info from the header and visibilities
     fo = pf.open(fl,ignore_missing_end=True)
@@ -59,23 +69,31 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt'):
 
 def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
     """ Returns important header info from a visibility fits file.
-    Parameters:
-    -----------
-    f : the pyfits table handler for the visibility data table
-    antpos  : str, the location of the text file containing the 
-             antenna positions
-    verbose : Boolean, default False
+    
+    Args:
+        f: pyfits table handler 
+          the visibility data table
+        antpos: str
+          the path to the text file containing the antenna positions
+        verbose: boolean
+          whether to print information on the pyfits file
+
     Returns:
-    -----------
-    nchan  : int, the number of frequency channels
-    fobs   : array, float, the frequency of the channels in GHz
-    nt     : int, the number of time samples
-    blen   : array, float, the itrf coordinates of the baselines,
-             shape (nbaselines, 3)
-    bname  : list, int, the station pairs for each baseline (in the same 
-             order as blen), shape (nbaselines, 2)
-    tstart : float, the start time in MJD
-    tstop  : float, the stop time in MJD
+        nchan: int
+          the number of frequency channels
+        fobs: arr(float)
+          the midpoint frequency of each channel in GHz
+        nt: int
+          the number of time samples
+        blen: arr(float)
+          the itrf coordinates of the baselines, shape (nbaselines, 3)
+        bname: list(int)
+          the station pairs for each baseline (in the same order as blen), 
+          shape (nbaselines, 2)
+        tstart: float
+          the start time in MJD
+        tstop: float
+          the stop time in MJD
     """
 
     aname = f.header['ANTENNAS'].split('-')
@@ -106,21 +124,29 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
 
 def extractVis(f,stmid,seg_len,quiet=True):
     """ Routine to extract visibilities from a fits file output
-    by the DSA-10 system.
+    by the DSA-10 system.  
+    
     Based on clip.extract_segment from DSA-10 routines
-    Parameters:
-    -----------
-    f       : the pyfits handler for the fits Visibility table
-    stmid   : float, the LST around which to extract visibilities, in rad
-    seg_len : float, the duration of visibilities to extract, in rad
-    quiet   : boolean, default True
+
+    Args:
+        f: pyfits table handler
+          the fits Visibility table
+        stmid: float
+          the LST around which to extract visibilities, in radians
+        seg_len: float
+          the duration of visibilities to extract, in radians
+        quiet: boolean
+          if False, information on the file will be printed
+
     Returns:
-    -----------
-    odata   : complex array, the requested visibilities, dimensions
-              (baselines, time, frequency)
-    st      : array, the lst of each integration in the visibilities, in rad
-    mjd     : array, the mjd of each integration in the visibilities
-    I0-I1   : integer, the index of the transit
+        odata: complex array
+          the requested visibilities, dimensions (baselines, time, frequency)
+        st: arr(float)
+          the lst of each integration in the visibilities, in radians
+        mjd: arr(float)
+          the midpoint mjd of each integration in the visibilities
+        I0-I1: int
+          the index of the transit
     """
     dat   = f.data['VIS']
     nt    = f.header['NAXIS2']
@@ -169,87 +195,37 @@ def extractVis(f,stmid,seg_len,quiet=True):
 
     return odata,st,mjd,I0-I1
 
-
-def plotFreqAmp(f,tmid=None,tspan=10*u.s,f1=None,f2=None):
-    """
-    Vikram's code to read in visibility fits files and plot amp vs freq
-    Parameters:
-    -----------
-    f : pyfits file handler; the visibility file
-    tmid : astropy time; the time to extract visibilities about
-    tspan : astropy quantity, time; the duration of data to plot
-    f1 : ??
-    f2 : ??
-    """
-    nrow = int((f.header['NAXIS2']))
-    mjd = Time(f.header['MJD'],format='mjd')
-    nchan = f.header['NCHAN']
-    fch1 = f.header['FCH1']-(nchan*2-1)*250./2048.
-
-    if (f1 is not None) and (f2 is not None):
-        if1 = np.floor((-fch1+f1)/(500./2048.)).astype('int')
-        if2 = np.floor((-fch1+f2)/(500./2048.)).astype('int')
-    else:
-        if1 = 0
-        if2 = nchan
-    freqs = (np.arange(nchan)*(500./2048.)+fch1)[if1:if2]
-            
-    if tmid is None:
-        t1 = 0
-        t2 = np.floor((tspan/ct.tsamp).to(u.dimensionless_unscaled).value).astype('int')
-    else:
-        time = (tmid-(-7.*u.hour)).mjd
-        t1 = np.floor(((time-mjd)*24.*3600.-tspan/2.)/ct.tsamp).astype('int')
-        t2 = np.floor(((time-mjd)*24.*3600.+tspan/2.)/ct.tsamp).astype('int')
-        
-    print('Reading in data . ', end='\r')
-    data = np.flip(f.data['VIS'].reshape((nrow,55,nchan,2,2)),axis=2)[t1:t2,:,if1:if2,:,:]
-    print('Reading in data . . ', end='\r')
-    data = data.mean(axis=0) 
-    print('Reading in data . . . ', end='\r')
-    amps = 5.*(np.log10(data[...,0]**2.+data[...,1]**2.))
-    print('Data read            ')
-
-    ants = f.header['ANTENNAS'].split('-')
-    bases = []
-    for i in range(10):
-        for j in range(i+1):
-            bases.append(ants[i]+'-'+ants[j])
-    
-    fig,ax = plt.subplots(11,5,figsize=(5*4,11*4),sharex=True,sharey=True)
-    ax = ax.flatten()
-    for pl in range(55):
-
-        ax[pl].plot(freqs,amps[pl,:,0])
-        ax[pl].plot(freqs,amps[pl,:,1])
-        ax[pl].set_title(bases[pl])
-
-    return (freqs,amps)
-
 def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
                   antpos='data/antpos_ITRF.txt',model=None):
     """ Writes visibilities to an ms. 
+    
     Uses the casa simulator tool to write the metadata to an ms,
     then uses the casa ms tool to replace the visibilities with 
     the observed data.
     
-    Parameters:
-    -----------
-    src   : dsa_calib.src instance containing source parameters
-    vis   : numpy array, the visibilities, 
-            shape [baseline,time, channel]
-    obstm : float, start time of observation in MJD 
-    ofile : str, name for the created ms
-    bname : list, the list of baselines names in the form [[ant1, ant2],...]
-            where ant1 and ant2 are integers
-    nint  : integer, the number of time bins to integrate before saving
-            to a measurement set, default 25
-    antpos: str, the full path to the text file containing itrf antenna
-            positions
-    model : array, same shape as visibilities, the model to write to the 
-            measurement set (and against which gain calibration will be done),
-            if not provided an array of ones will be used at the model
-    Returns Nothing
+    Args:
+        src: src instance 
+          parameters for the source (or position) used for fringe-stopping
+        vis: complex array
+          the visibilities, shape (baseline,time, channel)
+        obstm: float
+          start time of observation in MJD 
+        ofile: str
+          name for the created ms
+        bname: list(int)
+          the list of baselines names in the form [[ant1, ant2],...]
+        nint: int
+          the number of time bins to integrate before saving to a 
+          measurement set, default 25
+        antpos: str
+          the full path to the text file containing itrf antenna
+          positions
+        model: complex array
+          same shape as visibilities, the model to write to the 
+          measurement set (and against which gain calibration will be done).
+          If not provided an array of ones will be used at the model.
+
+    Returns:
     """
     me = cc.measures.measures()
     qa = cc.quanta.quanta()
@@ -350,15 +326,16 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
 def extract_vis_from_ms(ms_name):
     """ Extract calibrated and uncalibrated visibilities from 
     measurement set.
-    Parameters:
-    -----------
-    ms_name : str, the name of the measurement set (will open <ms>.ms)
+    
+    Args:
+        ms_name: str
+          the name of the measurement set (will open <ms>.ms)
+    
     Returns:
-    -----------
-    vis_uncal : array, the 'observed' data from the measurement set, 
-                (baselines,time,freq)
-    vis_cal   : array, the 'corrected' data from the measurement set
-                (baselines,time,freq)
+        vis_uncal: complex array
+          the 'observed' data from the measurement set (baselines,time,freq)
+        vis_cal: complex array
+          the 'corrected' data from the measurement set (baselines,time,freq)
     """
     error = 0
     ms = cc.ms.ms()
