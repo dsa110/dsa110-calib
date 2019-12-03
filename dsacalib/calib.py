@@ -198,7 +198,7 @@ def delay_calibration(ms,refant=0,t='inf',prefix=''):
         print('{0} errors occured during calibration'.format(error))
     return
 
-def gain_calibration(source,tgp='600s'):
+def gain_calibration(source,tga='600s'):
     """Use Self-Cal to calibrate gains and save to calibration tables
     
     Args:
@@ -229,7 +229,7 @@ def gain_calibration(source,tgp='600s'):
     error += not cb.setapply(type='G',table='{0}gpcal'.
                              format(source.name))
     error += not cb.setsolve(type='G',table='{0}gacal'.
-                             format(source.name), t=tgp,
+                             format(source.name), t=tga,
                      minblperant=1,refant='0',apmode='a')
     error += not cb.solve()
     error += not cb.close()
