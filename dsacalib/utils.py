@@ -196,7 +196,8 @@ def extractVis(f,stmid,seg_len,quiet=True):
     return odata,st,mjd,I0-I1
 
 def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
-                  antpos='data/antpos_ITRF.txt',model=None):
+                  antpos='data/antpos_ITRF.txt',model=None,
+                 dt = ct.casa_time_offset):
     """ Writes visibilities to an ms. 
     
     Uses the casa simulator tool to write the metadata to an ms,
@@ -227,6 +228,7 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
 
     Returns:
     """
+
     me = cc.measures.measures()
     qa = cc.quanta.quanta()
 
@@ -293,7 +295,7 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
                    freqresolution=freqresolution, 
                    nchannels=nchannels, stokes='XX YY')
     sm.settimes(integrationtime=integrationtime, usehourangle=False, 
-                referencetime=me.epoch('utc', qa.quantity(obstm,'d')))
+                referencetime=me.epoch('utc', qa.quantity(obstm-dt,'d')))
     sm.setfield(sourcename=src.name, 
                 sourcedirection=me.direction(src.epoch, 
                                              qa.quantity(src.ra.to_value(u.rad),'rad'), 
@@ -320,6 +322,18 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
     rec['model_data'] = model
     ms.putdata(rec)
     ms.close()
+    
+    # Check that the time is correct
+    ms = cc.ms.ms()
+    ms.open(ofile)
+    tstart_ms  = ms.summary()['BeginTime']
+    tstart_ms2 = ms.getdata('TIME')['time'][0]/ct.seconds_per_day
+    assert np.abs(tstart_ms - (tstart_ms2-ct.tsamp*nint/ct.seconds_per_day/2)) < 1e-10, \
+        'Measurement set header and data times do not agree'
+    assert np.abs(tstart_ms - obstm) < 1e-10 , \
+        'Measurement set start time does not agree with input tstart'
+    
+    # Can we also overwrite the times here?
     
     return
 
