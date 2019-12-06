@@ -422,20 +422,20 @@ def plot_image(msname,imtype,sr0,verbose=False,outname=None,
     ax.set_xlabel('l (arcsec)')
     ax.set_ylabel('m (arcsec)')
     if outname is not None:
-        plt.savefig('{0}_{1}.png'.format(msname,imtype))
+        plt.savefig('{0}_{1}.png'.format(outname,imtype))
     if not show:
         plt.close()
     if error > 0:
         print('{0} errors occured during imaging'.format(error))
     return
 
-def plot_antenna_delays(source,antenna_order,outname=None,show=True):
+def plot_antenna_delays(prefix,antenna_order,outname=None,show=True):
     """Plots the antenna delays on a 59s timescale relative to the antenna
     delays used in the calibration solution
     
     Args:
-        source: src class
-          the calibrator
+        prefix: str
+          the prefix of the kcal measurement set
         antenna_order: int array or list(int)
           the order of the antennas 
         outname: str
@@ -462,14 +462,14 @@ def plot_antenna_delays(source,antenna_order,outname=None,show=True):
     # Pull the solutions for the entire timerange and the 
     # 60-s data from the measurement set tables
     tb = cc.table.table()
-    error += not tb.open('{0}2kcal'.format(source.name))
+    error += not tb.open('{0}2kcal'.format(prefix))
     antenna_delays = tb.getcol('FPARAM')
     npol = antenna_delays.shape[0]
     antenna_delays = antenna_delays.reshape(npol,-1,nant)
     times = (tb.getcol('TIME').reshape(-1,nant)[:,0]*u.s).to_value(u.d)
     error += not tb.close()
     tb = cc.table.table()
-    error += not tb.open('{0}kcal'.format(source.name))
+    error += not tb.open('{0}kcal'.format(prefix))
     kcorr = tb.getcol('FPARAM').reshape(npol,-1,nant)
     error += not tb.close()
     
@@ -480,14 +480,14 @@ def plot_antenna_delays(source,antenna_order,outname=None,show=True):
                 color=ccyc[i%len(ccyc)])
         plt.plot(antenna_delays[1,:,i]-kcorr[1,0,i],'x',
             alpha=0.5,color=ccyc[i%len(ccyc)])
-    plt.ylim(-5,5)
+    #plt.ylim(-5,5)
     plt.ylabel('delay (ns)')
     plt.legend(ncol=3,fontsize='medium')
     plt.xlabel('time (min)')
     plt.axhline(1.5)
     plt.axhline(-1.5)
     if outname is not None:
-        plt.savefig('{0}_antdelays.png'.format(msname))
+        plt.savefig('{0}_antdelays.png'.format(outname))
     if not show:
         plt.close()
     if error > 0:
@@ -568,7 +568,7 @@ def plot_gain_calibration(source,antenna_order,
     ax[0].set_ylabel('Abs of gain')
     ax[1].set_ylabel('Phase of gain')
     if outname is not None:
-        plt.savefig('{0}_gaincal.png'.format(msname))
+        plt.savefig('{0}_gaincal.png'.format(outname))
     if not show:
         plt.close()
     if error > 0:
