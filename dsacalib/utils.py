@@ -113,8 +113,8 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
             blen.append(tp[a1,1:]-tp[a2,1:])
     blen  = np.array(blen)
 
-    tstart = f.header['MJD']
-    tstop  = f.header['MJD'] + nt*ct.tsamp/(1*u.d).to_value(u.s)
+    tstart = f.header['MJD'] + ct.time_offset/ct.seconds_per_day
+    tstop  = tstart + nt*ct.tsamp/ct.seconds_per_day
 
     if verbose:
         print('File covers {0:.2f} hours from MJD {1} to {2}'.format(
