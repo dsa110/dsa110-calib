@@ -13,12 +13,12 @@ import astropy.constants as c
 from . import constants as ct
 from scipy.fftpack import fft,fftshift,fftfreq
 
-def delay_calibration(ms,refant=0,t='inf',prefix='',fskcal=False):
+def delay_calibration(msname,sourcename,refant=0,t='inf',fskcal=False):
     """Calibrate delays using CASA and write the calibrated 
     visibilities to the corrected_data column of the measurement set
     
     Args:
-        ms: str
+        msname: str
           the name of the measurement set (will open <ms>.ms)
         refant: int
           the index of the reference antenna
@@ -37,21 +37,22 @@ def delay_calibration(ms,refant=0,t='inf',prefix='',fskcal=False):
     """
     error = 0
     cb = cc.calibrater.calibrater()
-    error += not cb.open('{0}.ms'.format(ms))
+    error += not cb.open('{0}.ms'.format(msname))
     if fskcal:
-        error += not cb.setapply(type='K',table='fs{0}kcal'.
-                                format(prefix))
+        error += not cb.setapply(type='K',table='{0}_{1}_fscal'.
+                                format(msname,sourcename))
     error += not cb.setsolve(type='K',t=t,
-            refant=refant,table='{0}kcal'.format(prefix))
+            refant=refant,table='{0}_{1}_kcal'.format(msname,sourcename))
     error += not cb.solve()
-    error += not cb.setapply(type='K',table='{0}kcal'.format(prefix))
+    error += not cb.setapply(type='K',table='{0}_{1}_kcal'.format(msname,
+                                                                 sourcename))
     error += not cb.correct()
     error += not cb.close()
     if error > 0:
         print('{0} errors occured during calibration'.format(error))
     return
 
-def gain_calibration(msname,source,fskcal=False):
+def gain_calibration(msname,sourcename,fskcal=False):
     """Use Self-Cal to calibrate gains and save to calibration tables
     
     Args:
@@ -73,12 +74,12 @@ def gain_calibration(msname,source,fskcal=False):
     cb = cc.calibrater.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     if fskcal:
-        error += not cb.setapply(type='K',table='fs{0}kcal'.
-                                format(source.name))
-    error += not cb.setapply(type='K',table='{0}kcal'.
-                             format(source.name))
-    error += not cb.setsolve(type='G',table='{0}gpcal'.
-                             format(source.name),t='inf',
+        error += not cb.setapply(type='K',table='{0}_{1}_fscal'.
+                                format(msname,sourcename))
+    error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
+                             format(msname,sourcename))
+    error += not cb.setsolve(type='G',table='{0}_{1}_gpcal'.
+                             format(msname,sourcename),t='inf',
                      minblperant=1,refant='0',apmode='p')
     error += not cb.solve()
     error += not cb.close()
@@ -87,14 +88,14 @@ def gain_calibration(msname,source,fskcal=False):
     cb = cc.calibrater.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     if fskcal:
-        error += not cb.setapply(type='K',table='fs{0}kcal'.
-                                format(source.name))
-    error += not cb.setapply(type='K',table='{0}kcal'.
-                             format(source.name))
-    error += not cb.setapply(type='G',table='{0}gpcal'.
-                             format(source.name))
-    error += not cb.setsolve(type='G',table='{0}gacal'.
-                             format(source.name), t='600s',
+        error += not cb.setapply(type='K',table='{0}_{1}_fscal'.
+                                format(msname,sourcename))
+    error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
+                             format(msname,sourcename))
+    error += not cb.setapply(type='G',table='{0}_{1}_gpcal'.
+                             format(msname,sourcename))
+    error += not cb.setsolve(type='G',table='{0}_{1}_gacal'.
+                             format(msname,sourcename), t='600s',
                      minblperant=1,refant='0',apmode='a')
     error += not cb.solve()
     error += not cb.close()
@@ -103,14 +104,14 @@ def gain_calibration(msname,source,fskcal=False):
     cb = cc.calibrater.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     if fskcal:
-        error += not cb.setapply(type='K',table='fs{0}kcal'.
-                                format(source.name))
-    error += not cb.setapply(type='K',table='{0}kcal'.
-                             format(source.name))
-    error += not cb.setapply(type='G',table='{0}gpcal'.
-                             format(source.name))
-    error += not cb.setapply(type='G',table='{0}gacal'.
-                             format(source.name))
+        error += not cb.setapply(type='K',table='{0}_{1}_fscal'.
+                                format(msname,sourcename))
+    error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
+                             format(msname,sourcename))
+    error += not cb.setapply(type='G',table='{0}_{1}_gpcal'.
+                             format(msname,sourcename))
+    error += not cb.setapply(type='G',table='{0}_{1}_gacal'.
+                             format(msname,sourcename))
     error += not cb.correct()
     error += not cb.close()
     if error > 0:
@@ -252,7 +253,7 @@ def calc_delays(vis,df,nfavg=5,tavg=True):
     
     return vis_ft, delay_arr
 
-def get_bad_times(msname,source,nant,fskcal=False):
+def get_bad_times(msname,sourcename,nant,fskcal=False):
     """Use delays on short time periods to flag bad antenna/time
     pairs in the calibrator data. These won't be used in the 
     gain calibration.
@@ -282,23 +283,23 @@ def get_bad_times(msname,source,nant,fskcal=False):
     cb = cc.calibrater.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     if fskcal:
-        error += not cb.setapply(type='K',table='fs{0}kcal'.
-                                format(source.name))
+        error += not cb.setapply(type='K',table='{0}_{1}_fscal'.
+                                format(msname,sourcename))
     error += not cb.setsolve(type='K',t='59s',
-        refant=0,table='{0}2kcal'.format(source.name))
+        refant=0,table='{0}_{1}_2kcal'.format(msname,sourcename))
     error += not cb.solve()
     error += not cb.close()
     # Pull the solutions for the entire timerange and the 
     # 60-s data from the measurement set tables
     tb = cc.table.table()
-    error += not tb.open('{0}2kcal'.format(source.name))
+    error += not tb.open('{0}_{1}_2kcal'.format(msname,sourcename))
     antenna_delays = tb.getcol('FPARAM')
     npol = antenna_delays.shape[0]
     antenna_delays = antenna_delays.reshape(npol,-1,nant)
     times = (tb.getcol('TIME').reshape(-1,nant)[:,0]*u.s).to_value(u.d)
     error += not tb.close()
     tb = cc.table.table()
-    error += not tb.open('{0}kcal'.format(source.name))
+    error += not tb.open('{0}_{1}_kcal'.format(msname,sourcename))
     kcorr = tb.getcol('FPARAM').reshape(npol,-1,nant)
     error += not tb.close()
     threshold = nant*npol//2
@@ -309,7 +310,7 @@ def get_bad_times(msname,source,nant,fskcal=False):
         print('{0} errors occured during calibration'.format(error))
     return bad_times,times
 
-def apply_calibration(source,cal,fskcal=False):
+def apply_calibration(msname,calname,fskcal=False,fsname=None):
     """Apply the calibration solution from the calibrator
     to the source.
     
@@ -326,16 +327,17 @@ def apply_calibration(source,cal,fskcal=False):
     """
     error = 0
     cb = cc.calibrater.calibrater()
-    error += not cb.open('{0}.ms'.format(source.name))
+    error += not cb.open('{0}.ms'.format(msname))
     if fskcal:
-        error += not cb.setapply(type='K',table='fs{0}kcal'.
-                                format(source.name))
+        if not fsname: fsname = calname
+        error += not cb.setapply(type='K',table='{0}_{1}_fscal'.
+                                format(msname,fsname))
     error += not cb.setapply(type='K',
-                             table='{0}kcal'.format(cal.name))
+                             table='{0}_{1}_kcal'.format(msname,calname))
     error += not cb.setapply(type='G',
-                             table='{0}gacal'.format(cal.name))
+                             table='{0}_{1}_gacal'.format(msname,calname))
     error += not cb.setapply(type='G',
-                             table='{0}gpcal'.format(cal.name))
+                             table='{0}_{1}_gpcal'.format(msname,calname))
     error += not cb.correct()
     error += not cb.close()
     if error > 0:

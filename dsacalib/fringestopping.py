@@ -399,12 +399,14 @@ def fast_calc_uvw(src_ra, src_dec, mjd, blen):
                       [ np.cos(src_dec)*np.cos(H),-np.cos(src_dec)*np.sin(H),np.sin(src_dec)]])
     return np.dot(trans,b)
 
-def write_fs_delay_table(source,blen,tobs,nant,fstable='fringestopping_table.npz',
-                         msname=''):
+def write_fs_delay_table(msname,source,blen,tobs,nant,fstable='fringestopping_table.npz'):
     """Writes the delays needed to fringestop on a source to a delay calibration
     table in casa format. 
     
     Args:
+      msname: str
+        The prefix of the ms for which this table is generated
+        Note: doesn't open the ms
       source: src class
         The source (or location) to fringestop on
       blen: array, float
@@ -416,8 +418,6 @@ def write_fs_delay_table(source,blen,tobs,nant,fstable='fringestopping_table.npz
       fstable: str
         The path to the numpy file containing the delays used to 
         fringestop at zenith
-      msname: str
-        The prefix of the ms.  Will open <msname>.ms
         
     Returns:
     """
@@ -434,10 +434,10 @@ def write_fs_delay_table(source,blen,tobs,nant,fstable='fringestopping_table.npz
     error = 0
     tb = cc.table.table()
     error += not tb.open('{0}/templatekcal'.format(ct.pkg_data_path))
-    error += not tb.copy('fs{0}kcal'.format(source.name))
+    error += not tb.copy('{0}_{1}_fscal'.format(msname,source.name))
     error += not tb.close()
     
-    error += not tb.open('fs{0}kcal'.format(source.name),nomodify=False)
+    error += not tb.open('{0}_{1}_fscal'.format(msname,source.name),nomodify=False)
     error += not tb.addrows(nant*nt - tb.nrows())
     error += not tb.flush()
     assert(tb.nrows() == nant*nt)
