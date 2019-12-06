@@ -13,10 +13,55 @@ import __casac__ as cc
 import astropy.io.fits as pf
 import astropy.units as u
 import numpy as np
-import matplotlib.pyplot as plt
 from astropy.time import Time
-import os
 from . import constants as ct
+
+from astropy.utils import iers
+iers.conf.iers_auto_url_mirror = ct.iers_table
+
+class src():
+    """ Simple class for holding source parameters.
+    
+    Args:
+        name: str
+          identifier for your source
+        I: float
+          the flux in Jy
+        ra: str
+          right ascension e.g. "12h00m19.21s"
+        dec: str
+          declination e.g. "+73d00m45.7s"
+        epoch: str
+          the epoch of the ra and dec, default "J2000"
+           
+    Returns:
+    """
+    def __init__(self,name,ra,dec,I=1.,epoch='J2000'):
+        self.name = name
+        self.I = I
+        self.ra = to_deg(ra)
+        self.dec = to_deg(dec)
+        self.epoch = epoch
+
+def to_deg(string):
+    """ Converts a string direction to degrees.
+
+    Args:
+        string: str
+          ra or dec in string format e.g. "12h00m19.21s" or "+73d00m45.7s"
+
+    Returns:
+        deg: astropy quantity
+          the angle in degrees
+    """
+    if 'h' in string:
+        h,m,s = string.strip('s').strip('s').replace('h','m').split('m')
+        deg = (float(h)+(float(m)+float(s)/60)/60)*15*u.deg
+    else:
+        sign = -1 if '-' in string else 1
+        d,m,s = string.strip('+-s').strip('s').replace('d','m').split('m')
+        deg = (float(d)+(float(m)+float(s)/60)/60)*u.deg*sign
+    return deg
 
 def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt'):
     """Reads in the psrfits header and data
@@ -57,7 +102,7 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt'):
     nchan, fobs, nt, blen, bname, tstart, tstop = \
         get_header_info(f,verbose=True,
             antpos=antpos)
-    vis,lst,mjd,transit_idx = extractVis(f,source.ra.to_value(u.rad),
+    vis,lst,mjd,transit_idx = extract_vis_from_psrfits(f,source.ra.to_value(u.rad),
                                   (dur/2*(15*u.deg/u.h)).
                                      to_value(u.rad))
     fo.close()
@@ -113,8 +158,8 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
             blen.append(tp[a1,1:]-tp[a2,1:])
     blen  = np.array(blen)
 
-    tstart = f.header['MJD']
-    tstop  = f.header['MJD'] + nt*ct.tsamp/(1*u.d).to_value(u.s)
+    tstart = f.header['MJD'] + ct.time_offset/ct.seconds_per_day
+    tstop  = tstart + nt*ct.tsamp/ct.seconds_per_day
 
     if verbose:
         print('File covers {0:.2f} hours from MJD {1} to {2}'.format(
@@ -122,7 +167,7 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
         
     return nchan, fobs, nt, blen, bname, tstart, tstop
 
-def extractVis(f,stmid,seg_len,quiet=True):
+def extract_vis_from_psrfits(f,stmid,seg_len,quiet=True):
     """ Routine to extract visibilities from a fits file output
     by the DSA-10 system.  
     
@@ -159,7 +204,7 @@ def extractVis(f,stmid,seg_len,quiet=True):
               "will be extracted")
     
     st0 = Time(mjd0, format='mjd').sidereal_time(
-        'apparent',longitude=ct.ovro_lon).radian 
+        'apparent',longitude=ct.ovro_lon*u.rad).radian 
     mjd = mjd0 + (np.arange(nt)+0.5) * ct.tsamp / ct.seconds_per_day
     
     st  = np.angle(np.exp(1j*(st0 + 2*np.pi/ct.seconds_per_sidereal_day*
@@ -191,12 +236,14 @@ def extractVis(f,stmid,seg_len,quiet=True):
     basels = [1,3,4,6,7,8,10,11,12,13,15,16,17,18,19,21,
               22,23,24,25,26,28,29,30,31,32,33,34,36,37,
               38,39,40,41,42,43,45,46,47,48,49,50,51,52,53]
+    
+    # Fancy indexing can have downfalls and may change in future numpy versions
+    # See issue here https://github.com/numpy/numpy/issues/9450
     odata = dat[:,basels,:,:,0]+ 1j*dat[:,basels,:,:,1]
-
     return odata,st,mjd,I0-I1
 
-def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
-                  antpos='data/antpos_ITRF.txt',model=None):
+def convert_to_ms(src, vis, obstm, ofile, bname, tsamp=ct.tsamp*ct.nint,
+                  nint=1, antpos='data/antpos_ITRF.txt',model=None):
     """ Writes visibilities to an ms. 
     
     Uses the casa simulator tool to write the metadata to an ms,
@@ -214,6 +261,8 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
           name for the created ms
         bname: list(int)
           the list of baselines names in the form [[ant1, ant2],...]
+        tsamp: float
+          the sampling time of the input visibilities in seconds
         nint: int
           the number of time bins to integrate before saving to a 
           measurement set, default 25
@@ -246,7 +295,7 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
     npol      = vis.shape[-1]
     
     # Rebin visibilities 
-    integrationtime = '{0}s'.format(ct.tsamp*nint) 
+    integrationtime = '{0}s'.format(tsamp*nint) 
     if nint != 1:
         npad = nint - vis.shape[1]%nint
         if npad == nint: npad = 0 
@@ -261,7 +310,7 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
                     mode='constant',constant_values=
                     (np.nan,)).reshape(model.shape[0],-1,nint,
                     model.shape[2],model.shape[3]),axis=2)
-    stoptime  = '{0}s'.format(vis.shape[1]*ct.tsamp*nint)
+    stoptime  = '{0}s'.format(vis.shape[1]*tsamp*nint)
     
     # Read in baseline info and order it as needed
     anum,xx,yy,zz = np.loadtxt(antpos).transpose()
@@ -293,7 +342,11 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
                    freqresolution=freqresolution, 
                    nchannels=nchannels, stokes='XX YY')
     sm.settimes(integrationtime=integrationtime, usehourangle=False, 
-                referencetime=me.epoch('utc', qa.quantity(obstm,'d')))
+                referencetime=me.epoch('mjd', qa.quantity(obstm,'d'))) # seems to be a bug as off by 41.8318s
+    # Not sure where this comes from, and think I need to rewrite this to work with psrfits instead of the simulator
+    #if src == 'zenith':
+    #    sm.setfield(sourcename='zenight')
+    #else:
     sm.setfield(sourcename=src.name, 
                 sourcedirection=me.direction(src.epoch, 
                                              qa.quantity(src.ra.to_value(u.rad),'rad'), 

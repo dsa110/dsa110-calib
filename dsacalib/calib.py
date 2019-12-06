@@ -10,168 +10,10 @@ import __casac__ as cc
 import astropy.units as u
 import numpy as np
 import astropy.constants as c
+from . import constants as ct
 from scipy.fftpack import fft,fftshift,fftfreq
 
-def to_deg(string):
-    """ Converts a string direction to degrees.
-
-    Args:
-        string: str
-          ra or dec in string format e.g. "12h00m19.21s" or "+73d00m45.7s"
-
-    Returns:
-        deg: astropy quantity
-          the angle in degrees
-    """
-    if 'h' in string:
-        h,m,s = string.strip('s').strip('s').replace('h','m').split('m')
-        deg = (float(h)+(float(m)+float(s)/60)/60)*15*u.deg
-    else:
-        sign = -1 if '-' in string else 1
-        d,m,s = string.strip('+-s').strip('s').replace('d','m').split('m')
-        deg = (float(d)+(float(m)+float(s)/60)/60)*u.deg*sign
-    return deg
-
-class src():
-    """ Simple class for holding source parameters.
-    
-    Args:
-        name: str
-          identifier for your source
-        I: float
-          the flux in Jy
-        ra: str
-          right ascension e.g. "12h00m19.21s"
-        dec: str
-          declination e.g. "+73d00m45.7s"
-        epoch: str
-          the epoch of the ra and dec, default "J2000"
-           
-    Returns:
-    """
-    def __init__(self,name,I,ra,dec,epoch='J2000'):
-        self.name = name
-        self.I = I
-        self.ra = to_deg(ra)
-        self.dec = to_deg(dec)
-        self.epoch = epoch
-
-def calc_uvw(b, tobs, src_epoch, src_lon, src_lat):
-    """ Calculates the uvw coordinates of a source.
-    
-    Args:
-        b: real array
-          the baseline, shape (nbaselines, 3), m in ITRF coords
-        tobs: real array
-          times to calculate coordinates at
-        src_epoch: str
-          casa-recognized descriptor of the source coordinates
-          e.g. 'J2000' or 'HADEC'
-        src_lon: astropy quantity
-          longitude of source
-        src_lat: astropy quantity
-          latitute of source
-
-    Returns:
-        u: real array
-          u, shape (nbaselines, ntimes), units m
-        v: real array
-          v, shape (nbaselines, ntimes), units m
-        w: real array 
-          w, shape (nbaselines, ntimes), units m
-    """
-    if type(tobs)!=np.ndarray: tobs = np.array(tobs)
-    if tobs.ndim < 1: tobs = tobs[np.newaxis]
-    nt = tobs.shape[0] 
-    if type(b)==list: b = np.array(b)
-    if b.ndim < 2: b = b[np.newaxis,:]
-    nb = b.shape[0] 
-    
-    bu = np.zeros((nt,nb))
-    bv = np.zeros((nt,nb))
-    bw = np.zeros((nt,nb))
-    
-    # Define the reference frame
-    me = cc.measures.measures()
-    qa = cc.quanta.quanta()
-    me.doframe(me.observatory('OVRO_MMA'))
-    me.doframe(me.direction(src_epoch, 
-                            qa.quantity(src_lon.to_value(u.deg),'deg'), 
-                            qa.quantity(src_lat.to_value(u.deg),'deg')))
-
-    contains_nans=False
-
-    for i in range(nt):
-        me.doframe(me.epoch('UTC',qa.quantity(tobs[i],'d'))) 
-        for j in range(nb):
-            bl = me.baseline('itrf',qa.quantity(b[j,0],'m'),
-                  qa.quantity(b[j,1],'m'),qa.quantity(b[j,2],'m'))
-            # Get the uvw coordinates
-            try:
-                uvw=me.touvw(bl)[1]['value']
-                bu[i,j],bv[i,j],bw[i,j]=uvw[0],uvw[1],uvw[2]
-            except KeyError:
-                contains_nans=True
-                bu[i,j],bv[i,j],bw[i,j]=np.nan,np.nan,np.nan
-    if contains_nans:
-        print('Warning: some solutions not found for u,v,w coordinates')
-            
-    return bu.T,bv.T,bw.T
-    
-def visibility_model(b, sources, tobs, fobs, phase_only=False):
-    """
-    Calculates the model of the visibilities along a baseline.
-    
-    Args:
-        b: real array
-          baselines to calculate visibilities for, shape (nbaselines, 3), 
-          units m in ITRF coords
-        src_model: list(src)
-          list of sources to include in the sky model 
-        tobs: float or arr(float)
-          times to calculate visibility model for, mjd
-        fobs: float or arr(float)
-          frequency to calculate model for, in GHz
-    
-    Returns:
-        vis_model: complex array
-          the modelled visibilities, dimensions (baselines, frequency, time)
-    """
-  
-    # Calculate the total visibility by adding each source
-    # Eventually we will also have to include the primary beam here
-    # Choose dimensions for vis_model
-    
-    if type(fobs)!=np.ndarray: fobs = np.array(fobs)
-    if fobs.ndim < 1: fobs = fobs[np.newaxis]
-    nf = fobs.shape[0] 
-    if type(tobs)!=np.ndarray: tobs = np.array(tobs)
-    if tobs.ndim < 1: tobs = tobs[np.newaxis]
-    nt = tobs.shape[0] 
-    if type(b)==list: b = np.array(b)
-    if b.ndim < 2: b = b[np.newaxis,:]
-    nb = b.shape[0] 
-    
-    # Model the flux of the source using a simple spectral index 
-    if phase_only:
-        famp = 1.
-    else:
-        spec_idx = -0.7
-        f0 = 1.4
-        famp = ((fobs/f0)**(spec_idx))
-    
-    vis_model = np.zeros((nb,nt,nf),dtype=complex)
-
-    for src in sources:
-        bu,bv,bw = calc_uvw(b, tobs, src.epoch, src.ra, src.dec)
-
-        vis_model += famp * (1. if phase_only else src.I) * \
-            np.exp(2j*np.pi/c.c.to_value(u.GHz*u.m)*
-                   fobs*(bw[:,:,np.newaxis]))
-
-    return vis_model
-
-def delay_calibration(ms,refant=0,t='inf',prefix=''):
+def delay_calibration(ms,refant=0,t='inf',prefix='',fskcal=False):
     """Calibrate delays using CASA and write the calibrated 
     visibilities to the corrected_data column of the measurement set
     
@@ -182,12 +24,23 @@ def delay_calibration(ms,refant=0,t='inf',prefix=''):
           the index of the reference antenna
         t: str
           a CASA-understood time to integrate by
+        prefix: str
+          The prefix to use for the calibration table.  The table 
+          will be written to <prefix>kcal.  If fringestopping, should be the source.name
+          for the fringestopping source
+        fskcal: Boolean
+          if True, the delay table fs<prefix>kcal, containing the delays
+          required to fringestop on the source coordinates, will be applied before 
+          solving for calibration paramaters and calibrating
 
     Returns:
     """
     error = 0
     cb = cc.calibrater.calibrater()
     error += not cb.open('{0}.ms'.format(ms))
+    if fskcal:
+        error += not cb.setapply(type='K',table='fs{0}kcal'.
+                                format(prefix))
     error += not cb.setsolve(type='K',t=t,
             refant=refant,table='{0}kcal'.format(prefix))
     error += not cb.solve()
@@ -198,21 +51,30 @@ def delay_calibration(ms,refant=0,t='inf',prefix=''):
         print('{0} errors occured during calibration'.format(error))
     return
 
-def gain_calibration(source):
+def gain_calibration(msname,source,fskcal=False):
     """Use Self-Cal to calibrate gains and save to calibration tables
     
     Args:
+        msname: str
+          the measurement set.  will open <msname>.ms
         source: src class instance
-          the calibrator, will open <src.name>.ms and save the tables to
+          the calibrator, will save the tables to
           <src.name>kcal (for delays), <src.name>gpcal (for phases) and
           <src.name>gacal (for amplitudes)
+        fskcal: boolean
+          if True, the delay table fs<source.name>kcal, containing the delays
+          required to fringestop on the source coordinates, will be applied before 
+          solving for calibration paramaters and calibrating
     
     Returns:
     """
     error = 0
     # Solve for phase calibration over entire obs
     cb = cc.calibrater.calibrater()
-    error += not cb.open('{0}.ms'.format(source.name))
+    error += not cb.open('{0}.ms'.format(msname))
+    if fskcal:
+        error += not cb.setapply(type='K',table='fs{0}kcal'.
+                                format(source.name))
     error += not cb.setapply(type='K',table='{0}kcal'.
                              format(source.name))
     error += not cb.setsolve(type='G',table='{0}gpcal'.
@@ -223,7 +85,10 @@ def gain_calibration(source):
 
     # Solve for gain calibration on 10 minute timescale
     cb = cc.calibrater.calibrater()
-    error += not cb.open('{0}.ms'.format(source.name))
+    error += not cb.open('{0}.ms'.format(msname))
+    if fskcal:
+        error += not cb.setapply(type='K',table='fs{0}kcal'.
+                                format(source.name))
     error += not cb.setapply(type='K',table='{0}kcal'.
                              format(source.name))
     error += not cb.setapply(type='G',table='{0}gpcal'.
@@ -236,7 +101,10 @@ def gain_calibration(source):
 
     # Apply calibration
     cb = cc.calibrater.calibrater()
-    error += not cb.open('{0}.ms'.format(source.name))
+    error += not cb.open('{0}.ms'.format(msname))
+    if fskcal:
+        error += not cb.setapply(type='K',table='fs{0}kcal'.
+                                format(source.name))
     error += not cb.setapply(type='K',table='{0}kcal'.
                              format(source.name))
     error += not cb.setapply(type='G',table='{0}gpcal'.
@@ -286,13 +154,18 @@ def flag_antenna(ms,antenna):
 
 def flag_badtimes(ms,times,bad,nant,verbose=False):
     """Flag antennas in a measurement set using CASA
-    Parameters:
-    -----------
-    ms : str, the name of the measurement set (will open <ms>.ms)
-    times : float array, the times of each calibration solution, MJD seconds
-    bad   : boolean array, (ntimes, nantennas), whether or not to flag a time bin
-    verbose : boolean, default False
-    Returns nothing
+    
+    Args:
+      ms: str
+        the name of the measurement set (will open <ms>.ms)
+      times : float array
+        the times of each calibration solution, MJD seconds
+      bad   : boolean array
+        dimensions (ntimes, nantennas), whether or not to flag a time bin
+      verbose: boolean
+        if True, will print information about the antenna/time pairs being flagged
+
+    Returns:
     """
     error = 0
     tdiff = np.median(np.diff(times))
@@ -379,17 +252,23 @@ def calc_delays(vis,df,nfavg=5,tavg=True):
     
     return vis_ft, delay_arr
 
-def get_bad_times(source,nant):
+def get_bad_times(msname,source,nant,fskcal=False):
     """Use delays on short time periods to flag bad antenna/time
     pairs in the calibrator data. These won't be used in the 
     gain calibration.
     
     Args:
+        msname: str
+          the prefix of the measurement set.  Will open <msname>.ms
         source: src class
           the calibrator. will create and read 
           calibration tables that are prefixed by src.name
         nant: int
           the number of antennas in the array
+        fskcal: boolean
+          if True, the delay table fs<source.name>kcal, containing the delays
+          required to fringestop on the source coordinates, will be applied before 
+          solving for calibration paramaters and calibrating
     
     Returns:
         bad_times: boolean array 
@@ -401,7 +280,10 @@ def get_bad_times(source,nant):
     error = 0
     # Solve the calibrator data on minute timescales
     cb = cc.calibrater.calibrater()
-    error += not cb.open('{0}.ms'.format(source.name))
+    error += not cb.open('{0}.ms'.format(msname))
+    if fskcal:
+        error += not cb.setapply(type='K',table='fs{0}kcal'.
+                                format(source.name))
     error += not cb.setsolve(type='K',t='59s',
         refant=0,table='{0}2kcal'.format(source.name))
     error += not cb.solve()
@@ -427,7 +309,7 @@ def get_bad_times(source,nant):
         print('{0} errors occured during calibration'.format(error))
     return bad_times,times
 
-def apply_calibration(source,cal):
+def apply_calibration(source,cal,fskcal=False):
     """Apply the calibration solution from the calibrator
     to the source.
     
@@ -445,6 +327,9 @@ def apply_calibration(source,cal):
     error = 0
     cb = cc.calibrater.calibrater()
     error += not cb.open('{0}.ms'.format(source.name))
+    if fskcal:
+        error += not cb.setapply(type='K',table='fs{0}kcal'.
+                                format(source.name))
     error += not cb.setapply(type='K',
                              table='{0}kcal'.format(cal.name))
     error += not cb.setapply(type='G',
@@ -456,3 +341,4 @@ def apply_calibration(source,cal):
     if error > 0:
         print('{0} errors occured during calibration'.format(error))
     return
+
