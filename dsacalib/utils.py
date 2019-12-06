@@ -334,13 +334,6 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
     ms.open(ofile,nomodify=False)
     ms.selectinit(datadescid=0)
     
-    # Overwrite the times to make sure they are precise
-    # This doesn't work- it really looks like I can't modify times in place
-    rec = ms.getdata(["time"])
-    times = obstm*ct.seconds_per_day + np.arange(0.5,vis.shape[1]+0.5)*ct.tsamp*nint
-    rec['time'] = np.tile(times[:,np.newaxis],(1,vis.shape[0])).flatten()
-    ms.putdata(rec)
-    
     rec = ms.getdata(["data"]) 
     # rec['data'] has shape [scan, channel, [time*baseline]]
     vis = vis.T.reshape((npol,nchannels,-1))
