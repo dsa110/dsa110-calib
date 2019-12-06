@@ -247,8 +247,33 @@ def extract_vis_from_psrfits(f,stmid,seg_len,quiet=True):
     odata = dat[:,basels,:,:,0]+ 1j*dat[:,basels,:,:,1]
     return odata,st,mjd,I0-I1
 
-def convert_to_ms(src, vis, obstm, ofile, bname, tsamp=ct.tsamp*ct.nint,
-                  nint=1, antpos='data/antpos_ITRF.txt',model=None):
+def simulate_ms(ofile,tname,xx,yy,zz,diam,mount,
+               pos_obs,spwname,freq,deltafreq,freqresolution,
+               nchannels,integrationtime,obstm,dt,src,
+               stoptime):
+    me = cc.measures.measures()
+    qa = cc.quanta.quanta()
+    sm = cc.simulator.simulator()
+    sm.open(ofile)
+    sm.setconfig(telescopename=tname, x=xx, y=yy, z=zz, 
+                 dishdiameter=diam, mount=mount, antname=tname, 
+                 coordsystem='global', referencelocation=pos_obs)
+    sm.setspwindow(spwname=spwname, freq=freq, deltafreq=deltafreq, 
+                   freqresolution=freqresolution, 
+                   nchannels=nchannels, stokes='XX YY')
+    sm.settimes(integrationtime=integrationtime, usehourangle=False, 
+                referencetime=me.epoch('utc', qa.quantity(obstm-dt,'d')))
+    sm.setfield(sourcename=src.name, 
+                sourcedirection=me.direction(src.epoch, 
+                                             qa.quantity(src.ra.to_value(u.rad),'rad'), 
+                                             qa.quantity(src.dec.to_value(u.rad),'rad')))
+    sm.setauto(autocorrwt=0.0)
+    sm.observe(src.name, spwname, starttime='0s', stoptime=stoptime)
+    sm.close()
+
+def convert_to_ms(src, vis, obstm, ofile, bname, tsamp = ct.tsamp*ct.nint, nint=1,
+                  antpos='data/antpos_ITRF.txt',model=None,
+                 dt = ct.casa_time_offset):
     """ Writes visibilities to an ms. 
     
     Uses the casa simulator tool to write the metadata to an ms,
@@ -281,6 +306,7 @@ def convert_to_ms(src, vis, obstm, ofile, bname, tsamp=ct.tsamp*ct.nint,
 
     Returns:
     """
+
     me = cc.measures.measures()
     qa = cc.quanta.quanta()
 
@@ -337,35 +363,32 @@ def convert_to_ms(src, vis, obstm, ofile, bname, tsamp=ct.tsamp*ct.nint,
         'Visibilities not ordered by baseline'
     anum = [str(a) for a in anum]
     
-    # make new ms 
-    sm = cc.simulator.simulator()
-    sm.open(ofile)
-    sm.setconfig(telescopename=tname, x=xx, y=yy, z=zz, 
-                 dishdiameter=diam, mount=mount, antname=tname, 
-                 coordsystem='global', referencelocation=pos_obs)
-    sm.setspwindow(spwname=spwname, freq=freq, deltafreq=deltafreq, 
-                   freqresolution=freqresolution, 
-                   nchannels=nchannels, stokes='XX YY')
-    sm.settimes(integrationtime=integrationtime, usehourangle=False, 
-                referencetime=me.epoch('mjd', qa.quantity(obstm,'d'))) # seems to be a bug as off by 41.8318s
-    # Not sure where this comes from, and think I need to rewrite this to work with psrfits instead of the simulator
-    #if src == 'zenith':
-    #    sm.setfield(sourcename='zenight')
-    #else:
-    sm.setfield(sourcename=src.name, 
-                sourcedirection=me.direction(src.epoch, 
-                                             qa.quantity(src.ra.to_value(u.rad),'rad'), 
-                                             qa.quantity(src.dec.to_value(u.rad),'rad')))
-    sm.setauto(autocorrwt=0.0)
-    sm.observe(src.name, spwname, starttime='0s', stoptime=stoptime)
-    sm.close()
+    simulate_ms(ofile,tname,xx,yy,zz,diam,mount,
+               pos_obs,spwname,freq,deltafreq,freqresolution,
+               nchannels,integrationtime,obstm,dt,src,
+               stoptime)
 
+    # Check that the time is correct
+    ms = cc.ms.ms()
+    ms.open(ofile)
+    tstart_ms  = ms.summary()['BeginTime']
+    ms.close()
+    
+    if np.abs(tstart_ms - obstm) > 1e-10:
+        dt = dt + (tstart_ms - obstm)
+        print('Updating casa time offset to {0}s'.format(dt*ct.seconds_per_day))
+        print('Rerunning simulator')
+        simulate_ms(ofile,tname,xx,yy,zz,diam,mount,
+               pos_obs,spwname,freq,deltafreq,freqresolution,
+               nchannels,integrationtime,obstm,dt,src,
+               stoptime)
+    
     # Reopen the measurement set and write the observed visibilities
     ms = cc.ms.ms()
     ms.open(ofile,nomodify=False)
     ms.selectinit(datadescid=0)
-    rec = ms.getdata(["data"]) 
     
+    rec = ms.getdata(["data"]) 
     # rec['data'] has shape [scan, channel, [time*baseline]]
     vis = vis.T.reshape((npol,nchannels,-1))
     rec['data'] = vis
@@ -378,6 +401,19 @@ def convert_to_ms(src, vis, obstm, ofile, bname, tsamp=ct.tsamp*ct.nint,
     rec['model_data'] = model
     ms.putdata(rec)
     ms.close()
+    
+    # Check that the time is correct
+    ms = cc.ms.ms()
+    ms.open(ofile)
+    tstart_ms  = ms.summary()['BeginTime']
+    tstart_ms2 = ms.getdata('TIME')['time'][0]/ct.seconds_per_day
+    ms.close()
+    
+    assert np.abs(tstart_ms - (tstart_ms2-ct.tsamp*nint/ct.seconds_per_day/2)) < 1e-10, \
+        'Measurement set times do not agree with input start time'
+    
+    assert np.abs(tstart_ms - obstm) < 1e-10 , \
+        'Measurement set start time does not agree with input tstart'
     
     return
 
