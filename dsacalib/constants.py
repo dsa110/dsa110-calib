@@ -14,6 +14,7 @@ seconds_per_day = 3600*24
 
 # An unknown parameter - clock offset in seconds of DSA?
 time_offset = 4.294967296
+casa_time_offset = 0.00042824074625968933 # in days
 
 # The integration time of the visibilities
 tsamp = 8.192e-6*128*384
