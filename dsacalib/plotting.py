@@ -429,7 +429,7 @@ def plot_image(msname,imtype,sr0,verbose=False,outname=None,
         print('{0} errors occured during imaging'.format(error))
     return
 
-def plot_antenna_delays(prefix,antenna_order,outname=None,show=True):
+def plot_antenna_delays(msname,calname,antenna_order,outname=None,show=True):
     """Plots the antenna delays on a 59s timescale relative to the antenna
     delays used in the calibration solution
     
@@ -462,14 +462,16 @@ def plot_antenna_delays(prefix,antenna_order,outname=None,show=True):
     # Pull the solutions for the entire timerange and the 
     # 60-s data from the measurement set tables
     tb = cc.table.table()
-    error += not tb.open('{0}2kcal'.format(prefix))
+    print('opening {0}_{1}_2kcal'.format(msname,calname))
+    error += not tb.open('{0}_{1}_2kcal'.format(msname,calname))
     antenna_delays = tb.getcol('FPARAM')
     npol = antenna_delays.shape[0]
     antenna_delays = antenna_delays.reshape(npol,-1,nant)
     times = (tb.getcol('TIME').reshape(-1,nant)[:,0]*u.s).to_value(u.d)
     error += not tb.close()
     tb = cc.table.table()
-    error += not tb.open('{0}kcal'.format(prefix))
+    print('opening {0}_{1}_kcal'.format(msname,calname))
+    error += not tb.open('{0}_{1}_kcal'.format(msname,calname))
     kcorr = tb.getcol('FPARAM').reshape(npol,-1,nant)
     error += not tb.close()
     
@@ -494,7 +496,7 @@ def plot_antenna_delays(prefix,antenna_order,outname=None,show=True):
         print('{0} errors occured'.format(error))
     return times, antenna_delays, kcorr
 
-def plot_gain_calibration(source,antenna_order,
+def plot_gain_calibration(msname,calname,antenna_order,
                           outname=None,show=True):
     """Plot the gain calibration solution
     
@@ -519,14 +521,14 @@ def plot_gain_calibration(source,antenna_order,
     error = 0
     
     tb = cc.table.table()
-    error += not tb.open('{0}gpcal'.format(source.name))
+    error += not tb.open('{0}_{1}_gpcal'.format(msname,calname))
     gain_phase = tb.getcol('CPARAM')
     npol = gain_phase.shape[0]
     gain_phase = gain_phase.reshape(npol,-1,nant)
     error += not tb.close()
 
     tb = cc.table.table()
-    error += not tb.open('{0}gacal'.format(source.name))
+    error += not tb.open('{0}_{1}_gacal'.format(msname,calname))
     gain_amp = tb.getcol('CPARAM')
     gain_amp = gain_amp.reshape(npol,-1,nant)
     time = tb.getcol('TIME').reshape(-1,nant)[:,0]

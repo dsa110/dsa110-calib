@@ -110,6 +110,11 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt'):
     vis = vis[::-1,...]
     bname = bname[::-1]
     blen = blen[::-1,...]
+    
+    dt = np.median(np.diff(mjd))
+    tstart = mjd[0]-dt/2
+    tstop = mjd[-1]+dt/2
+    
     return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx
 
 def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
