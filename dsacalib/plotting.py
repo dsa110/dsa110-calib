@@ -310,7 +310,7 @@ def plot_calibrated_vis(vis,vis_cal,mjd,fobs,bidx,
     return
 
 
-def plot_delays(vis_ft,labels,delay_arr,bname,outname='None',show=True):
+def plot_delays(vis_ft,labels,delay_arr,bname,outname=None,show=True):
     """Make amp vs delay plots for each visibility
 
     Args:
@@ -482,7 +482,7 @@ def plot_antenna_delays(msname,calname,antenna_order,outname=None,show=True):
                 color=ccyc[i%len(ccyc)])
         plt.plot(antenna_delays[1,:,i]-kcorr[1,0,i],'x',
             alpha=0.5,color=ccyc[i%len(ccyc)])
-    #plt.ylim(-5,5)
+    plt.ylim(-5,5)
     plt.ylabel('delay (ns)')
     plt.legend(ncol=3,fontsize='medium')
     plt.xlabel('time (min)')

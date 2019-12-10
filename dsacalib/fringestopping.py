@@ -13,8 +13,9 @@ import astropy.units as u
 from . import constants as ct
 from .utils import to_deg
 from numba import jit
+from astropy.time import Time
 
-def calc_uvw(b, tobs, src_epoch, src_lon, src_lat):
+def calc_uvw(b, tobs, src_epoch, src_lon, src_lat,obs='OVRO_MMA'):
     """ Calculates the uvw coordinates of a source.
     
     Args:
@@ -49,7 +50,8 @@ def calc_uvw(b, tobs, src_epoch, src_lon, src_lat):
     # Define the reference frame
     me = cc.measures.measures()
     qa = cc.quanta.quanta()
-    me.doframe(me.observatory('OVRO_MMA'))
+    if obs is not None:
+        me.doframe(me.observatory(obs))
     
     if src_lon.ndim > 0:
         assert src_lon.ndim == 1
@@ -88,7 +90,7 @@ def calc_uvw(b, tobs, src_epoch, src_lon, src_lat):
     return bu.T,bv.T,bw.T
 
 def generate_fringestopping_table(b,nint=ct.nint,tsamp=ct.tsamp,pt_dec=ct.pt_dec,
-                                 method='B',mjd0=58849.0):
+                                 mjd0=58849.0):
     """Generates a table of the w vectors towards a source to use in fringe-
     stopping.  And writes it to a numpy pickle file named 
     fringestopping_table.npz
@@ -111,18 +113,21 @@ def generate_fringestopping_table(b,nint=ct.nint,tsamp=ct.tsamp,pt_dec=ct.pt_dec
     Returns:
       Nothing
     """
-    dur = tsamp*nint
-    dt  = (np.arange(nint)+0.5-nint/2)*tsamp
-    tobs= mjd0 + (dt*u.s).to_value(u.d)
-    ha  = (dt*u.s*15*u.deg/u.h).to(u.deg)
-    if method=='A':
-        ref = calc_uvw(b,tobs[len(tobs)//2],'HADEC',0*u.deg,0*u.deg)
-    if method=='B':
-        ref = calc_uvw(b,tobs[len(tobs)//2],'HADEC',0*u.deg,to_deg(pt_dec))
-    bu,bv,bw = np.subtract(calc_uvw(b, tobs, 'HADEC', ha, 
-        np.ones(len(ha))*to_deg(pt_dec)),ref)
+    dt = np.arange(nint)*tsamp
+    dt = dt - np.median(dt)
+    ha = dt * 360/ct.seconds_per_sidereal_day
+    bu,bv,bw = calc_uvw(b,mjd0+dt/ct.seconds_per_day,'HADEC',
+                       ha*u.deg, np.ones(ha.shape)*to_deg(ct.pt_dec))
+
+    if nint%2 == 1:
+        bwref = bw[:,(nint-1)//2]
+    else:
+        bu,bv,bwref = calc_uvw(b,mjd0,'HADEC',
+                              0.*u.deg,to_deg(ct.pt_dec))
+    
+    bw = bw - bwref[:,np.newaxis]
     np.savez('fringestopping_table',
-             dec=pt_dec,ha=ha,bw=bw,ref=ref)
+             dec=pt_dec,ha=ha,bw=bw,bwref=bwref)
     return
 
 @jit(nopython=True)
@@ -202,7 +207,7 @@ def set_dimensions(fobs=None,tobs=None,b=None):
         to_return += [b]
     return to_return
 
-def divide_visibility_sky_model(vis,b, sources, tobs, fobs, prefs=True,
+def divide_visibility_sky_model(vis,b, sources, tobs, fobs,
                                 fstable='fringestopping_table.npz',
                             phase_only=False,return_model=False):
     """ Calculates the sky model visibilities the baselines b and divides the 
@@ -248,19 +253,16 @@ def divide_visibility_sky_model(vis,b, sources, tobs, fobs, prefs=True,
         bws[i,:,:,0,0] = bw
         # Need to add amplitude model of the primary beam here
         famps[i,...]   = 1. if phase_only else src.I
-    if prefs:
-        data = np.load(fstable)
-        bur, bvr, bwr = data['ref']
-        bws = bws - bwr[...,np.newaxis,np.newaxis]
+
     # Calculate the sky model using jit
     vis_model = np.zeros(vis.shape,dtype=vis.dtype)
     visibility_sky_model(vis,vis_model,bws,famps,ct.f0,0. if phase_only else ct.spec_idx,fobs)
     if return_model:
-        return vis_model
+        return vis_model,bws
     else:
         return
     
-def fringestop_on_zenith(vis,fobs,bw_file='fringestopping_table.npz',
+def fringestop_on_zenith(vis,fobs,fstable='fringestopping_table.npz',
                         return_model=False,nint=ct.nint):
     """Fringestops on HA=0, DEC=pointing declination for the midpoint of each   
     integration and then integrates the data.  The number of samples to integrate 
@@ -283,26 +285,28 @@ def fringestop_on_zenith(vis,fobs,bw_file='fringestopping_table.npz',
     """
     fobs, = set_dimensions(fobs)
     
-    data = np.load(bw_file)
+    data = np.load(fstable)
     bws  = data['bw']
     assert bws.shape[0] == vis.shape[0], \
         'w vector and visibility have different numbers of baselines'
-    nint = bws.shape[1]
+    assert nint == bws.shape[1]
     
     # Reshape visibilities
     # nbaselines, nsubint, nt, nf, npol
     npad = nint - vis.shape[1]%nint
     if npad == nint: npad = 0 
+    if npad != 0: print('Warning: Padding array to integrate.  Last bin contains only {0}% real data.'.format((nint-npad)/nint*100))
     vis = np.pad(vis,((0,0),(0,npad),
                     (0,0),(0,0)),
                             mode='constant',constant_values=
-                    (np.nan,)).reshape(vis.shape[0],-1,nint,
+                    (0.,)).reshape(vis.shape[0],-1,nint,
                     vis.shape[2],vis.shape[3])
     vis_model = np.exp(2j*np.pi/ct.c_GHz_m * fobs * 
                        bws[:,np.newaxis,:,np.newaxis,np.newaxis])
+
     vis = vis/vis_model
     # This mean is slow - need to change order of the axes at some point
-    #out = np.zeros((vis.shape[0],vis.shape[1],vis.shape[3],vis.shape[4]),dtype=vis.dtype)
+    # out = np.zeros((vis.shape[0],vis.shape[1],vis.shape[3],vis.shape[4]),dtype=vis.dtype)
     #jitmean_fszenith(vis,out)
     vis = vis.mean(axis=2)
     if return_model:
@@ -311,7 +315,7 @@ def fringestop_on_zenith(vis,fobs,bw_file='fringestopping_table.npz',
         return vis
 
 def fringestop_multiple_phase_centers(vis,b, sources, tobs, fobs, 
-                            phase_only=False,return_model=False,prefs=True,
+                            phase_only=False,return_model=False,
                                      fstable='fringestopping_table.npz'):
     """Fringestops on multiple phase centers.
     
@@ -352,10 +356,6 @@ def fringestop_multiple_phase_centers(vis,b, sources, tobs, fobs,
         bu,bv,bw       = calc_uvw(b, tobs, src.epoch, src.ra, src.dec)
         bws[i,:,:,0,0] = bw
         famps[i,...]   = src.I
-    if prefs:
-        data = np.load(fstable)
-        bur, bvr, bwr = data['ref']
-        bws = bws - bwr[...,np.newaxis,np.newaxis]
     if phase_only:
         vis_model = np.exp(2j*np.pi/ct.c_GHz_m * fobs * bws)
     else:
@@ -399,9 +399,11 @@ def fast_calc_uvw(src_ra, src_dec, mjd, blen):
                       [ np.cos(src_dec)*np.cos(H),-np.cos(src_dec)*np.sin(H),np.sin(src_dec)]])
     return np.dot(trans,b)
 
-def write_fs_delay_table(msname,source,blen,tobs,nant,fstable='fringestopping_table.npz'):
+def write_fs_delay_table(msname,source,blen,tobs,nant):
     """Writes the delays needed to fringestop on a source to a delay calibration
     table in casa format. 
+    
+    Not tested.
     
     Args:
       msname: str
@@ -415,21 +417,14 @@ def write_fs_delay_table(msname,source,blen,tobs,nant,fstable='fringestopping_ta
         The observation time of each time bin in mjd
       nant: int
         The number of antennas in the array
-      fstable: str
-        The path to the numpy file containing the delays used to 
-        fringestop at zenith
         
     Returns:
     """
     nt = tobs.shape[0]
-
-    data = np.load(fstable)
-    bur,bvr,bwr = data['ref']
+    bu,bw,bw = calc_uvw(blen, tobs, source.epoch, source.ra, source.dec)
     
     ant_delay = np.zeros((nt,nant))
-    # Does the order here make sense? Casa will apply the negative, so it
-    # will subtract the reference delay and then add the new delay - that makes sense
-    ant_delay[:,1:] = -(bw[:nant-1,:]-bwr[:nant-1,:]).T/ct.c_GHz_m
+    ant_delay[:,1:] = bw[:nant-1,:].T/ct.c_GHz_m
     
     error = 0
     tb = cc.table.table()
