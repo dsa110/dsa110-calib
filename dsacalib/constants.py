@@ -15,6 +15,8 @@ seconds_per_sidereal_day = 3600*23.9344699
 # The number of seconds in a day
 seconds_per_day = 3600*24
 
+deg_per_hour = 360/seconds_per_sidereal_day*3600
+
 # Time between time the packet says as start and first
 # sample recorded
 time_offset = 4.294967296

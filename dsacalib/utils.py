@@ -408,9 +408,9 @@ def convert_to_ms(src, vis, obstm, ofile, bname, tsamp = ct.tsamp*ct.nint, nint=
     tstart_ms  = ms.summary()['BeginTime']
     tstart_ms2 = ms.getdata('TIME')['time'][0]/ct.seconds_per_day
     ms.close()
-    
-    assert np.abs(tstart_ms - (tstart_ms2-ct.tsamp*nint/ct.seconds_per_day/2)) < 1e-10, \
-        'Measurement set times do not agree with input start time'
+
+    assert np.abs(tstart_ms - (tstart_ms2-tsamp*nint/ct.seconds_per_day/2)) < 1e-10, \
+        'Data start time does not agree with MS start time'
     
     assert np.abs(tstart_ms - obstm) < 1e-10 , \
         'Measurement set start time does not agree with input tstart'
@@ -435,9 +435,9 @@ def extract_vis_from_ms(ms_name):
     ms = cc.ms.ms()
     error += not ms.open('{0}.ms'.format(ms_name))
     vis_uncal= (ms.getdata(["data"])
-                ['data'].reshape(625,-1,45).T)
+                ['data'].reshape(2,625,-1,45).T)
     vis_cal  = (ms.getdata(["corrected_data"])
-            ['corrected_data'].reshape(625,-1,45).T)
+            ['corrected_data'].reshape(2,625,-1,45).T)
     error += not ms.close()
     if error > 0:
         print('{0} errors occured during calibration'.format(error))

@@ -310,7 +310,7 @@ def get_bad_times(msname,sourcename,nant,fskcal=False):
         print('{0} errors occured during calibration'.format(error))
     return bad_times,times
 
-def apply_calibration(msname,calname,fskcal=False,fsname=None):
+def apply_calibration(msname,calname,msnamecal=None,fskcal=False,fsname=None):
     """Apply the calibration solution from the calibrator
     to the source.
     
@@ -325,6 +325,8 @@ def apply_calibration(msname,calname,fskcal=False,fsname=None):
           
     Returns:
     """
+    if msnamecal is None:
+        msnamecal = msname
     error = 0
     cb = cc.calibrater.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
@@ -333,11 +335,11 @@ def apply_calibration(msname,calname,fskcal=False,fsname=None):
         error += not cb.setapply(type='K',table='{0}_{1}_fscal'.
                                 format(msname,fsname))
     error += not cb.setapply(type='K',
-                             table='{0}_{1}_kcal'.format(msname,calname))
+                             table='{0}_{1}_kcal'.format(msnamecal,calname))
     error += not cb.setapply(type='G',
-                             table='{0}_{1}_gacal'.format(msname,calname))
+                             table='{0}_{1}_gacal'.format(msnamecal,calname))
     error += not cb.setapply(type='G',
-                             table='{0}_{1}_gpcal'.format(msname,calname))
+                             table='{0}_{1}_gpcal'.format(msnamecal,calname))
     error += not cb.correct()
     error += not cb.close()
     if error > 0:
