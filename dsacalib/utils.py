@@ -157,7 +157,7 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt',
         tstart = None
         tstop = None
     
-    return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx, antenna_order
+    return fobs, blen, bname.tolist(), tstart, tstop, vis, mjd, transit_idx, antenna_order
 
 def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
     """ Returns important header info from a visibility fits file.
@@ -306,7 +306,7 @@ def extract_vis_from_psrfits(f,stmid,seg_len,antenna_order,
     odata = dat[:,basels,:,:,0]+ 1j*dat[:,basels,:,:,1]
     return odata,st,mjd,I0-I1
 
-def simulate_ms(ofile,tname,xx,yy,zz,diam,mount,
+def simulate_ms(ofile,tname,anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
                nchannels,integrationtime,obstm,dt,src,
                stoptime):
@@ -315,7 +315,7 @@ def simulate_ms(ofile,tname,xx,yy,zz,diam,mount,
     sm = cc.simulator.simulator()
     sm.open(ofile)
     sm.setconfig(telescopename=tname, x=xx, y=yy, z=zz, 
-                 dishdiameter=diam, mount=mount, antname=tname, 
+                 dishdiameter=diam, mount=mount, antname=anum, 
                  coordsystem='global', referencelocation=pos_obs)
     sm.setspwindow(spwname=spwname, freq=freq, deltafreq=deltafreq, 
                    freqresolution=freqresolution, 
@@ -330,7 +330,8 @@ def simulate_ms(ofile,tname,xx,yy,zz,diam,mount,
     sm.observe(src.name, spwname, starttime='0s', stoptime=stoptime)
     sm.close()
 
-def convert_to_ms(src, vis, obstm, ofile, bname, tsamp = ct.tsamp*ct.nint, nint=1,
+def convert_to_ms(src, vis, obstm, ofile, bname, antenna_order,
+                  tsamp = ct.tsamp*ct.nint, nint=1,
                   antpos='data/antpos_ITRF.txt',model=None,
                  dt = ct.casa_time_offset):
     """ Writes visibilities to an ms. 
@@ -350,6 +351,7 @@ def convert_to_ms(src, vis, obstm, ofile, bname, tsamp = ct.tsamp*ct.nint, nint=
           name for the created ms
         bname: list(int)
           the list of baselines names in the form [[ant1, ant2],...]
+        antenna_order: list()
         tsamp: float
           the sampling time of the input visibilities in seconds
         nint: int
@@ -366,6 +368,8 @@ def convert_to_ms(src, vis, obstm, ofile, bname, tsamp = ct.tsamp*ct.nint, nint=
     Returns:
     """
 
+    nant = len(antenna_order)
+    
     me = cc.measures.measures()
     qa = cc.quanta.quanta()
 
@@ -404,12 +408,17 @@ def convert_to_ms(src, vis, obstm, ofile, bname, tsamp = ct.tsamp*ct.nint, nint=
     
     # Read in baseline info and order it as needed
     anum,xx,yy,zz = np.loadtxt(antpos).transpose()
-    anum = anum.astype(int)
+    anum = anum.astype(int)+1
     anum,xx,yy,zz = zip(*sorted(zip(anum,xx,yy,zz)))
+    idx_order = sorted([int(a)-1 for a in antenna_order])
+    anum = np.array(anum)[idx_order]
+    xx = np.array(xx)[idx_order]
+    yy = np.array(yy)[idx_order]
+    zz = np.array(zz)[idx_order]
     
-    nints = np.zeros(10,dtype=int)
-    for i in range(10):
-        nints[i] = sum(np.array(bname)[:,0]==i)
+    nints = np.zeros(nant,dtype=int)
+    for i in range(nant):
+        nints[i] = sum(np.array(bname)[:,0]==anum[i])
     nints, anum, xx, yy, zz = zip(*sorted(zip(nints,anum,xx,yy,zz),reverse=True))
 
     # Check that the visibilities are ordered correctly by 
@@ -418,11 +427,11 @@ def convert_to_ms(src, vis, obstm, ofile, bname, tsamp = ct.tsamp*ct.nint, nint=
     for i in range(len(anum)):
         for j in range(i+1,len(anum)):
             idx_order += [bname.index([anum[i],anum[j]])]
-    assert idx_order == list(np.arange(45,dtype=int)), \
+    assert idx_order == list(np.arange(len(bname),dtype=int)), \
         'Visibilities not ordered by baseline'
     anum = [str(a) for a in anum]
     
-    simulate_ms(ofile,tname,xx,yy,zz,diam,mount,
+    simulate_ms(ofile,tname,anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
                nchannels,integrationtime,obstm,dt,src,
                stoptime)
@@ -437,7 +446,7 @@ def convert_to_ms(src, vis, obstm, ofile, bname, tsamp = ct.tsamp*ct.nint, nint=
         dt = dt + (tstart_ms - obstm)
         print('Updating casa time offset to {0}s'.format(dt*ct.seconds_per_day))
         print('Rerunning simulator')
-        simulate_ms(ofile,tname,xx,yy,zz,diam,mount,
+        simulate_ms(ofile,tname,anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
                nchannels,integrationtime,obstm,dt,src,
                stoptime)

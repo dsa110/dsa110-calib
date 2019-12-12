@@ -207,7 +207,6 @@ def set_dimensions(fobs=None,tobs=None,b=None):
     return to_return
 
 def divide_visibility_sky_model(vis,b, sources, tobs, fobs,
-                                fstable='fringestopping_table.npz',
                             phase_only=False,return_model=False):
     """ Calculates the sky model visibilities the baselines b and divides the 
     input visibilities by the sky model
