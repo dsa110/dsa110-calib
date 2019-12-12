@@ -63,7 +63,8 @@ def to_deg(string):
         deg = (float(d)+(float(m)+float(s)/60)/60)*u.deg*sign
     return deg
 
-def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt'):
+def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt',
+                     autocorrs=False,badants=None,quiet=True):
     """Reads in the psrfits header and data
     
     Args:
@@ -75,7 +76,12 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt'):
           amount of time to extract
         antpos: str
           the full path of the text file containing the 
-             antenna positions
+          antenna positions
+        autocorrs: boolean
+          if True, only the autocorrelations will be returned.
+          if False, only the cross correlations will be returned.
+        badants: None or list(int)
+          The antennas for which you do not want data to be returned
              
     Returns:
         fobs: arr(float)
@@ -99,23 +105,59 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt'):
     # Open the file and get info from the header and visibilities
     fo = pf.open(fl,ignore_missing_end=True)
     f  = fo[1]
-    nchan, fobs, nt, blen, bname, tstart, tstop = \
+    nchan, fobs, nt, blen, bname, tstart, tstop, antenna_order = \
         get_header_info(f,verbose=True,
             antpos=antpos)
     vis,lst,mjd,transit_idx = extract_vis_from_psrfits(f,source.ra.to_value(u.rad),
-                                  (dur/2*(15*u.deg/u.h)).
-                                     to_value(u.rad))
+                         (dur/2*(15*u.deg/u.h)).to_value(u.rad),
+                        antenna_order,quiet,autocorrs)
     fo.close()
+    
     # Reorder the visibilities to fit with CASA ms convention
     vis = vis[::-1,...]
     bname = bname[::-1]
     blen = blen[::-1,...]
+    antenna_order=antenna_order[::-1]
     
+
+    if autocorrs:
+        bname = np.array([[a,a] for a in antenna_order])
+        blen  = np.zeros((len(antenna_order),3))
+        if badants is not None:
+            badants = [str(ba) for ba in badants]
+            good_idx = list(range(len(antenna_order)))
+            for badant in badants:
+                good_idx.remove(antenna_order.index(badant))
+            vis = vis[good_idx,...]
+            bname = bname[good_idx,...]
+            blen = blen[good_idx,...]
+    
+    if not autocorrs:
+        if badants is not None:
+            bname = np.array(bname)
+            blen = np.array(blen)
+            good_idx = list(range(len(bname)))
+            for i,bn in enumerate(bname):
+                if (bn[0] in badants) or (bn[1] in badants):
+                    good_idx.remove(i)
+            vis = vis[good_idx,...]
+            blen = blen[good_idx,...]
+            bname = bname[good_idx,...]
+        
+    if badants is not None:
+        badants = [str(ba) for ba in badants]
+        for badant in badants:
+            antenna_order.remove(badant)
+            
     dt = np.median(np.diff(mjd))
-    tstart = mjd[0]-dt/2
-    tstop = mjd[-1]+dt/2
+    if len(mjd)>0:
+        tstart = mjd[0]-dt/2
+        tstop = mjd[-1]+dt/2
+    else:
+        tstart = None
+        tstop = None
     
-    return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx
+    return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx, antenna_order
 
 def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
     """ Returns important header info from a visibility fits file.
@@ -139,7 +181,7 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
           the itrf coordinates of the baselines, shape (nbaselines, 3)
         bname: list(int)
           the station pairs for each baseline (in the same order as blen), 
-          shape (nbaselines, 2)
+          shape (nbaselines, 2), numbering starts at 1
         tstart: float
           the start time in MJD
         tstop: float
@@ -159,7 +201,7 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
         for j in np.arange(i):
             a1 = int(aname[i])-1
             a2 = int(aname[j])-1
-            bname.append([a1,a2])
+            bname.append([a1+1,a2+1])
             blen.append(tp[a1,1:]-tp[a2,1:])
     blen  = np.array(blen)
 
@@ -170,9 +212,11 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
         print('File covers {0:.2f} hours from MJD {1} to {2}'.format(
             ((tstop-tstart)*u.d).to(u.h),tstart,tstop))
         
-    return nchan, fobs, nt, blen, bname, tstart, tstop
+    return nchan, fobs, nt, blen, bname, tstart, tstop, aname
 
-def extract_vis_from_psrfits(f,stmid,seg_len,quiet=True):
+def extract_vis_from_psrfits(f,stmid,seg_len,antenna_order,
+                             quiet=True,
+                            autocorrs=False,badants=None):
     """ Routine to extract visibilities from a fits file output
     by the DSA-10 system.  
     
@@ -187,6 +231,12 @@ def extract_vis_from_psrfits(f,stmid,seg_len,quiet=True):
           the duration of visibilities to extract, in radians
         quiet: boolean
           if False, information on the file will be printed
+        autocorrs: boolean
+          if True, extracts autocorrelations, else extracts 
+          crosscorrelations
+        badants: list
+          list of bad antenna names, (base 1, actual names not 
+          indices)
 
     Returns:
         odata: complex array
@@ -201,6 +251,7 @@ def extract_vis_from_psrfits(f,stmid,seg_len,quiet=True):
     dat   = f.data['VIS']
     nt    = f.header['NAXIS2']
     nchan = f.header['NCHAN']
+    nant = len(antenna_order)
     
     mjd0 = f.header['MJD'] + ct.time_offset/ct.seconds_per_day 
     mjd1 = mjd0 + ct.tsamp*nt/ct.seconds_per_day  
@@ -220,6 +271,7 @@ def extract_vis_from_psrfits(f,stmid,seg_len,quiet=True):
 
     if not quiet:
         print("\n-------------EXTRACT DATA--------------------")
+        print("Extracting data around {0}".format(stmid*180/np.pi))
         print("{0} Time samples in data".format(nt))
         print("LST range: {0:.1f} --- ({1:.1f}-{2:.1f}) --- {3:.1f}deg".format(st[0]*180./np.pi,(stmid-seg_len)*180./np.pi, (stmid+seg_len)*180./np.pi,st[-1]*180./np.pi))
 
@@ -238,9 +290,16 @@ def extract_vis_from_psrfits(f,stmid,seg_len,quiet=True):
         print("Extract: {0} ----> {1} sample; transit at {2}".format(I1,I2,I0))
         print("----------------------------------------------")
 
-    basels = [1,3,4,6,7,8,10,11,12,13,15,16,17,18,19,21,
-              22,23,24,25,26,28,29,30,31,32,33,34,36,37,
-              38,39,40,41,42,43,45,46,47,48,49,50,51,52,53]
+    # Now we have to extract the correct baselines
+    auto_bls = []
+    cross_bls = list(range(int(nant/2*(nant+1))))
+    i=-1
+    for j in range(1,nant+1):
+        i += j
+        auto_bls += [i]
+        cross_bls.remove(i)
+
+    basels = auto_bls if autocorrs else cross_bls
     
     # Fancy indexing can have downfalls and may change in future numpy versions
     # See issue here https://github.com/numpy/numpy/issues/9450

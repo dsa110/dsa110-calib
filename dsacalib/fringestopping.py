@@ -118,13 +118,12 @@ def generate_fringestopping_table(b,nint=ct.nint,tsamp=ct.tsamp,pt_dec=ct.pt_dec
     ha = dt * 360/ct.seconds_per_sidereal_day
     bu,bv,bw = calc_uvw(b,mjd0+dt/ct.seconds_per_day,'HADEC',
                        ha*u.deg, np.ones(ha.shape)*to_deg(ct.pt_dec))
-
     if nint%2 == 1:
         bwref = bw[:,(nint-1)//2]
     else:
         bu,bv,bwref = calc_uvw(b,mjd0,'HADEC',
                               0.*u.deg,to_deg(ct.pt_dec))
-    
+        bwref = bwref.squeeze()
     bw = bw - bwref[:,np.newaxis]
     np.savez('fringestopping_table',
              dec=pt_dec,ha=ha,bw=bw,bwref=bwref)
@@ -262,6 +261,18 @@ def divide_visibility_sky_model(vis,b, sources, tobs, fobs,
     else:
         return
     
+def fringestop_on_zenith_worker(vis,vis_model,nint,nbl,nchan,npol):
+    vis.shape=(nbl,-1,nint,nchan,npol)
+    vis /= vis_model
+    return vis.mean(axis=2)
+
+def zenith_visibility_model(fobs,fstable='fringestopping_table.npz'):
+    data = np.load(fstable)
+    bws = data['bw']
+    vis_model = np.exp(2j*np.pi/ct.c_GHz_m * fobs[:,np.newaxis] * 
+                       bws[:,np.newaxis,:,np.newaxis,np.newaxis])
+    return vis_model
+    
 def fringestop_on_zenith(vis,fobs,fstable='fringestopping_table.npz',
                         return_model=False,nint=ct.nint):
     """Fringestops on HA=0, DEC=pointing declination for the midpoint of each   
@@ -283,13 +294,9 @@ def fringestop_on_zenith(vis,fobs,fstable='fringestopping_table.npz',
       vis: complex array
         The fringe-stopped and integrated visibilities
     """
-    fobs, = set_dimensions(fobs)
     
-    data = np.load(fstable)
-    bws  = data['bw']
-    assert bws.shape[0] == vis.shape[0], \
-        'w vector and visibility have different numbers of baselines'
-    assert nint == bws.shape[1]
+    # Create the visibility model
+    vis_model = zenith_visibility_model(fobs,fstable)
     
     # Reshape visibilities
     # nbaselines, nsubint, nt, nf, npol
@@ -299,16 +306,11 @@ def fringestop_on_zenith(vis,fobs,fstable='fringestopping_table.npz',
     vis = np.pad(vis,((0,0),(0,npad),
                     (0,0),(0,0)),
                             mode='constant',constant_values=
-                    (0.,)).reshape(vis.shape[0],-1,nint,
-                    vis.shape[2],vis.shape[3])
-    vis_model = np.exp(2j*np.pi/ct.c_GHz_m * fobs * 
-                       bws[:,np.newaxis,:,np.newaxis,np.newaxis])
+                    (0.,))
 
-    vis = vis/vis_model
-    # This mean is slow - need to change order of the axes at some point
-    # out = np.zeros((vis.shape[0],vis.shape[1],vis.shape[3],vis.shape[4]),dtype=vis.dtype)
-    #jitmean_fszenith(vis,out)
-    vis = vis.mean(axis=2)
+    nbl,nt,nchan,npol = vis.shape
+    vis = fringestop_on_zenith_worker(vis,vis_model,nint,nbl,nchan,npol)
+    
     if return_model:
         return vis,vis_model
     else:
