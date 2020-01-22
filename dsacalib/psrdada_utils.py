@@ -1,71 +1,45 @@
 from psrdada import Reader
 import numpy as np
 
-def read_buffer(reader):
-        """
-        Reads a psrdada buffer as unsigned shorts and returns the visibilities.
-        """
-        page = reader.getNextPage()
-        data = np.asarray(page)
-        reader.markCleared()
-        data.dtype = np.uint16
-        dy = data.reshape(200000,2048).T 
-        # We want dy to have dimensions (baselines, time, frequency, polarization)
-        return dy
+def read_header(reader):
+    header = reader.getHeader()
+    # Do some stuff
+    return # some dictionary or set of values
 
-"""
-Example Use:
-------------
-rkey=u'0xrada'
-wkey=u'0xwada'
-# With Reader(rkey) as reader, Writer(wkey) as writer:#defines a psrdada ring buffer to read
-# Have to add the context manager info to the classes to use
-reader = Reader(rkey)
-writer = writer(wkey)
-header = reader.getHeader()
-# This returns a dictionary of keywords in the first header the reader finds
-# after the call.
-# What will these be and which ones are important?
+def read_buffer(reader, nant, nchan, npol):
+    """
+    Reads a psrdada buffer as unsigned shorts and returns the visibilities.
+    """
+    page = reader.getNextPage()
+    reader.markCleared()
+    
+    data = np.asarray(page,dtype=np.float32).reshape(samples_per_frame,nbls,nchan,npol,2)
+    dy = data.swapaxes(0,1).view(np.complex64)
+    dy = data[::-1,...]
+    # We want dy to have dimensions (baselines, time, frequency, polarization)
+    return dy
 
-while reader.isConnected and not reader.isEndOfData: #as long as the reader is connected...
-    data = read_buffer(reader)
-    # Do stuff here to the data
+def update_time(tstart,samples_per_frame,sample_rate):
+    t = tstart + np.arange(samples_per_frame)/sample_rate
+    tstart += samples_per_frame/sample_rate
+    return t,tstart
 
-    # Write out the data
-    # send 10 datasets, separated by an EOD
+def get_antpos(antenna_order,antpos):
+    aname = antenna_order[::-1]
+    tp    = np.loadtxt(antpos)
+    blen  = []
+    bname = []
+    for i in np.arange(9)+1:
+        for j in np.arange(i):
+            a1 = int(aname[i])-1
+            a2 = int(aname[j])-1
+            bname.append([a1+1,a2+1])
+            blen.append(tp[a1,1:]-tp[a2,1:])
+    blen  = np.array(blen)
+    blen = blen[::-1]
+    bname = bname[::-1]
+    return blen, bname
 
-    for ndataset in range(10):
-        npages = randint(1, 10)
-
-        # setting a new header also resets the buffer: isEndOfData = False
-        writer.setHeader({
-            'DATASET': str(ndataset),
-            'PAGES': str(npages),
-            'MAGIC': random_string(20)
-        })
-        print(writer.header)
-
-        for npage in range(npages):
-            page = writer.getNextPage()
-            data = np.asarray(page)
-            data.fill(npage)
-
-            # marking a page filled will send it on the ringbuffer,
-            # and then we cant set the 'EndOfData' flag anymore.
-            # so we need to treat the last page differently
-            if npage < npages - 1:
-                writer.markFilled()
-            else:
-                time.sleep(0.5)
-
-        # mark the last page with EOD flag
-        # this will also mark it filled, and send it
-        writer.markEndOfData()
-
-
-# Send a message to the reader that we're done
-writer.setHeader({'QUIT': 'YES'})
-
-reader.disconnect() #disconnect from the buffer
-writer.disconnect()
-"""
+def integrate(data,nint):
+    data = data.reshape(nbls,-1,nint,nchan,npol).mean(2)
+    return data
