@@ -157,7 +157,9 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt',
         tstart = None
         tstop = None
     
-    return fobs, blen, bname.tolist(), tstart, tstop, vis, mjd, transit_idx, antenna_order
+    if type(bname) is not list:
+        bname = bname.tolist()
+    return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx, antenna_order
 
 def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
     """ Returns important header info from a visibility fits file.
@@ -485,7 +487,7 @@ def convert_to_ms(src, vis, obstm, ofile, bname, antenna_order,
     
     return
 
-def extract_vis_from_ms(ms_name):
+def extract_vis_from_ms(ms_name,nant):
     """ Extract calibrated and uncalibrated visibilities from 
     measurement set.
     
@@ -503,9 +505,9 @@ def extract_vis_from_ms(ms_name):
     ms = cc.ms.ms()
     error += not ms.open('{0}.ms'.format(ms_name))
     vis_uncal= (ms.getdata(["data"])
-                ['data'].reshape(2,625,-1,45).T)
+                ['data'].reshape(2,625,-1,(nant*(nant-1))//2).T)
     vis_cal  = (ms.getdata(["corrected_data"])
-            ['corrected_data'].reshape(2,625,-1,45).T)
+            ['corrected_data'].reshape(2,625,-1,(nant*(nant-1))//2).T)
     error += not ms.close()
     if error > 0:
         print('{0} errors occured during calibration'.format(error))
