@@ -52,7 +52,7 @@ def delay_calibration(msname,sourcename,refant=0,t='inf',fskcal=False):
         print('{0} errors occured during calibration'.format(error))
     return
 
-def gain_calibration(msname,sourcename,tga='600s',fskcal=False):
+def gain_calibration(msname,sourcename,tga='600s',refant='0',fskcal=False):
     """Use Self-Cal to calibrate gains and save to calibration tables
     
     Args:
@@ -70,6 +70,16 @@ def gain_calibration(msname,sourcename,tga='600s',fskcal=False):
     Returns:
     """
     error = 0
+    
+    cb = cc.calibrater.calibrater()
+    error += not cb.open('{0}.ms'.format(msname))
+    error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
+               format(msname,sourcename))
+    error += not cb.setsolve(type='B',table='{0}_{1}_bcal'.format(msname,sourcename),
+           refant=refant)
+    error += not cb.solve()
+    error += not cb.close()
+    
     # Solve for phase calibration over entire obs
     cb = cc.calibrater.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
@@ -78,9 +88,11 @@ def gain_calibration(msname,sourcename,tga='600s',fskcal=False):
                                 format(msname,sourcename))
     error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
                              format(msname,sourcename))
+    error += not cb.setapply(type='B',table='{0}_{1}_bcal'.
+                            format(msname,sourcename))
     error += not cb.setsolve(type='G',table='{0}_{1}_gpcal'.
                              format(msname,sourcename),t='inf',
-                     minblperant=1,refant='0',apmode='p')
+                     minblperant=1,refant=refant,apmode='p')
     error += not cb.solve()
     error += not cb.close()
 
@@ -92,11 +104,13 @@ def gain_calibration(msname,sourcename,tga='600s',fskcal=False):
                                 format(msname,sourcename))
     error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
                              format(msname,sourcename))
+    error += not cb.setapply(type='B',table='{0}_{1}_bcal'.
+                            format(msname,sourcename))
     error += not cb.setapply(type='G',table='{0}_{1}_gpcal'.
                              format(msname,sourcename))
     error += not cb.setsolve(type='G',table='{0}_{1}_gacal'.
                              format(msname,sourcename), t=tga,
-                     minblperant=1,refant='0',apmode='a')
+                     minblperant=1,refant=refant,apmode='a')
     error += not cb.solve()
     error += not cb.close()
 
@@ -108,6 +122,8 @@ def gain_calibration(msname,sourcename,tga='600s',fskcal=False):
                                 format(msname,sourcename))
     error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
                              format(msname,sourcename))
+    error += not cb.setapply(type='B',table='{0}_{1}_bcal'.
+                            format(msname,sourcename))
     error += not cb.setapply(type='G',table='{0}_{1}_gpcal'.
                              format(msname,sourcename))
     error += not cb.setapply(type='G',table='{0}_{1}_gacal'.
@@ -337,6 +353,8 @@ def apply_calibration(msname,calname,msnamecal=None,fskcal=False,fsname=None):
                                 format(msname,fsname))
     error += not cb.setapply(type='K',
                              table='{0}_{1}_kcal'.format(msnamecal,calname))
+    error += not cb.setapply(type='B',
+                            table='{0}_{1}_bcal'.format(msnamecal,calname))
     error += not cb.setapply(type='G',
                              table='{0}_{1}_gacal'.format(msnamecal,calname))
     error += not cb.setapply(type='G',
