@@ -7,6 +7,6 @@ setup(name='dsa110-calib',
       author_email='dana.simard@astro.caltech.edu',
       packages=['dsacalib'],
       package_data={'dsacalib':['data/*.all','data/templatekcal']},
-      requirements=['casa-python','casa-data','astropy','scipy','numba'],
+      requirements=['casa-python','casa-data','astropy','scipy','psrdada-python','h5py'],
       zip_safe=False)
 
