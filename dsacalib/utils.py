@@ -15,6 +15,8 @@ import astropy.units as u
 import numpy as np
 from astropy.time import Time
 from . import constants as ct
+from antpos.utils import *
+import h5py
 
 from astropy.utils import iers
 iers.conf.iers_auto_url_mirror = ct.iers_table
@@ -62,6 +64,116 @@ def to_deg(string):
         d,m,s = string.strip('+-s').strip('s').replace('d','m').split('m')
         deg = (float(d)+(float(m)+float(s)/60)/60)*u.deg*sign
     return deg
+
+def read_hdf5_file(fl,source=None,dur=50*u.min,autocorrs=False,
+                   badants=None,quiet=True):
+    if source is not None:
+        stmid = source.ra.to_value(u.rad)
+        seg_len = (dur/2*(15*u.deg/u.h)).to_value(u.rad)
+        
+    with h5py.File(fl, 'r') as f:
+        antenna_order = f['antenna_order'][...]
+        nant = len(antenna_order)
+        fobs = f['fobs_GHz'][...]
+        mjd = f['time_mjd_seconds'][...]/ct.seconds_per_day
+        nt = len(f['time_mjd_seconds'])
+        tsamp  = (mjd[0] - mjd[-1])/(nt-1)*ct.seconds_per_day
+
+
+        st0 = Time(mjd[0], format='mjd').sidereal_time(
+            'apparent',longitude=ct.ovro_lon*u.rad).radian 
+    
+        st  = np.angle(np.exp(1j*(st0 + 2*np.pi/ct.seconds_per_sidereal_day*
+                          np.arange(nt)*tsamp)))
+    
+        st1 = Time(mjd[-1],format='mjd').sidereal_time(
+            'apparent',longitude=ct.ovro_lon).radian
+
+        if source is not None:
+            if not quiet:
+                print("\n-------------EXTRACT DATA--------------------")
+                print("Extracting data around {0}".format(stmid*180/np.pi))
+                print("{0} Time samples in data".format(nt))
+                print("LST range: {0:.1f} --- ({1:.1f}-{2:.1f}) --- {3:.1f}deg".format(st[0]*180./np.pi,(stmid-seg_len)*180./np.pi, (stmid+seg_len)*180./np.pi,st[-1]*180./np.pi))
+
+            I1 = np.argmax(np.absolute(np.exp(1j*st)+
+                           np.exp(1j*stmid)*np.exp(-1j*seg_len)))
+            I2 = np.argmax(np.absolute(np.exp(1j*st)+
+                           np.exp(1j*stmid)*np.exp(1j*seg_len)))
+            transit_idx = np.argmax(np.absolute(np.exp(1j*st)+
+                           np.exp(1j*(stmid))))
+            
+            mjd = mjd[I1:I2]
+            st  = st[I1:I2]
+            dat = f['vis'][:,I1:I2,...]
+            if not quiet:
+                print("Extract: {0} ----> {1} sample; transit at {2}".format(I1,I2,I0))
+                print("----------------------------------------------")
+
+        else:
+            dat = f['vis'][...]
+            transit_idx = None
+
+    # Now we have to extract the correct baselines
+    auto_bls = []
+    cross_bls = list(range(int(nant/2*(nant+1))))
+    i=-1
+    for j in range(1,nant+1):
+        i += j
+        auto_bls += [i]
+        cross_bls.remove(i)
+
+    basels = auto_bls if autocorrs else cross_bls
+    
+    # Fancy indexing can have downfalls and may change in future numpy versions
+    # See issue here https://github.com/numpy/numpy/issues/9450
+    vis = dat[basels,...]
+
+    
+    if autocorrs:
+        bname = np.array([[a,a] for a in antenna_order])
+        blen  = np.zeros((len(antenna_order),3))
+        if badants is not None:
+            badants = [str(ba) for ba in badants]
+            good_idx = list(range(len(antenna_order)))
+            for badant in badants:
+                good_idx.remove(antenna_order.index(badant))
+            vis = vis[good_idx,...]
+            bname = bname[good_idx,...]
+            blen = blen[good_idx,...]
+    
+    if not autocorrs:
+        df_bls = get_baselines(antenna_order,autocorrs=False,casa_order=True)
+        blen   = np.array([df_bls['x_m'],df_bls['y_m'],df_bls['z_m']]).T
+        bname  = [bn.split('-') for bn in df_bls['bname']]
+        if badants is not None:
+            bname = np.array(bname)
+            blen = np.array(blen)
+            good_idx = list(range(len(bname)))
+            for i,bn in enumerate(bname):
+                if (bn[0] in badants) or (bn[1] in badants):
+                    good_idx.remove(i)
+            vis = vis[good_idx,...]
+            blen = blen[good_idx,...]
+            bname = bname[good_idx,...]
+        
+    if badants is not None:
+        badants = [str(ba) for ba in badants]
+        for badant in badants:
+            antenna_order.remove(badant)
+            
+    dt = np.median(np.diff(mjd))
+    if len(mjd)>0:
+        tstart = mjd[0]-dt/2
+        tstop = mjd[-1]+dt/2
+    else:
+        tstart = None
+        tstop = None
+    
+    if type(bname) is not list:
+        bname = bname.tolist()
+        
+    return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx, antenna_order
 
 def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt',
                      autocorrs=False,badants=None,quiet=True):

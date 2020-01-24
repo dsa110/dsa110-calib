@@ -2,94 +2,114 @@ import numpy as np
 from psrdada import Reader
 from dsacalib.psrdada_utils import *
 from dsacalib.fringestopping import *
+from antpos.utils import *
 import h5py
 import os
+from datetime import datetime
 
 # input parameters - should be parsed from command line arguments
 test = True
-nant  = 32
-nchan = 2048
+key_string  = 'dbdb'
+key = 0xdbdb
+nant  = 16
+nchan = 1536
 npol  = 2
 fname = 'test'
-nint  = 5
-antenna_order = [8,5,7,4,3,0,9,1,6,2]
+nint  = 10
+#antenna_order = [8,5,7,4,3,0,9,1,6,2]
+antenna_order = np.arange(1,nant+1,1)
+fobs = 1.13 + np.arange(nchan)*0.400/nchan
+nbls  = nant*(nant+1)//2
+print('{0} baselines'.format(nbls))
 
-nbls  = nant*(nant+1)/2
-
-# Read the most recent baseline table
-blen,bname = get_antpos(antenna_order,'/home/simard/dsa_calib/data/antpos_ITRF.txt')
-# Check that there is a fringestopping table
-# Generate a new one if not
-generate_fringestopping_table(blen,nint)
-
+try:
+    fs_data = np.load('fringestopping_table.npz')
+    assert fs_data['bw'].shape == (nbls,nint)
+except (FileNotFoundError, AssertionError) as e:
+    print('Creating new fringestopping table.')
+    df_bls = get_baselines(antenna_order,autocorrs=True)
+    blen   = np.array([df_bls['x_m'],df_bls['y_m'],df_bls['z_m']]).T
+    generate_fringestopping_table(blen,nint)
+    os.link('fringestopping_table.npz','fringestopping_table_{0}.npz'.format(
+        datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')))
 
 if test:
-    samples_per_frame = 25
-    sample_rate = 25
+    samples_per_frame = 10
+    sample_rate = 1/0.134217728
     header_size = 4096
-    buffer_size = int(4*nbls*npol*nchan*samples_per_frame)
+    buffer_size = int(4*nbls*npol*nchan*samples_per_frame*2)
+    # Need to check that this size makes sense and that my code is
+    # interpreting things correctily
     data_rate = buffer_size*(sample_rate/samples_per_frame)/1e6
-    print('dada_db -d create -a {0} -b {1}'.format(
-    header_size, buffer_size))
-    os.system('dada_db -d create -a {0} -b {1}'.format(
-    header_size, buffer_size))
+    print('')
+    print('Run the next command in a new terminal, then hit enter in this one')
+    print('dada_db -a {0} -b {1} -k {2}'.format(
+        header_size, buffer_size, key_string))
+    s = input('Enter --> ')
 
 
 # Should add the context manager info to the classes to the reader so 
 # it closes nicely
-reader = Reader()
+reader = Reader(key)
 
 if test:
-    print('dada_junkdb -r {0} -t 60 {1}'.format(
-        data_rate,'test_header.txt'))
-    os.system('dada_junkdb -r {0} -t 60 {1}'.format(
-        data_rate,'test_header.txt'))
+    print('')
+    print('Run the next command in another window, then hit enter in this one')
+    print('dada_junkdb -r {0} -t 60 -k {2} {1}'.format(
+        data_rate,'test_header.txt',key_string))
+    s = input('Enter --> ')
 
-# tstart,sample_rate,sample_idx = read_header(reader)
-# Eventually, should change this to use integers to conserve times?
-tstart      = 0.  # mjs
-sample_rate = 25 # in Hz
-samples_per_frame = 25
-
-# Other things
-samples_per_frame_out = samples_per_frame//nint
-sample_rate_out = sample_rate//nint
-tstart     += nint/sample_rate/2
+tstart, tsamp = read_header(reader)
+tstart       += nint*tsamp/2
 
 # Read the first frame
-data = read_buffer(reader,nant,nchan,npol)
-#data = integrate(data)
-data = fringestop_on_zenith(data,fobs,nint)
+data              = read_buffer(reader,nbls,nchan,npol)
+samples_per_frame = data.shape[1]
+assert samples_per_frame%nint == 0
+samples_per_frame_out = samples_per_frame//nint
+sample_rate_out = 1/(tsamp*nint)
+
+#data = integrate(data,nint)
+data = fringestop_on_zenith(data,fobs,fstable='fringestopping_table.npz',nint=nint)
 
 with h5py.File('{0}.hdf5'.format(fname), 'w') as f:
-    # create output dataset 
+    # create output dataset
+    print('Output file open')
+    ds_fobs = f.create_dataset("fobs_GHz",(nchan,),dtype=np.float32,data=fobs)
+    ds_ants = f.create_dataset("antenna_order",(nant,),dtype=np.int,data=antenna_order)
+
     vis_ds = f.create_dataset("vis", 
-                            (samples_per_frame_out,nbls,nchan,npol), 
-                            maxshape=(None,nbls,nchan,npol),
+                            (nbls,samples_per_frame_out,nchan,npol), 
+                            maxshape=(nbls,None,nchan,npol),
                             dtype=np.complex64,chunks=True,
                             data = data)
     
     t,tstart = update_time(tstart,samples_per_frame_out,sample_rate_out)
     
     t_ds = f.create_dataset("time_mjd_seconds",
-                           (samples_per_frame_out),maxshape=(None),
+                           (samples_per_frame_out,),maxshape=(None,),
                            dtype=np.float32,chunks=True,
                            data = t)
-    nframes = 1
-    
+    nsamp_out = samples_per_frame_out
+
+    print('Reading rest of dada buffer')
     while reader.isConnected and not reader.isEndOfData:
-        data = read_buffer(reader,nant,nchan,npol)
-        # Do stuff here to the data
-        #data = integrate(data)
-        data = fringestop_on_zenith(data,fobs,nint)
+        
+        data = read_buffer(reader,nbls,nchan,npol)
+        #data = integrate(data,nint)
+        data = fringestop_on_zenith(data,fobs,fstable='fringestopping_table.npz',nint=nint)
+        nsamp_frame = data.shape[1]
         # Write out the data 
-        t,tstart = update_time(tstart,samples_per_frame_out,sample_rate_out)
-        f["vis"].resize(samples_per_frame_out*(nframes+1),axis=0)
-        f["time_mjd_seconds"].resize(samples_per_frame_out*(nframes+1),axis=0)
-        f["vis"][samples_per_frame_out*nframes:samples_per_frame_out*(nframes+1),...]=data
-        f["time_mjd_seconds"][samples_per_frame_out*nframes:samples_per_frame_out*(nframes+1)]=t
-        nframes +=1 
+        t,tstart = update_time(tstart,nsamp_frame,sample_rate_out)
+        f["vis"].resize(nsamp_out+nsamp_frame,axis=1)
+        print(f["vis"].shape)
+        f["time_mjd_seconds"].resize(nsamp_out+nsamp_frame,axis=0)
+        f["vis"][:,nsamp_out:nsamp_out+nsamp_frame,...]=data
+        f["time_mjd_seconds"][nsamp_out:nsamp_out+nsamp_frame]=t
+        nsamp_out += nsamp_frame
         
     reader.disconnect() 
     if test:
-        os.system('dada_db -d destroy')
+        print('')
+        print('Destroy the dada buffer with:')
+        print('dada_db -d -k {0}'.format(key_string))
