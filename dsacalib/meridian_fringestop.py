@@ -12,7 +12,7 @@ test = True
 key_string  = 'dbdb'
 key = 0xdbdb
 nant  = 16
-nchan = 1536
+nchan = 1536*4
 npol  = 2
 fname = 'test'
 nint  = 10
@@ -24,15 +24,16 @@ print('{0} baselines'.format(nbls))
 
 try:
     fs_data = np.load('fringestopping_table.npz')
-    assert fs_data['bw'].shape == (nbls,nint)
+    assert fs_data['bw'].shape == (nint,nbls)
 except (FileNotFoundError, AssertionError) as e:
     print('Creating new fringestopping table.')
-    df_bls = get_baselines(antenna_order,autocorrs=True)
+    df_bls = get_baselines(antenna_order,autocorrs=True,casa_order=False)
     blen   = np.array([df_bls['x_m'],df_bls['y_m'],df_bls['z_m']]).T
-    generate_fringestopping_table(blen,nint)
+    generate_fringestopping_table(blen,nint,transpose=True)
     os.link('fringestopping_table.npz','fringestopping_table_{0}.npz'.format(
         datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')))
-
+vis_model = zenith_visibility_model_T(fobs,'fringestopping_table.npz')
+    
 if test:
     samples_per_frame = 10
     sample_rate = 1/0.134217728
@@ -64,13 +65,12 @@ tstart       += nint*tsamp/2
 
 # Read the first frame
 data              = read_buffer(reader,nbls,nchan,npol)
-samples_per_frame = data.shape[1]
+samples_per_frame = data.shape[0]
 assert samples_per_frame%nint == 0
 samples_per_frame_out = samples_per_frame//nint
 sample_rate_out = 1/(tsamp*nint)
 
-#data = integrate(data,nint)
-data = fringestop_on_zenith(data,fobs,fstable='fringestopping_table.npz',nint=nint)
+data = fringestop_on_zenith_T(data,vis_model,nint)
 
 with h5py.File('{0}.hdf5'.format(fname), 'w') as f:
     # create output dataset
@@ -79,8 +79,8 @@ with h5py.File('{0}.hdf5'.format(fname), 'w') as f:
     ds_ants = f.create_dataset("antenna_order",(nant,),dtype=np.int,data=antenna_order)
 
     vis_ds = f.create_dataset("vis", 
-                            (nbls,samples_per_frame_out,nchan,npol), 
-                            maxshape=(nbls,None,nchan,npol),
+                            (samples_per_frame_out,nbls,nchan,npol), 
+                            maxshape=(None,nbls,nchan,npol),
                             dtype=np.complex64,chunks=True,
                             data = data)
     
@@ -97,14 +97,14 @@ with h5py.File('{0}.hdf5'.format(fname), 'w') as f:
         
         data = read_buffer(reader,nbls,nchan,npol)
         #data = integrate(data,nint)
-        data = fringestop_on_zenith(data,fobs,fstable='fringestopping_table.npz',nint=nint)
-        nsamp_frame = data.shape[1]
+        data = fringestop_on_zenith_T(data,vis_model,nint)
+        nsamp_frame = data.shape[0]
         # Write out the data 
         t,tstart = update_time(tstart,nsamp_frame,sample_rate_out)
-        f["vis"].resize(nsamp_out+nsamp_frame,axis=1)
+        f["vis"].resize(nsamp_out+nsamp_frame,axis=0)
         print(f["vis"].shape)
         f["time_mjd_seconds"].resize(nsamp_out+nsamp_frame,axis=0)
-        f["vis"][:,nsamp_out:nsamp_out+nsamp_frame,...]=data
+        f["vis"][nsamp_out:nsamp_out+nsamp_frame,...]=data
         f["time_mjd_seconds"][nsamp_out:nsamp_out+nsamp_frame]=t
         nsamp_out += nsamp_frame
         

@@ -90,7 +90,7 @@ def calc_uvw(b, tobs, src_epoch, src_lon, src_lat,obs='OVRO_MMA'):
     return bu.T,bv.T,bw.T
 
 def generate_fringestopping_table(b,nint=ct.nint,tsamp=ct.tsamp,pt_dec=ct.pt_dec,
-                                 mjd0=58849.0):
+                                  mjd0=58849.0,transpose=False):
     """Generates a table of the w vectors towards a source to use in fringe-
     stopping.  And writes it to a numpy pickle file named 
     fringestopping_table.npz
@@ -125,6 +125,8 @@ def generate_fringestopping_table(b,nint=ct.nint,tsamp=ct.tsamp,pt_dec=ct.pt_dec
                               0.*u.deg,to_deg(ct.pt_dec))
         bwref = bwref.squeeze()
     bw = bw - bwref[:,np.newaxis]
+    if transpose:
+        bw = bw.T
     np.savez('fringestopping_table',
              dec=pt_dec,ha=ha,bw=bw,bwref=bwref)
     return
@@ -259,11 +261,24 @@ def divide_visibility_sky_model(vis,b, sources, tobs, fobs,
         return vis_model,bws
     else:
         return
+
+
+def fringestop_on_zenith_worker_T(vis,vis_model,nint,nbl,nchan,npol):
+    vis.shape=(-1,nint,nbl,nchan,npol)
+    vis /= vis_model
+    return vis.mean(axis=1)
     
 def fringestop_on_zenith_worker(vis,vis_model,nint,nbl,nchan,npol):
     vis.shape=(nbl,-1,nint,nchan,npol)
     vis /= vis_model
     return vis.mean(axis=2)
+
+def zenith_visibility_model_T(fobs,fstable='fringestopping_table.npz'):
+    data = np.load(fstable)
+    bws = data['bw']
+    vis_model = np.exp(2j*np.pi/ct.c_GHz_m * fobs[:,np.newaxis] *
+                       bws[np.newaxis,:,:,np.newaxis,np.newaxis])
+    return vis_model
 
 def zenith_visibility_model(fobs,fstable='fringestopping_table.npz'):
     data = np.load(fstable)
@@ -271,7 +286,17 @@ def zenith_visibility_model(fobs,fstable='fringestopping_table.npz'):
     vis_model = np.exp(2j*np.pi/ct.c_GHz_m * fobs[:,np.newaxis] * 
                        bws[:,np.newaxis,:,np.newaxis,np.newaxis])
     return vis_model
-    
+
+def fringestop_on_zenith_T(vis,vis_model,nint):
+    if vis.shape[0]%nint != 0:
+        npad = nint - vis.shape[0]%nint
+        print('Warning: Padding array to integrate.  Last bin contains only {0}% real data.'.format((nint-npad)/nint*100))
+        vis = np.pad(vis,((0,npad),(0,0),(0,0),(0,0)),mode='constant',
+                 constant_values=(0.,))
+    nt,nbl,nchan,npol = vis.shape
+    vis = fringestop_on_zenith_worker_T(vis,vis_model,nint,nbl,nchan,npol)
+    return vis
+
 def fringestop_on_zenith(vis,fobs,fstable='fringestopping_table.npz',
                         return_model=False,nint=ct.nint):
     """Fringestops on HA=0, DEC=pointing declination for the midpoint of each   
