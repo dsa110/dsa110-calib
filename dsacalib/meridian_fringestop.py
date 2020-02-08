@@ -1,115 +1,90 @@
+"""
+meridian_fringestopping.py
+dana.simard@astro.caltech.edu, Feb 2020
+
+This script reads correlated data from a psrdada
+ringbuffer.  It fringestops on the meridian for each integrated
+sample, before integrating the data and writing it to a hdf5 file.
+"""
+
 import numpy as np
 from psrdada import Reader
 from dsacalib.psrdada_utils import *
 from dsacalib.fringestopping import *
+from dsacalib.utils import *
 from antpos.utils import *
 import h5py
 import os
 from datetime import datetime
+from meridian_fringestopping_parameters import *
 
-# input parameters - should be parsed from command line arguments
-test = True
-key_string  = 'dbdb'
-key = 0xdbdb
-nant  = 16
-nchan = 1536*4
-npol  = 2
-fname = 'test'
-nint  = 10
-#antenna_order = [8,5,7,4,3,0,9,1,6,2]
-antenna_order = np.arange(1,nant+1,1)
-fobs = 1.13 + np.arange(nchan)*0.400/nchan
-nbls  = nant*(nant+1)//2
-print('{0} baselines'.format(nbls))
+# Get the visibility model
+vis_model = load_visibility_model(fs_table,antenna_order,nint,nbls,fobs)
 
-try:
-    fs_data = np.load('fringestopping_table.npz')
-    assert fs_data['bw'].shape == (nint,nbls)
-except (FileNotFoundError, AssertionError) as e:
-    print('Creating new fringestopping table.')
-    df_bls = get_baselines(antenna_order,autocorrs=True,casa_order=False)
-    blen   = np.array([df_bls['x_m'],df_bls['y_m'],df_bls['z_m']]).T
-    generate_fringestopping_table(blen,nint,transpose=True)
-    os.link('fringestopping_table.npz','fringestopping_table_{0}.npz'.format(
-        datetime.utcnow().strftime('%Y-%m-%dT%H:%M:%S')))
-vis_model = zenith_visibility_model_T(fobs,'fringestopping_table.npz')
-    
 if test:
-    samples_per_frame = 10
     sample_rate = 1/0.134217728
     header_size = 4096
     buffer_size = int(4*nbls*npol*nchan*samples_per_frame*2)
-    # Need to check that this size makes sense and that my code is
-    # interpreting things correctily
     data_rate = buffer_size*(sample_rate/samples_per_frame)/1e6
-    print('')
-    print('Run the next command in a new terminal, then hit enter in this one')
-    print('dada_db -a {0} -b {1} -k {2}'.format(
+    os.system('dada_db -a {0} -b {1} -k {2}'.format(
         header_size, buffer_size, key_string))
-    s = input('Enter --> ')
 
-
-# Should add the context manager info to the classes to the reader so 
-# it closes nicely
+print('Initializing reader')
 reader = Reader(key)
 
 if test:
-    print('')
-    print('Run the next command in another window, then hit enter in this one')
-    print('dada_junkdb -r {0} -t 60 -k {2} {1}'.format(
+    print('Writing data to psrdada buffer')
+    os.system('dada_junkdb -r {0} -t 60 -k {2} {1}'.format(
         data_rate,'test_header.txt',key_string))
-    s = input('Enter --> ')
 
-tstart, tsamp = read_header(reader)
-tstart       += nint*tsamp/2
-
-# Read the first frame
-data              = read_buffer(reader,nbls,nchan,npol)
-samples_per_frame = data.shape[0]
-assert samples_per_frame%nint == 0
-samples_per_frame_out = samples_per_frame//nint
+# Get the start time and the sample time from the reader
+#tstart, tsamp = read_header(reader)
+#tstart       += nint*tsamp/2
+tstart = 58871.66878472222*ct.seconds_per_day
+tsamp  = 0.134217728
+tstart += nint*tsamp/2
+t0     = int(tstart)
+tstart -= t0
 sample_rate_out = 1/(tsamp*nint)
+# 
+data_in = np.zeros((samples_per_frame_out*nint,nbls,nchan,npol),
+                  dtype=np.complex64
+                  ).reshape(-1,samples_per_frame,nbls,nchan,npol)
 
-data = fringestop_on_zenith_T(data,vis_model,nint)
-
+print('Opening output file')
 with h5py.File('{0}.hdf5'.format(fname), 'w') as f:
-    # create output dataset
+    # Create output dataset
     print('Output file open')
-    ds_fobs = f.create_dataset("fobs_GHz",(nchan,),dtype=np.float32,data=fobs)
-    ds_ants = f.create_dataset("antenna_order",(nant,),dtype=np.int,data=antenna_order)
-
-    vis_ds = f.create_dataset("vis", 
-                            (samples_per_frame_out,nbls,nchan,npol), 
-                            maxshape=(None,nbls,nchan,npol),
-                            dtype=np.complex64,chunks=True,
-                            data = data)
+    vis_ds, t_ds = initialize_hdf5_file(f,fobs,antenna_order,t0,
+                                       nbls,nchan,npol,nant)
     
-    t,tstart = update_time(tstart,samples_per_frame_out,sample_rate_out)
-    
-    t_ds = f.create_dataset("time_mjd_seconds",
-                           (samples_per_frame_out,),maxshape=(None,),
-                           dtype=np.float32,chunks=True,
-                           data = t)
-    nsamp_out = samples_per_frame_out
-
     print('Reading rest of dada buffer')
+    idx_frame_out = 0
     while reader.isConnected and not reader.isEndOfData:
+        for i in range(data_in.shape[0]):
+            try:
+                data_in[i,...] = read_buffer(reader,nbls,nchan,npol)
+            except:
+                # Have to deal with the psrdada buffer ending not 
+                # on the right number of frames
+                exit
         
-        data = read_buffer(reader,nbls,nchan,npol)
-        #data = integrate(data,nint)
-        data = fringestop_on_zenith_T(data,vis_model,nint)
-        nsamp_frame = data.shape[0]
-        # Write out the data 
-        t,tstart = update_time(tstart,nsamp_frame,sample_rate_out)
-        f["vis"].resize(nsamp_out+nsamp_frame,axis=0)
+        data = fringestop_on_zenith_T(
+            data_in.reshape(-1,nbls,nchan,npol),
+                                      vis_model,nint)
+
+            # Write out the data 
+        t,tstart = update_time(tstart,
+                               samples_per_frame_out,sample_rate_out)
+        f["vis"].resize((idx_frame_out+1)*samples_per_frame_out,axis=0)
         print(f["vis"].shape)
-        f["time_mjd_seconds"].resize(nsamp_out+nsamp_frame,axis=0)
-        f["vis"][nsamp_out:nsamp_out+nsamp_frame,...]=data
-        f["time_mjd_seconds"][nsamp_out:nsamp_out+nsamp_frame]=t
-        nsamp_out += nsamp_frame
+        f["time_seconds"].resize((idx_frame_out+1)*
+                                 samples_per_frame_out,axis=0)
+        f["vis"][idx_frame_out*samples_per_frame_out:,...]=data
+        f["time_seconds"][idx_frame_out*samples_per_frame_out:]=t
+        idx_frame_out += 1
         
     reader.disconnect() 
     if test:
-        print('')
-        print('Destroy the dada buffer with:')
-        print('dada_db -d -k {0}'.format(key_string))
+        os.system('dada_db -d -k {0}'.format(key_string))
+

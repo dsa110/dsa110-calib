@@ -89,8 +89,7 @@ def calc_uvw(b, tobs, src_epoch, src_lon, src_lat,obs='OVRO_MMA'):
             
     return bu.T,bv.T,bw.T
 
-def generate_fringestopping_table(b,nint=ct.nint,tsamp=ct.tsamp,pt_dec=ct.pt_dec,
-                                  mjd0=58849.0,transpose=False):
+def generate_fringestopping_table(b,nint=ct.nint,tsamp=ct.tsamp,pt_dec=ct.pt_dec,outname='fringestopping_table',                                mjd0=58849.0,transpose=False):
     """Generates a table of the w vectors towards a source to use in fringe-
     stopping.  And writes it to a numpy pickle file named 
     fringestopping_table.npz
@@ -127,7 +126,7 @@ def generate_fringestopping_table(b,nint=ct.nint,tsamp=ct.tsamp,pt_dec=ct.pt_dec
     bw = bw - bwref[:,np.newaxis]
     if transpose:
         bw = bw.T
-    np.savez('fringestopping_table',
+    np.savez(outname,
              dec=pt_dec,ha=ha,bw=bw,bwref=bwref)
     return
 
