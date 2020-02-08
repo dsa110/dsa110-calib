@@ -72,7 +72,7 @@ def read_hdf5_file(fl,source=None,dur=50*u.min,autocorrs=False,
         seg_len = (dur/2*(15*u.deg/u.h)).to_value(u.rad)
         
     with h5py.File(fl, 'r') as f:
-        antenna_order = f['antenna_order'][...]
+        antenna_order = list(f['antenna_order'][...])
         nant = len(antenna_order)
         fobs = f['fobs_GHz'][...]
         mjd = f['time_mjd_seconds'][...]/ct.seconds_per_day
@@ -105,7 +105,7 @@ def read_hdf5_file(fl,source=None,dur=50*u.min,autocorrs=False,
             
             mjd = mjd[I1:I2]
             st  = st[I1:I2]
-            dat = f['vis'][:,I1:I2,...]
+            dat = f['vis'][I1:I2,...]
             if not quiet:
                 print("Extract: {0} ----> {1} sample; transit at {2}".format(I1,I2,I0))
                 print("----------------------------------------------")
@@ -127,7 +127,9 @@ def read_hdf5_file(fl,source=None,dur=50*u.min,autocorrs=False,
     
     # Fancy indexing can have downfalls and may change in future numpy versions
     # See issue here https://github.com/numpy/numpy/issues/9450
-    vis = dat[basels,...]
+    vis = dat[:,basels,...]
+    assert vis.shape[0] == len(mjd)
+    assert vis.shape[1] == len(basels)
 
     
     if autocorrs:
@@ -138,7 +140,7 @@ def read_hdf5_file(fl,source=None,dur=50*u.min,autocorrs=False,
             good_idx = list(range(len(antenna_order)))
             for badant in badants:
                 good_idx.remove(antenna_order.index(badant))
-            vis = vis[good_idx,...]
+            vis = vis[:,good_idx,...]
             bname = bname[good_idx,...]
             blen = blen[good_idx,...]
     
@@ -153,15 +155,18 @@ def read_hdf5_file(fl,source=None,dur=50*u.min,autocorrs=False,
             for i,bn in enumerate(bname):
                 if (bn[0] in badants) or (bn[1] in badants):
                     good_idx.remove(i)
-            vis = vis[good_idx,...]
+            vis = vis[:,good_idx,...]
             blen = blen[good_idx,...]
             bname = bname[good_idx,...]
         
     if badants is not None:
-        badants = [str(ba) for ba in badants]
+        #badants = [str(ba) for ba in badants]
         for badant in badants:
             antenna_order.remove(badant)
             
+    assert vis.shape[0] == len(mjd)
+    vis = vis.swapaxes(0,1)
+    
     dt = np.median(np.diff(mjd))
     if len(mjd)>0:
         tstart = mjd[0]-dt/2
@@ -420,6 +425,22 @@ def extract_vis_from_psrfits(f,stmid,seg_len,antenna_order,
     odata = dat[:,basels,:,:,0]+ 1j*dat[:,basels,:,:,1]
     return odata,st,mjd,I0-I1
 
+def get_antpos_itrf(antpos='data/antpos_ITRF.txt'):
+    # Read in baseline info and order it as needed
+    if antpos[-4:]=='.txt':
+        anum,xx,yy,zz = np.loadtxt(antpos).transpose()
+        anum = anum.astype(int)+1
+        anum,xx,yy,zz = zip(*sorted(zip(anum,xx,yy,zz)))
+    
+    elif antpos[-4:]=='.csv':
+        df = get_itrf(antpos)
+        anum = np.array(df.index)
+        xx = np.array(df[['dx_m']])
+        yy = np.array(df[['dx_y']])
+        zz = np.array(df[['dx_z']])
+        
+    return anum,xx,yy,zz
+
 def simulate_ms(ofile,tname,anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
                nchannels,integrationtime,obstm,dt,src,
@@ -520,15 +541,15 @@ def convert_to_ms(src, vis, obstm, ofile, bname, antenna_order,
                     model.shape[2],model.shape[3]),axis=2)
     stoptime  = '{0}s'.format(vis.shape[1]*tsamp*nint)
     
-    # Read in baseline info and order it as needed
-    anum,xx,yy,zz = np.loadtxt(antpos).transpose()
-    anum = anum.astype(int)+1
-    anum,xx,yy,zz = zip(*sorted(zip(anum,xx,yy,zz)))
+    
+    anum,xx,yy,zz = get_antpos_itrf(antpos)
+    
+    # Sort the antenna positions
     idx_order = sorted([int(a)-1 for a in antenna_order])
     anum = np.array(anum)[idx_order]
-    xx = np.array(xx)[idx_order]
-    yy = np.array(yy)[idx_order]
-    zz = np.array(zz)[idx_order]
+    xx = xx[idx_order]
+    yy = yy[idx_order]
+    zz = zz[idx_order]
     
     nints = np.zeros(nant,dtype=int)
     for i in range(nant):
@@ -624,3 +645,47 @@ def extract_vis_from_ms(ms_name,nant):
     if error > 0:
         print('{0} errors occured during calibration'.format(error))
     return vis_uncal, vis_cal
+
+def initialize_hdf5_file(f,fobs,antenna_order,t0,nbls,nchan,npol,nant):
+    """Initialize the hdf5 file.
+    
+    Args:
+        f: hdf5 file handler
+            the file
+        fobs: array(float)
+            the center frequency of each channel
+        antenna_order: array(int)
+            the order of the antennas in the correlator
+        t0: float
+            the time of the first sample in mjd seconds
+        nbls: int
+            the number of baselines
+        nchan: int
+            the number of channels
+        npol: int
+            the number of polarizations
+        nant: int
+            the number of antennas
+        
+    Returns:
+        vis_ds: hdf5 dataset
+            the dataset for the visibilities
+        t_ds: hdf5 dataset
+            the dataset for the times
+    """
+    ds_fobs = f.create_dataset("fobs_GHz",(nchan,),dtype=np.float32,data=fobs)
+    ds_ants = f.create_dataset("antenna_order",(nant,),dtype=np.int,data=antenna_order)
+    t_st = f.create_dataset("tstart_mjd_seconds",
+                           (1,),maxshape=(1,),
+                           dtype=int,data=t0)
+
+    vis_ds = f.create_dataset("vis", 
+                            (0,nbls,nchan,npol), 
+                            maxshape=(None,nbls,nchan,npol),
+                            dtype=np.complex64,chunks=True,
+                            data = None)
+    t_ds = f.create_dataset("time_seconds",
+                           (0,),maxshape=(None,),
+                           dtype=np.float32,chunks=True,
+                           data = None)
+    return vis_ds, t_ds
