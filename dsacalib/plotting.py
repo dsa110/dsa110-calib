@@ -37,8 +37,8 @@ def plot_dyn_spec(vis,fobs,mjd,bname,normalize=False,
     Returns:
     """
     (nbl, nt, nf, npol) = vis.shape
-    ny = nbl//5
-    if nbl%5 != 0: ny += 1
+    ny = (nbl*2)//5
+    if (nbl*2)%5 != 0: ny += 1
     
     fig,ax = plt.subplots(ny,5,figsize=(8*5,8*ny))
     ax = ax.flatten()
@@ -61,11 +61,11 @@ def plot_dyn_spec(vis,fobs,mjd,bname,normalize=False,
     y = fobs[:nf//125*125].reshape(125,-1).mean(-1)
     for i in range(nbl):
         for j in range(npol):
-            ax[i*nbl+j].imshow(dplot[i,:,:,j].T,origin='lower',
+            ax[i*npol+j].imshow(dplot[i,:,:,j].T,origin='lower',
                     interpolation='none',aspect='auto',
                     vmin=vmin,vmax=vmax,
                     extent=[x[0],x[-1],y[0],y[-1]])
-            ax[i*nbl+j].text(0.1,0.9,
+            ax[i*npol+j].text(0.1,0.9,
                              '{0}, pol {1}'.format(bname[i],'A' if j==0 else 'B'),
                              transform=ax[i].transAxes,
                              size=22,color='white')
@@ -630,13 +630,13 @@ def plot_bandpass(msname,calname,antenna_order,fobs,
                  label=antenna_order[i],alpha=0.5,
                 color=ccyc[i%len(ccyc)])
         ax[0].plot(fobs,np.abs(bpass[1,:,i]),'x',
-                label=antenna_order[i],alpha=0.5,
+                alpha=0.5,
                 color=ccyc[i%len(ccyc)])
         ax[1].plot(fobs,np.angle(bpass[0,:,i]),'.',
                  label=antenna_order[i],alpha=0.5,
                 color=ccyc[i%len(ccyc)])
         ax[1].plot(fobs,np.angle(bpass[1,:,i]),'x',
-                label=antenna_order[i],alpha=0.5,
+                alpha=0.5,
                 color=ccyc[i%len(ccyc)])
     ax[0].set_xlabel('freq (GHz)')
     ax[1].set_xlabel('freq (GHz)')
