@@ -74,7 +74,7 @@ def gain_calibration(msname,sourcename,tga='600s',tgp='inf',refant='0'):
     error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
                format(msname,sourcename))
     error += not cb.setsolve(type='B',table='{0}_{1}_bcal'.format(msname,sourcename),
-           refant=refant)
+           refant=refant,apmode='a')
     error += not cb.solve()
     error += not cb.close()
     
