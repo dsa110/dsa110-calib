@@ -91,12 +91,10 @@ def calc_uvw(b, tobs, src_epoch, src_lon, src_lat,obs='OVRO_MMA'):
     return bu.T,bv.T,bw.T
 
 @jit(nopython=True)
-def visibility_sky_model(vis,vis_model,bws,famps,f0,spec_idx,fobs):
+def visibility_sky_model_worker(vis_model,bws,famps,f0,spec_idx,fobs):
     """A worker to contain the for loop in the visibility model calcuulation.
         
     Args:
-      vis: complex array
-        the visibilities, dimensions (baselines, time, frequency, polarization)
       vis_model: complex array
         an array initialized to all zeros, the same dimensions as the array
         of visibilities
@@ -113,19 +111,16 @@ def visibility_sky_model(vis,vis_model,bws,famps,f0,spec_idx,fobs):
         the central frequency of each channel, in GHz
 
     Returns:
-      Nothing.  Modifies vis_model and vis in-place.
+      Nothing.  Modifies vis_model in-place.
     """
     for i in range(bws.shape[0]):
         vis_model += famps[i,...] * ((fobs/f0)**(spec_idx)) * np.exp(2j*np.pi/ct.c_GHz_m * fobs * bws[i,...])
-    vis /= vis_model
     return 
 
-def _py_visibility_sky_model(vis,vis_model,bws,famps,f0,spec_idx,fobs):
+def _py_visibility_sky_model_worker(vis_model,bws,famps,f0,spec_idx,fobs):
     """A pure python version of visibility_model_worker for timing against.
     
     Args:
-      vis: complex array
-        the visibilities, dimensions (baselines, time, frequency, polarization)
       vis_model: complex array
         an array initialized to all zeros, the same dimensions as the array
         of visibilities
@@ -142,11 +137,10 @@ def _py_visibility_sky_model(vis,vis_model,bws,famps,f0,spec_idx,fobs):
         the central frequency of each channel, in GHz
 
     Returns:
-      Nothing.  Modifies vis_model and vis in-place.
+      Nothing.  Modifies vis_model in-place.
     """
     for i in range(bws.shape[0]):
         vis_model += famps[i,...] * ((fobs/f0)**(spec_idx)) * np.exp(2j*np.pi/ct.c_GHz_m * fobs * bws[i,...])
-    vis /= vis_model
     return 
 
 def set_dimensions(fobs=None,tobs=None,b=None):
@@ -188,6 +182,61 @@ def set_dimensions(fobs=None,tobs=None,b=None):
         to_return += [b]
     return to_return
 
+def visibility_sky_model(vis_shape,vis_dtype,b,sources,tobs,fobs,lst,pt_dec):
+    """ Calculates the sky model visibilities the baselines b and divides the 
+    input visibilities by the sky model
+    
+    Args:
+        vis_shape: tuple
+          the shape of the visibilities, (baselines,time,frequency,polarization)
+        vis_dtype: numpy datatype
+          the datatype of the visibilities
+        b: real array
+          baselines to calculate visibilities for, shape (nbaselines, 3), 
+          units m in ITRF coords
+        sources: list(src class instances)
+          list of sources to include in the sky model 
+        tobs: float or arr(float)
+          times to calculate visibility model for, mjd
+        fobs: float or arr(float)
+          frequency to calculate model for, in GHz
+        lst: array(float)
+          the lst in radians for each time step
+        pt_dec: float
+          the pointing declination in radians
+    
+    Returns:
+        vis_model: complex array
+          the modelled visibilities, dimensions (baselines, time, frequency,polarization)
+    """
+    fobs, tobs, b = set_dimensions(fobs,tobs, b)
+    # Calculate the w-vector and flux towards each source
+    # Array indices must be nsources, nbaselines, nt, nf, npol
+    bws = np.zeros((len(sources),len(b),len(tobs),1,1))
+    famps = np.zeros((len(sources),1,len(tobs),len(fobs),1)) 
+    for i,src in enumerate(sources):
+        bu,bv,bw       = calc_uvw(b, tobs, src.epoch, src.ra, src.dec)
+        bws[i,:,:,0,0] = bw
+        famps[i,0,:,:,0] = src.I*pb_resp(lst,pt_dec,
+                                       src.ra.to_value(u.rad),
+                                       src.dec.to_value(u.rad),fobs.squeeze())
+    # Calculate the sky model using jit
+    vis_model = np.zeros(vis_shape,dtype=vis_dtype)                                 
+    visibility_sky_model_worker(vis_model,bws,famps,ct.f0,ct.spec_idx,fobs)
+    return vis_model
+
+def fringestop(vis,b,source,tobs,fobs,return_model=False):
+    fobs,tobs,b = set_dimensions(fobs,tobs,b)
+    bws = np.zeros((len(b),len(tobs),1,1))
+    bu,bv,bw  = calc_uvw(b, tobs, source.epoch, source.ra, source.dec)
+    vis_model = np.exp(2j*np.pi/ct.c_GHz_m * fobs * bw[...,np.newaxis,np.newaxis])
+    vis /= vis_model
+    if return_model:
+        return vis_model
+    else: 
+        return
+    
+
 def divide_visibility_sky_model(vis,b, sources, tobs, fobs,lst,pt_dec,
                     phase_only=True,return_model=False):
     """ Calculates the sky model visibilities the baselines b and divides the 
@@ -220,36 +269,33 @@ def divide_visibility_sky_model(vis,b, sources, tobs, fobs,lst,pt_dec,
           the modelled visibilities, dimensions (baselines, time, frequency,polarization)
           returned only if return_model is true
     """
-  
-    fobs, tobs, b = set_dimensions(fobs,tobs, b)
-    
-    # Calculate the w-vector and flux towards each source
-    # Array indices must be nsources, nbaselines, nt, nf, npol
-    bws = np.zeros((len(sources),len(b),len(tobs),1,1))
-    famps = np.zeros((len(sources),1,len(tobs),len(fobs),1)) 
-    for i,src in enumerate(sources):
-        bu,bv,bw       = calc_uvw(b, tobs, src.epoch, src.ra, src.dec)
-        bws[i,:,:,0,0] = bw
-        # Need to add amplitude model of the primary beam here
-        if phase_only:
-            famps[i,0,:,:,0] = 1.
-        else:
-            famps[i,0,:,:,0] = src.I*pb_resp(lst,pt_dec,
-                                       src.ra.to_value(u.rad),
-                                       src.dec.to_value(u.rad),
-                                       fobs.squeeze())
-
-    # Calculate the sky model using jit
-    vis_model = np.zeros(vis.shape,dtype=vis.dtype)
-    visibility_sky_model(vis,vis_model,bws,famps,ct.f0,0. if phase_only else ct.spec_idx,fobs)
+    vis_model = visibility_sky_model(vis.shape,vis.dtype,b,sources,tobs,fobs,lst,pt_dec)
+    vis /= vis_model
     if return_model:
         return vis_model
     else:
         return
     
-def amplitude_sky_model(src,lst,pt_dec,fobs):
-    return src.I * pb_resp(lst,pt_dec,src.ra.to_value(u.rad),
-                           src.dec.to_value(u.rad),fobs)
+def amplitude_sky_model(source,lst,pt_dec,fobs):
+    """Computes the amplitude sky model due to the primary beam response 
+    for a single source.
+    
+    Args:
+      source: src class instance
+        the source to model
+      lst: array(float)
+        the lst of each time bin in the observation, in radians
+      pt_dec: float
+        the pointing declination of the observation, in radians
+      fobs: array
+        the observing frequency of the center of each channel,
+        in GHz
+    
+    Returns:
+      the amplitude sky model
+    """
+    return source.I * pb_resp(lst,pt_dec,source.ra.to_value(u.rad),
+                           source.dec.to_value(u.rad),fobs)
     
 def pb_resp(ant_ra,ant_dec,src_ra,src_dec,freq,dish_dia=4.65):
     """ Compute the primary beam response
