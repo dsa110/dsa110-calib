@@ -9,6 +9,7 @@ Visibility plotting routines for DSA-10
 import matplotlib.pyplot as plt
 import numpy as np
 import astropy.units as u
+import dsacalib.constants as ct
 import __casac__ as cc
 
 
@@ -475,12 +476,13 @@ def plot_antenna_delays(msname,calname,antenna_order,outname=None,show=True):
     kcorr = tb.getcol('FPARAM').reshape(npol,-1,nant)
     error += not tb.close()
     
+    tplot = (times-times[0])*ct.seconds_per_day/60.
     fig,ax = plt.subplots(1,1,figsize=(10,8))
     for i in range(nant):
-        plt.plot(antenna_delays[0,:,i]-kcorr[0,0,i],'.',
+        plt.plot(tplot,antenna_delays[0,:,i]-kcorr[0,0,i],'.',
             label=antenna_order[i],alpha=0.5,
                 color=ccyc[i%len(ccyc)])
-        plt.plot(antenna_delays[1,:,i]-kcorr[1,0,i],'x',
+        plt.plot(tplot,antenna_delays[1,:,i]-kcorr[1,0,i],'x',
             alpha=0.5,color=ccyc[i%len(ccyc)])
     plt.ylim(-5,5)
     plt.ylabel('delay (ns)')
@@ -535,7 +537,7 @@ def plot_gain_calibration(msname,calname,antenna_order,
     error += not tb.close()
     time = ((time - time[0])*u.s).to_value(u.min)
     
-    fig,ax = plt.subplots(1,2,figsize=(16,6))
+    fig,ax = plt.subplots(1,2,figsize=(16,6),sharex=True)
     for i in range(nant):
         if gain_amp.shape[1]>1:
             ax[0].plot(time,np.abs(gain_amp[0,:,i]),
@@ -544,26 +546,36 @@ def plot_gain_calibration(msname,calname,antenna_order,
             ax[0].plot(time,np.abs(gain_amp[1,:,i]),
                        color=ccyc[i%len(ccyc)],
                       ls=':')
-            ax[1].plot([time[0],time[-1]],
-                   [np.angle(gain_phase[0,:,i]),
-                  np.angle(gain_phase[0,:,i])],
+        else:
+            ax[0].plot([time[0],time[-1]],
+                       [np.abs(gain_amp[0,0,i]),
+                        np.abs(gain_amp[0,0,i])],
+                          color=ccyc[i%len(ccyc)])
+            ax[0].plot([time[0],time[-1]],
+                       [np.abs(gain_amp[1,0,i]),
+                        np.abs(gain_amp[1,0,i])],
+                          color=ccyc[i%len(ccyc)],ls = ':')
+        if gain_phase.shape[1]>1:
+            ax[1].plot(time,
+                   np.angle(gain_phase[0,:,i]),
                        color=ccyc[i%len(ccyc)])
-            ax[1].plot([time[0],time[-1]],
-                   [np.angle(gain_phase[1,:,i]),
-                  np.angle(gain_phase[1,:,i])],
+            ax[1].plot(time,
+                   np.angle(gain_phase[1,:,i]),
                        color=ccyc[i%len(ccyc)],
                   ls = ':')
         else:
-            ax[0].axvline(np.abs(gain_amp[0,0,i]),
-                          color=ccyc[i%len(ccyc)])
-            ax[0].axvline(np.abs(gain_amp[1,0,i])
-                          ,color=ccyc[i%len(ccyc)],ls = ':')
-            ax[1].axvline(np.angle(gain_phase[0,0,i]),
+            print(np.angle(gain_phase[0,0,i]),
+                  np.angle(gain_phase[1,0,i]))
+            ax[1].plot([time[0],time[-1]],
+                       [np.angle(gain_phase[0,0,i]),
+                        np.angle(gain_phase[0,0,i])],
                   color=ccyc[i%len(ccyc)])
-            ax[1].axvline(np.angle(gain_phase[1,0,i]),
+            ax[1].plot([time[0],time[-1]],
+                       [np.angle(gain_phase[1,0,i]),
+                        np.angle(gain_phase[1,0,i])],
                           color=ccyc[i%len(ccyc)],ls = ':')
-            ax[0].set_xlim(time[0],time[-1])
-            ax[1].set_xlim(time[0],time[-1])
+    ax[0].set_xlim(time[0],time[-1])
+    ax[1].set_ylim(-np.pi,np.pi)
     ax[0].legend(ncol=3,fontsize=12)
     ax[0].set_xlabel('time (min)')
     ax[1].set_xlabel('time (min)')

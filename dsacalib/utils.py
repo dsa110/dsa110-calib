@@ -6,7 +6,9 @@ Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 Modified for python3 from DSA-10 routines written by 
 Vikram Ravi, Harish Vendantham
 
-Routines to interact w/ fits visibilities recorded by DSA-10
+Routines to interact w/ fits visibilities recorded by DSA-10,
+hdf5 visibilities recorded by DSA-110, and
+visibility in CASA measurement sets
 """
 
 # To do:
@@ -433,14 +435,12 @@ def get_antpos_itrf(antpos='data/antpos_ITRF.txt'):
         anum,xx,yy,zz = np.loadtxt(antpos).transpose()
         anum = anum.astype(int)+1
         anum,xx,yy,zz = zip(*sorted(zip(anum,xx,yy,zz)))
-    
     elif antpos[-4:]=='.csv':
         df = get_itrf(antpos)
         anum = np.array(df.index)
         xx = np.array(df[['dx_m']])
         yy = np.array(df[['dx_y']])
         zz = np.array(df[['dx_z']])
-        
     return anum,xx,yy,zz
 
 def simulate_ms(ofile,tname,anum,xx,yy,zz,diam,mount,
