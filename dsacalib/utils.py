@@ -6,19 +6,187 @@ Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 Modified for python3 from DSA-10 routines written by 
 Vikram Ravi, Harish Vendantham
 
-Routines to interact w/ fits visibilities recorded by DSA-10
+Routines to interact w/ fits visibilities recorded by DSA-10,
+hdf5 visibilities recorded by DSA-110, and
+visibility in CASA measurement sets
 """
+
+# To do:
+# Replace to_deg w/ astropy versions
 
 import __casac__ as cc
 import astropy.io.fits as pf
 import astropy.units as u
 import numpy as np
-import matplotlib.pyplot as plt
 from astropy.time import Time
-import os
 from . import constants as ct
+from antpos.utils import *
+import h5py
 
-def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt'):
+from astropy.utils import iers
+iers.conf.iers_auto_url_mirror = ct.iers_table
+
+class src():
+    """ Simple class for holding source parameters.
+    
+    Args:
+        name: str
+          identifier for your source
+        I: float
+          the flux in Jy
+        ra: str
+          right ascension e.g. "12h00m19.21s"
+        dec: str
+          declination e.g. "+73d00m45.7s"
+        epoch: str
+          the epoch of the ra and dec, default "J2000"
+           
+    Returns:
+    """
+    def __init__(self,name,ra,dec,I=1.,epoch='J2000'):
+        self.name = name
+        self.I = I
+        self.ra = to_deg(ra)
+        self.dec = to_deg(dec)
+        self.epoch = epoch
+
+def to_deg(string):
+    """ Converts a string direction to degrees.
+
+    Args:
+        string: str
+          ra or dec in string format e.g. "12h00m19.21s" or "+73d00m45.7s"
+
+    Returns:
+        deg: astropy quantity
+          the angle in degrees
+    """
+    if 'h' in string:
+        h,m,s = string.strip('s').strip('s').replace('h','m').split('m')
+        deg = (float(h)+(float(m)+float(s)/60)/60)*15*u.deg
+    else:
+        sign = -1 if '-' in string else 1
+        d,m,s = string.strip('+-s').strip('s').replace('d','m').split('m')
+        deg = (float(d)+(float(m)+float(s)/60)/60)*u.deg*sign
+    return deg
+
+def read_hdf5_file(fl,source=None,dur=50*u.min,autocorrs=False,
+                   badants=None,quiet=True):
+    if source is not None:
+        stmid = source.ra.to_value(u.rad)
+        seg_len = (dur/2*(15*u.deg/u.h)).to_value(u.rad)
+        
+    with h5py.File(fl, 'r') as f:
+        antenna_order = list(f['antenna_order'][...])
+        nant = len(antenna_order)
+        fobs = f['fobs_GHz'][...]
+        mjd = f['time_mjd_seconds'][...]/ct.seconds_per_day
+        nt = len(f['time_mjd_seconds'])
+        tsamp  = (mjd[0] - mjd[-1])/(nt-1)*ct.seconds_per_day
+
+
+        st0 = Time(mjd[0], format='mjd').sidereal_time(
+            'apparent',longitude=ct.ovro_lon*u.rad).radian 
+    
+        st  = np.angle(np.exp(1j*(st0 + 2*np.pi/ct.seconds_per_sidereal_day*
+                          np.arange(nt)*tsamp)))
+    
+        st1 = Time(mjd[-1],format='mjd').sidereal_time(
+            'apparent',longitude=ct.ovro_lon).radian
+
+        if source is not None:
+            if not quiet:
+                print("\n-------------EXTRACT DATA--------------------")
+                print("Extracting data around {0}".format(stmid*180/np.pi))
+                print("{0} Time samples in data".format(nt))
+                print("LST range: {0:.1f} --- ({1:.1f}-{2:.1f}) --- {3:.1f}deg".format(st[0]*180./np.pi,(stmid-seg_len)*180./np.pi, (stmid+seg_len)*180./np.pi,st[-1]*180./np.pi))
+
+            I1 = np.argmax(np.absolute(np.exp(1j*st)+
+                           np.exp(1j*stmid)*np.exp(-1j*seg_len)))
+            I2 = np.argmax(np.absolute(np.exp(1j*st)+
+                           np.exp(1j*stmid)*np.exp(1j*seg_len)))
+            transit_idx = np.argmax(np.absolute(np.exp(1j*st)+
+                           np.exp(1j*(stmid))))
+            
+            mjd = mjd[I1:I2]
+            st  = st[I1:I2]
+            dat = f['vis'][I1:I2,...]
+            if not quiet:
+                print("Extract: {0} ----> {1} sample; transit at {2}".format(I1,I2,I0))
+                print("----------------------------------------------")
+
+        else:
+            dat = f['vis'][...]
+            transit_idx = None
+
+    # Now we have to extract the correct baselines
+    auto_bls = []
+    cross_bls = list(range(int(nant/2*(nant+1))))
+    i=-1
+    for j in range(1,nant+1):
+        i += j
+        auto_bls += [i]
+        cross_bls.remove(i)
+
+    basels = auto_bls if autocorrs else cross_bls
+    
+    # Fancy indexing can have downfalls and may change in future numpy versions
+    # See issue here https://github.com/numpy/numpy/issues/9450
+    vis = dat[:,basels,...]
+    assert vis.shape[0] == len(mjd)
+    assert vis.shape[1] == len(basels)
+
+    
+    if autocorrs:
+        bname = np.array([[a,a] for a in antenna_order])
+        blen  = np.zeros((len(antenna_order),3))
+        if badants is not None:
+            badants = [str(ba) for ba in badants]
+            good_idx = list(range(len(antenna_order)))
+            for badant in badants:
+                good_idx.remove(antenna_order.index(badant))
+            vis = vis[:,good_idx,...]
+            bname = bname[good_idx,...]
+            blen = blen[good_idx,...]
+    
+    if not autocorrs:
+        df_bls = get_baselines(antenna_order,autocorrs=False,casa_order=True)
+        blen   = np.array([df_bls['x_m'],df_bls['y_m'],df_bls['z_m']]).T
+        bname  = [bn.split('-') for bn in df_bls['bname']]
+        if badants is not None:
+            bname = np.array(bname)
+            blen = np.array(blen)
+            good_idx = list(range(len(bname)))
+            for i,bn in enumerate(bname):
+                if (bn[0] in badants) or (bn[1] in badants):
+                    good_idx.remove(i)
+            vis = vis[:,good_idx,...]
+            blen = blen[good_idx,...]
+            bname = bname[good_idx,...]
+        
+    if badants is not None:
+        #badants = [str(ba) for ba in badants]
+        for badant in badants:
+            antenna_order.remove(badant)
+            
+    assert vis.shape[0] == len(mjd)
+    vis = vis.swapaxes(0,1)
+    
+    dt = np.median(np.diff(mjd))
+    if len(mjd)>0:
+        tstart = mjd[0]-dt/2
+        tstop = mjd[-1]+dt/2
+    else:
+        tstart = None
+        tstop = None
+    
+    if type(bname) is not list:
+        bname = bname.tolist()
+        
+    return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx, antenna_order
+
+def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt',
+                     autocorrs=False,badants=None,quiet=True):
     """Reads in the psrfits header and data
     
     Args:
@@ -30,7 +198,12 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt'):
           amount of time to extract
         antpos: str
           the full path of the text file containing the 
-             antenna positions
+          antenna positions
+        autocorrs: boolean
+          if True, only the autocorrelations will be returned.
+          if False, only the cross correlations will be returned.
+        badants: None or list(int)
+          The antennas for which you do not want data to be returned
              
     Returns:
         fobs: arr(float)
@@ -54,18 +227,60 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt'):
     # Open the file and get info from the header and visibilities
     fo = pf.open(fl,ignore_missing_end=True)
     f  = fo[1]
-    nchan, fobs, nt, blen, bname, tstart, tstop = \
+    nchan, fobs, nt, blen, bname, tstart, tstop, antenna_order = \
         get_header_info(f,verbose=True,
             antpos=antpos)
-    vis,lst,mjd,transit_idx = extractVis(f,source.ra.to_value(u.rad),
-                                  (dur/2*(15*u.deg/u.h)).
-                                     to_value(u.rad))
+    vis,lst,mjd,transit_idx = extract_vis_from_psrfits(f,source.ra.to_value(u.rad),
+                         (dur/2*(15*u.deg/u.h)).to_value(u.rad),
+                        antenna_order,quiet,autocorrs)
     fo.close()
+    
     # Reorder the visibilities to fit with CASA ms convention
     vis = vis[::-1,...]
     bname = bname[::-1]
     blen = blen[::-1,...]
-    return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx
+    antenna_order=antenna_order[::-1]
+    
+    if autocorrs:
+        bname = np.array([[a,a] for a in antenna_order])
+        blen  = np.zeros((len(antenna_order),3))
+        if badants is not None:
+            badants = [str(ba) for ba in badants]
+            good_idx = list(range(len(antenna_order)))
+            for badant in badants:
+                good_idx.remove(antenna_order.index(badant))
+            vis = vis[good_idx,...]
+            bname = bname[good_idx,...]
+            blen = blen[good_idx,...]
+    
+    if not autocorrs:
+        if badants is not None:
+            bname = np.array(bname)
+            blen = np.array(blen)
+            good_idx = list(range(len(bname)))
+            for i,bn in enumerate(bname):
+                if (bn[0] in badants) or (bn[1] in badants):
+                    good_idx.remove(i)
+            vis = vis[good_idx,...]
+            blen = blen[good_idx,...]
+            bname = bname[good_idx,...]
+        
+    if badants is not None:
+        badants = [str(ba) for ba in badants]
+        for badant in badants:
+            antenna_order.remove(badant)
+            
+    dt = np.median(np.diff(mjd))
+    if len(mjd)>0:
+        tstart = mjd[0]-dt/2
+        tstop = mjd[-1]+dt/2
+    else:
+        tstart = None
+        tstop = None
+    
+    if type(bname) is not list:
+        bname = bname.tolist()
+    return fobs, blen, bname, tstart, tstop, vis, mjd, lst, transit_idx, antenna_order
 
 def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
     """ Returns important header info from a visibility fits file.
@@ -89,7 +304,7 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
           the itrf coordinates of the baselines, shape (nbaselines, 3)
         bname: list(int)
           the station pairs for each baseline (in the same order as blen), 
-          shape (nbaselines, 2)
+          shape (nbaselines, 2), numbering starts at 1
         tstart: float
           the start time in MJD
         tstop: float
@@ -109,7 +324,7 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
         for j in np.arange(i):
             a1 = int(aname[i])-1
             a2 = int(aname[j])-1
-            bname.append([a1,a2])
+            bname.append([a1+1,a2+1])
             blen.append(tp[a1,1:]-tp[a2,1:])
     blen  = np.array(blen)
 
@@ -120,9 +335,11 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
         print('File covers {0:.2f} hours from MJD {1} to {2}'.format(
             ((tstop-tstart)*u.d).to(u.h),tstart,tstop))
         
-    return nchan, fobs, nt, blen, bname, tstart, tstop
+    return nchan, fobs, nt, blen, bname, tstart, tstop, aname
 
-def extractVis(f,stmid,seg_len,quiet=True):
+def extract_vis_from_psrfits(f,stmid,seg_len,antenna_order,
+                             quiet=True,
+                            autocorrs=False,badants=None):
     """ Routine to extract visibilities from a fits file output
     by the DSA-10 system.  
     
@@ -137,6 +354,12 @@ def extractVis(f,stmid,seg_len,quiet=True):
           the duration of visibilities to extract, in radians
         quiet: boolean
           if False, information on the file will be printed
+        autocorrs: boolean
+          if True, extracts autocorrelations, else extracts 
+          crosscorrelations
+        badants: list
+          list of bad antenna names, (base 1, actual names not 
+          indices)
 
     Returns:
         odata: complex array
@@ -151,6 +374,7 @@ def extractVis(f,stmid,seg_len,quiet=True):
     dat   = f.data['VIS']
     nt    = f.header['NAXIS2']
     nchan = f.header['NCHAN']
+    nant = len(antenna_order)
     
     mjd0 = f.header['MJD'] + ct.time_offset/ct.seconds_per_day 
     mjd1 = mjd0 + ct.tsamp*nt/ct.seconds_per_day  
@@ -159,7 +383,7 @@ def extractVis(f,stmid,seg_len,quiet=True):
               "will be extracted")
     
     st0 = Time(mjd0, format='mjd').sidereal_time(
-        'apparent',longitude=ct.ovro_lon).radian 
+        'apparent',longitude=ct.ovro_lon*u.rad).radian 
     mjd = mjd0 + (np.arange(nt)+0.5) * ct.tsamp / ct.seconds_per_day
     
     st  = np.angle(np.exp(1j*(st0 + 2*np.pi/ct.seconds_per_sidereal_day*
@@ -170,6 +394,7 @@ def extractVis(f,stmid,seg_len,quiet=True):
 
     if not quiet:
         print("\n-------------EXTRACT DATA--------------------")
+        print("Extracting data around {0}".format(stmid*180/np.pi))
         print("{0} Time samples in data".format(nt))
         print("LST range: {0:.1f} --- ({1:.1f}-{2:.1f}) --- {3:.1f}deg".format(st[0]*180./np.pi,(stmid-seg_len)*180./np.pi, (stmid+seg_len)*180./np.pi,st[-1]*180./np.pi))
 
@@ -188,14 +413,37 @@ def extractVis(f,stmid,seg_len,quiet=True):
         print("Extract: {0} ----> {1} sample; transit at {2}".format(I1,I2,I0))
         print("----------------------------------------------")
 
-    basels = [1,3,4,6,7,8,10,11,12,13,15,16,17,18,19,21,
-              22,23,24,25,26,28,29,30,31,32,33,34,36,37,
-              38,39,40,41,42,43,45,46,47,48,49,50,51,52,53]
-    odata = dat[:,basels,:,:,0]+ 1j*dat[:,basels,:,:,1]
+    # Now we have to extract the correct baselines
+    auto_bls = []
+    cross_bls = list(range(int(nant/2*(nant+1))))
+    i=-1
+    for j in range(1,nant+1):
+        i += j
+        auto_bls += [i]
+        cross_bls.remove(i)
 
+    basels = auto_bls if autocorrs else cross_bls
+    
+    # Fancy indexing can have downfalls and may change in future numpy versions
+    # See issue here https://github.com/numpy/numpy/issues/9450
+    odata = dat[:,basels,:,:,0]+ 1j*dat[:,basels,:,:,1]
     return odata,st,mjd,I0-I1
 
-def simulate_ms(ofile,tname,xx,yy,zz,diam,mount,
+def get_antpos_itrf(antpos='data/antpos_ITRF.txt'):
+    # Read in baseline info and order it as needed
+    if antpos[-4:]=='.txt':
+        anum,xx,yy,zz = np.loadtxt(antpos).transpose()
+        anum = anum.astype(int)+1
+        anum,xx,yy,zz = zip(*sorted(zip(anum,xx,yy,zz)))
+    elif antpos[-4:]=='.csv':
+        df = get_itrf(antpos)
+        anum = np.array(df.index)
+        xx = np.array(df[['dx_m']])
+        yy = np.array(df[['dx_y']])
+        zz = np.array(df[['dx_z']])
+    return anum,xx,yy,zz
+
+def simulate_ms(ofile,tname,anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
                nchannels,integrationtime,obstm,dt,src,
                stoptime):
@@ -204,7 +452,7 @@ def simulate_ms(ofile,tname,xx,yy,zz,diam,mount,
     sm = cc.simulator.simulator()
     sm.open(ofile)
     sm.setconfig(telescopename=tname, x=xx, y=yy, z=zz, 
-                 dishdiameter=diam, mount=mount, antname=tname, 
+                 dishdiameter=diam, mount=mount, antname=anum, 
                  coordsystem='global', referencelocation=pos_obs)
     sm.setspwindow(spwname=spwname, freq=freq, deltafreq=deltafreq, 
                    freqresolution=freqresolution, 
@@ -219,7 +467,8 @@ def simulate_ms(ofile,tname,xx,yy,zz,diam,mount,
     sm.observe(src.name, spwname, starttime='0s', stoptime=stoptime)
     sm.close()
 
-def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
+def convert_to_ms(src, vis, obstm, ofile, bname, antenna_order,
+                  tsamp = ct.tsamp*ct.nint, nint=1,
                   antpos='data/antpos_ITRF.txt',model=None,
                  dt = ct.casa_time_offset):
     """ Writes visibilities to an ms. 
@@ -239,6 +488,9 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
           name for the created ms
         bname: list(int)
           the list of baselines names in the form [[ant1, ant2],...]
+        antenna_order: list()
+        tsamp: float
+          the sampling time of the input visibilities in seconds
         nint: int
           the number of time bins to integrate before saving to a 
           measurement set, default 25
@@ -253,6 +505,8 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
     Returns:
     """
 
+    nant = len(antenna_order)
+    
     me = cc.measures.measures()
     qa = cc.quanta.quanta()
 
@@ -272,7 +526,7 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
     npol      = vis.shape[-1]
     
     # Rebin visibilities 
-    integrationtime = '{0}s'.format(ct.tsamp*nint) 
+    integrationtime = '{0}s'.format(tsamp*nint) 
     if nint != 1:
         npad = nint - vis.shape[1]%nint
         if npad == nint: npad = 0 
@@ -287,16 +541,24 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
                     mode='constant',constant_values=
                     (np.nan,)).reshape(model.shape[0],-1,nint,
                     model.shape[2],model.shape[3]),axis=2)
-    stoptime  = '{0}s'.format(vis.shape[1]*ct.tsamp*nint)
+    stoptime  = '{0}s'.format(vis.shape[1]*tsamp*nint)
     
-    # Read in baseline info and order it as needed
-    anum,xx,yy,zz = np.loadtxt(antpos).transpose()
-    anum = anum.astype(int)
-    anum,xx,yy,zz = zip(*sorted(zip(anum,xx,yy,zz)))
     
-    nints = np.zeros(10,dtype=int)
-    for i in range(10):
-        nints[i] = sum(np.array(bname)[:,0]==i)
+    anum,xx,yy,zz = get_antpos_itrf(antpos)
+    
+    # Sort the antenna positions
+    idx_order = sorted([int(a)-1 for a in antenna_order])
+    anum = np.array(anum)[idx_order]
+    xx = np.array(xx)
+    yy = np.array(yy)
+    zz = np.array(zz)
+    xx = xx[idx_order]
+    yy = yy[idx_order]
+    zz = zz[idx_order]
+    
+    nints = np.zeros(nant,dtype=int)
+    for i in range(nant):
+        nints[i] = np.sum(np.array(bname)[:,0]==anum[i])
     nints, anum, xx, yy, zz = zip(*sorted(zip(nints,anum,xx,yy,zz),reverse=True))
 
     # Check that the visibilities are ordered correctly by 
@@ -305,11 +567,11 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
     for i in range(len(anum)):
         for j in range(i+1,len(anum)):
             idx_order += [bname.index([anum[i],anum[j]])]
-    assert idx_order == list(np.arange(45,dtype=int)), \
+    assert idx_order == list(np.arange(len(bname),dtype=int)), \
         'Visibilities not ordered by baseline'
     anum = [str(a) for a in anum]
     
-    simulate_ms(ofile,tname,xx,yy,zz,diam,mount,
+    simulate_ms(ofile,tname,anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
                nchannels,integrationtime,obstm,dt,src,
                stoptime)
@@ -324,7 +586,7 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
         dt = dt + (tstart_ms - obstm)
         print('Updating casa time offset to {0}s'.format(dt*ct.seconds_per_day))
         print('Rerunning simulator')
-        simulate_ms(ofile,tname,xx,yy,zz,diam,mount,
+        simulate_ms(ofile,tname,anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
                nchannels,integrationtime,obstm,dt,src,
                stoptime)
@@ -354,16 +616,16 @@ def convert_to_ms(src, vis, obstm, ofile, bname, nint=25,
     tstart_ms  = ms.summary()['BeginTime']
     tstart_ms2 = ms.getdata('TIME')['time'][0]/ct.seconds_per_day
     ms.close()
-    
-    assert np.abs(tstart_ms - (tstart_ms2-ct.tsamp*nint/ct.seconds_per_day/2)) < 1e-10, \
-        'Measurement set times do not agree with input start time'
+
+    assert np.abs(tstart_ms - (tstart_ms2-tsamp*nint/ct.seconds_per_day/2)) < 1e-10, \
+        'Data start time does not agree with MS start time'
     
     assert np.abs(tstart_ms - obstm) < 1e-10 , \
         'Measurement set start time does not agree with input tstart'
     
     return
 
-def extract_vis_from_ms(ms_name):
+def extract_vis_from_ms(ms_name,nant):
     """ Extract calibrated and uncalibrated visibilities from 
     measurement set.
     
@@ -381,10 +643,54 @@ def extract_vis_from_ms(ms_name):
     ms = cc.ms.ms()
     error += not ms.open('{0}.ms'.format(ms_name))
     vis_uncal= (ms.getdata(["data"])
-                ['data'].reshape(625,-1,45).T)
+                ['data'].reshape(2,625,-1,(nant*(nant-1))//2).T)
     vis_cal  = (ms.getdata(["corrected_data"])
-            ['corrected_data'].reshape(625,-1,45).T)
+            ['corrected_data'].reshape(2,625,-1,(nant*(nant-1))//2).T)
     error += not ms.close()
     if error > 0:
         print('{0} errors occured during calibration'.format(error))
     return vis_uncal, vis_cal
+
+def initialize_hdf5_file(f,fobs,antenna_order,t0,nbls,nchan,npol,nant):
+    """Initialize the hdf5 file.
+    
+    Args:
+        f: hdf5 file handler
+            the file
+        fobs: array(float)
+            the center frequency of each channel
+        antenna_order: array(int)
+            the order of the antennas in the correlator
+        t0: float
+            the time of the first sample in mjd seconds
+        nbls: int
+            the number of baselines
+        nchan: int
+            the number of channels
+        npol: int
+            the number of polarizations
+        nant: int
+            the number of antennas
+        
+    Returns:
+        vis_ds: hdf5 dataset
+            the dataset for the visibilities
+        t_ds: hdf5 dataset
+            the dataset for the times
+    """
+    ds_fobs = f.create_dataset("fobs_GHz",(nchan,),dtype=np.float32,data=fobs)
+    ds_ants = f.create_dataset("antenna_order",(nant,),dtype=np.int,data=antenna_order)
+    t_st = f.create_dataset("tstart_mjd_seconds",
+                           (1,),maxshape=(1,),
+                           dtype=int,data=t0)
+
+    vis_ds = f.create_dataset("vis", 
+                            (0,nbls,nchan,npol), 
+                            maxshape=(None,nbls,nchan,npol),
+                            dtype=np.complex64,chunks=True,
+                            data = None)
+    t_ds = f.create_dataset("time_seconds",
+                           (0,),maxshape=(None,),
+                           dtype=np.float32,chunks=True,
+                           data = None)
+    return vis_ds, t_ds
