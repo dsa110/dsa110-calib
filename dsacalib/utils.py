@@ -9,6 +9,9 @@ Vikram Ravi, Harish Vendantham
 Routines to interact w/ fits visibilities recorded by DSA-10
 """
 
+# To do:
+# Replace to_deg w/ astropy versions
+
 import __casac__ as cc
 import astropy.io.fits as pf
 import astropy.units as u
@@ -236,7 +239,6 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt',
     blen = blen[::-1,...]
     antenna_order=antenna_order[::-1]
     
-
     if autocorrs:
         bname = np.array([[a,a] for a in antenna_order])
         blen  = np.zeros((len(antenna_order),3))
@@ -276,7 +278,7 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt',
     
     if type(bname) is not list:
         bname = bname.tolist()
-    return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx, antenna_order
+    return fobs, blen, bname, tstart, tstop, vis, mjd, lst, transit_idx, antenna_order
 
 def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
     """ Returns important header info from a visibility fits file.
@@ -547,13 +549,16 @@ def convert_to_ms(src, vis, obstm, ofile, bname, antenna_order,
     # Sort the antenna positions
     idx_order = sorted([int(a)-1 for a in antenna_order])
     anum = np.array(anum)[idx_order]
+    xx = np.array(xx)
+    yy = np.array(yy)
+    zz = np.array(zz)
     xx = xx[idx_order]
     yy = yy[idx_order]
     zz = zz[idx_order]
     
     nints = np.zeros(nant,dtype=int)
     for i in range(nant):
-        nints[i] = sum(np.array(bname)[:,0]==anum[i])
+        nints[i] = np.sum(np.array(bname)[:,0]==anum[i])
     nints, anum, xx, yy, zz = zip(*sorted(zip(nints,anum,xx,yy,zz),reverse=True))
 
     # Check that the visibilities are ordered correctly by 

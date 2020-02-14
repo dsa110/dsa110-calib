@@ -14,6 +14,8 @@ from . import constants as ct
 from .utils import to_deg
 from numba import jit
 from astropy.time import Time
+from scipy.special import j1
+from astropy.coordinates.angle_utilities import angular_separation
 
 def calc_uvw(b, tobs, src_epoch, src_lon, src_lat,obs='OVRO_MMA'):
     """ Calculates the uvw coordinates of a source.
@@ -156,7 +158,7 @@ def visibility_sky_model(vis,vis_model,bws,famps,f0,spec_idx,fobs):
       Nothing.  Modifies vis_model and vis in-place.
     """
     for i in range(bws.shape[0]):
-        vis_model += famps[i] * ((fobs/f0)**(spec_idx)) * np.exp(2j*np.pi/ct.c_GHz_m * fobs * bws[i,...])
+        vis_model += famps[i,...] * ((fobs/f0)**(spec_idx)) * np.exp(2j*np.pi/ct.c_GHz_m * fobs * bws[i,...])
     vis /= vis_model
     return 
 
@@ -207,14 +209,14 @@ def set_dimensions(fobs=None,tobs=None,b=None):
         to_return += [b]
     return to_return
 
-def divide_visibility_sky_model(vis,b, sources, tobs, fobs,
-                            phase_only=False,return_model=False):
+def divide_visibility_sky_model(vis,b, sources, tobs, fobs,lst,pt_dec,
+                            phase_only=False,return_model=False,pbcorr=True):
     """ Calculates the sky model visibilities the baselines b and divides the 
     input visibilities by the sky model
     
     Args:
         vis: complex array
-          the visibilities, (baselines,time,frequency)
+          the visibilities, (baselines,time,frequency,polarization)
           will be updated in place to the fringe-stopped visibilities
         b: real array
           baselines to calculate visibilities for, shape (nbaselines, 3), 
@@ -234,7 +236,7 @@ def divide_visibility_sky_model(vis,b, sources, tobs, fobs,
     
     Returns:
         vis_model: complex array
-          the modelled visibilities, dimensions (baselines, time, frequency)
+          the modelled visibilities, dimensions (baselines, time, frequency,polarization)
           returned only if return_model is true
     """
   
@@ -246,12 +248,20 @@ def divide_visibility_sky_model(vis,b, sources, tobs, fobs,
     # Calculate the w-vector and flux towards each source
     # Array indices must be nsources, nbaselines, nt, nf, npol
     bws = np.zeros((len(sources),len(b),len(tobs),1,1))
-    famps = np.zeros(len(sources)) 
+    famps = np.zeros((len(sources),1,len(tobs),len(fobs),1)) 
     for i,src in enumerate(sources):
         bu,bv,bw       = calc_uvw(b, tobs, src.epoch, src.ra, src.dec)
         bws[i,:,:,0,0] = bw
         # Need to add amplitude model of the primary beam here
-        famps[i,...]   = 1. if phase_only else src.I
+        if phase_only:
+            famps[i,0,:,:,0] = 1.
+        elif pbcorr:
+            famps[i,0,:,:,0]=src.I*pb_resp(lst,pt_dec,
+                                       src.ra.to_value(u.rad),
+                                       src.dec.to_value(u.rad),
+                                       fobs.squeeze())
+        else:
+            famps[i,0,:,:,0]=src.I
 
     # Calculate the sky model using jit
     vis_model = np.zeros(vis.shape,dtype=vis.dtype)
@@ -260,7 +270,10 @@ def divide_visibility_sky_model(vis,b, sources, tobs, fobs,
         return vis_model,bws
     else:
         return
-
+    
+def amplitude_sky_model(src,lst,pt_dec,fobs):
+    return src.I * pb_resp(lst,pt_dec,src.ra.to_value(u.rad),
+                           src.dec.to_value(u.rad),fobs)
 
 def fringestop_on_zenith_worker_T(vis,vis_model,nint,nbl,nchan,npol):
     vis.shape=(-1,nint,nbl,nchan,npol)
@@ -367,9 +380,9 @@ def fringestop_multiple_phase_centers(vis,b, sources, tobs, fobs,
     Returns:
         vis: complex array
           the fringe-stopped visibilities, dimensions 
-          (ncenters, baselines, time, frequency)
+          (ncenters, baselines, time, frequency, polarization)
         vis_model: complex array
-          the modelled visibilities, dimensions (ncenters, baselines, time, frequency)
+          the modelled visibilities, dimensions (ncenters, baselines, time, frequency,polarization)
           returned only if return_model is true
     """
     fobs,tobs,b = set_dimensions(fobs,tobs,b)
@@ -483,3 +496,31 @@ def write_fs_delay_table(msname,source,blen,tobs,nant):
         print('{0} errors occured during calibration'.format(error))
     
     return
+
+def pb_resp(ant_ra,ant_dec,src_ra,src_dec,freq,dish_dia=4.65):
+    """ Compute the primary beam response
+    Args:
+      ant_ra: float
+        antenna right ascension pointing in radians
+      ant_dec: float
+        antenna declination pointing in radiants
+      src_ra: float
+        source right ascension in radians
+      src_dec: float
+        source declination in radians
+      freq: array(float)
+        the frequency of each channel in GHz
+      dish_dia: float
+        the dish diameter in m 
+      
+    Returns:
+      pb: array(float)
+        dimensions distance, freq
+        the primary beam response
+    """
+    dis = angular_separation(ant_ra,ant_dec,src_ra,src_dec)
+    lam  = 0.299792458/freq
+    print(dis.shape)
+    print(lam.shape)
+    pb   = (2.0*j1(np.pi*dis[:,np.newaxis]*dish_dia/lam)/(np.pi*dis[:,np.newaxis]*dish_dia/lam))**2
+    return pb
