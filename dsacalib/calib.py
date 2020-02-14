@@ -44,7 +44,8 @@ def delay_calibration(msname,sourcename,refant='0',t='inf'):
         print('{0} errors occured during calibration'.format(error))
     return
 
-def gain_calibration(msname,sourcename,tga='600s',tgp='inf',refant='0'):
+def gain_calibration(msname,sourcename,tga='600s',tgp='inf',
+                     refant='0'):
     """Use Self-Cal to calibrate bandpass and complex gain solutions. 
     Saves solutions to calibration tables.
     Calibrates the measurement set by applying delay, bandpass, 
@@ -74,7 +75,7 @@ def gain_calibration(msname,sourcename,tga='600s',tgp='inf',refant='0'):
     error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
                format(msname,sourcename))
     error += not cb.setsolve(type='B',table='{0}_{1}_bcal'.format(msname,sourcename),
-           refant=refant,apmode='a')
+           refant=refant,apmode='a',solnorm=True)
     error += not cb.solve()
     error += not cb.close()
     
@@ -123,7 +124,7 @@ def gain_calibration(msname,sourcename,tga='600s',tgp='inf',refant='0'):
         print('{0} errors occured during calibration'.format(error))
     return
 
-def flag_antenna(ms,antenna):
+def flag_antenna(msname,antenna,datacolumn='data',pol=None):
     """Flag antennas in a measurement set using CASA.
     
     Args:
@@ -139,17 +140,15 @@ def flag_antenna(ms,antenna):
         antenna = str(antenna)
     error = 0
     ag = cc.agentflagger.agentflagger()
-    error += not ag.open('{0}.ms'.format(ms))
+    error += not ag.open('{0}.ms'.format(msname))
     error += not ag.selectdata()
     rec = {}
     rec['mode']='clip'
     rec['clipoutside']=False
-    rec['datacolumn']='data'
+    rec['datacolumn']=datacolumn
     rec['antenna']=antenna
-    error += not ag.parseagentparameters(rec)
-    error += not ag.init()
-    error += not ag.run()
-    rec['datacolumn']='corrected'
+    if pol is not None:
+        rec['polarization_type']='XX' if pol=='A' else 'YY'
     error += not ag.parseagentparameters(rec)
     error += not ag.init()
     error += not ag.run()
@@ -158,7 +157,25 @@ def flag_antenna(ms,antenna):
         print('{0} errors occured during calibration'.format(error))
     return
 
-def flag_badtimes(msname,times,bad,nant,verbose=False):
+def flag_zeros(msname,datacolumn='data'):
+    error = 0 
+    ag = cc.agentflagger.agentflagger()
+    error += not ag.open('{0}.ms'.format(msname))
+    error += not ag.selectdata()
+    rec = {}
+    rec['mode']='clip'
+    rec['clipzeros']=True
+    rec['datacolumn']=datacolumn
+    error += not ag.parseagentparameters(rec)
+    error += not ag.init()
+    error += not ag.run()
+    error += not ag.done()
+    if error > 0:
+        print('{0} errors occured during flagging'.format(error))
+    return
+
+def flag_badtimes(msname,times,bad,nant,datacolumn='data',
+                  verbose=False):
     """Flag antennas in a measurement set using CASA
     
     Args:
@@ -182,7 +199,7 @@ def flag_badtimes(msname,times,bad,nant,verbose=False):
         rec = {}
         rec['mode']='clip'
         rec['clipoutside']=False
-        rec['datacolumn']='data'
+        rec['datacolumn']=datacolumn
         rec['antenna']=str(i)
         rec['polarization_type']='XX'
         tstr = ''
@@ -193,10 +210,6 @@ def flag_badtimes(msname,times,bad,nant,verbose=False):
                 tstr += '{0}~{1}'.format(times[j]-tdiff/2,times[j]+tdiff/2)
         if verbose:
             print('For antenna {0}, flagged: {1}'.format(i,tstr))
-        error += not ag.parseagentparameters(rec)
-        error += not ag.init()
-        error += not ag.run()
-        rec['datacolum']='corrected'
         error += not ag.parseagentparameters(rec)
         error += not ag.init()
         error += not ag.run()
@@ -213,14 +226,11 @@ def flag_badtimes(msname,times,bad,nant,verbose=False):
         error += not ag.parseagentparameters(rec)
         error += not ag.init()
         error += not ag.run()
-        rec['datacolum']='corrected'
-        error += not ag.parseagentparameters(rec)
-        error += not ag.init()
-        error += not ag.run()
     error += not ag.done()
     if error > 0:
         print('{0} errors occured during calibration'.format(error))
     return
+
 
 
 def calc_delays(vis,df,nfavg=5,tavg=True):
