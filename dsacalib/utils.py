@@ -123,6 +123,7 @@ def read_hdf5_file(fl,source=None,dur=50*u.min,autocorrs=True,
     df_bls = get_baselines(antenna_order,autocorrs=True,casa_order=True)
     blen   = np.array([df_bls['x_m'],df_bls['y_m'],df_bls['z_m']]).T
     bname  = np.array([bn.split('-') for bn in df_bls['bname']])
+    bname  = bname.astype(int)
     
     if not autocorrs:
         cross_bls = list(range((nant*(nant+1))//2))
@@ -543,13 +544,15 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     # Check that the visibilities are ordered correctly by 
     # checking the order of baselines in bname
     idx_order = []
+    if [anum[0],anum[0]] in bname: autocorr = True
     for i in range(len(anum)):
-        for j in range(i+1,len(anum)):
+        for j in range(i if autocorr else i+1,len(anum)):
             idx_order += [bname.index([anum[i],anum[j]])]
     assert idx_order == list(np.arange(len(bname),dtype=int)), \
         'Visibilities not ordered by baseline'
     anum = [str(a) for a in anum]
     
+    print(obstm-dt)
     simulate_ms(ofile,tname,anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
                nchannels,integrationtime,obstm,dt,source,
