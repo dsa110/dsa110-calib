@@ -544,7 +544,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     # Check that the visibilities are ordered correctly by 
     # checking the order of baselines in bname
     idx_order = []
-    if [anum[0],anum[0]] in bname: autocorr = True
+    autocorr = True if [anum[0],anum[0]] in bname else False
     for i in range(len(anum)):
         for j in range(i if autocorr else i+1,len(anum)):
             idx_order += [bname.index([anum[i],anum[j]])]
@@ -552,7 +552,6 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         'Visibilities not ordered by baseline'
     anum = [str(a) for a in anum]
     
-    print(obstm-dt)
     simulate_ms(ofile,tname,anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
                nchannels,integrationtime,obstm,dt,source,
