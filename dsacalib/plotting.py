@@ -478,9 +478,10 @@ def plot_antenna_delays(msname,calname,antenna_order,outname=None,show=True):
         times: arr, real
           the times at which the antenna delays are calculated in mjd
         antenna_delays: arr, real
-          the delays of the antennas solved every 59s
+          the delays of the antennas solved every 59s in nanoseconds
         kcorr: arr, real
           the applied delay correction calculated using the entire time
+          in nanoseconds
     """
     nant = len(antenna_order)
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
