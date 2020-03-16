@@ -7,7 +7,8 @@ Constants used for the DSA analysis
 import astropy.units as u
 import astropy.constants as c
 import numpy as np
-import dsacalib
+from pkg_resources import Requirement, resource_filename
+import os.path
 
 # The number of seconds in a sidereal day
 seconds_per_sidereal_day = 3600*23.9344699
@@ -46,6 +47,8 @@ f0 = 1.4        # Frequency of flux in GHz
 spec_idx = -0.7 # Spectral index 
 
 # Backup IERS table
-iers_table    = 'file://{0}/data/finals2000A.all'.format(dsacalib.__path__[0])
+
+antposfile = resource_filename(Requirement.parse("dsa110-antpos"), "antpos/data/DSA110_positions_RevD.csv")
+iers_table    = 'file://' + antposfile
 # Templates & other package data
-pkg_data_path = '{0}/data/'.format(dsacalib.__path__[0])
+pkg_data_path = os.path.dirname(antposfile)
