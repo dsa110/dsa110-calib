@@ -46,8 +46,14 @@ class src():
     def __init__(self,name,ra,dec,I=1.,epoch='J2000'):
         self.name = name
         self.I = I
-        self.ra = to_deg(ra)
-        self.dec = to_deg(dec)
+        if type(ra) is float:
+            self.ra = ra*u.deg
+        else:
+            self.ra = to_deg(ra)
+        if type(dec) is float:
+            self.dec = dec*u.deg
+        else:
+            self.dec = to_deg(dec)
         self.epoch = epoch
 
 def to_deg(string):
@@ -167,7 +173,7 @@ def read_hdf5_file(fl,source=None,dur=50*u.min,autocorrs=True,
     return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx, antenna_order, tsamp
 
 def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt',
-                     autocorrs=False,badants=None,quiet=True):
+                     autocorrs=False,badants=None,quiet=True,antenna_order=None):
     """Reads in the psrfits header and data
     
     Args:
@@ -185,6 +191,12 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt',
           if False, only the cross correlations will be returned.
         badants: None or list(int)
           The antennas for which you do not want data to be returned
+        antenna_order: list
+          the order of the antennas in the correlator (this is inverted 
+          relative to the CASA ordering, and what will be returned).  
+          this is typically found in the 
+          header of the psrfits file, and only needs to be passed if the info 
+          is missing from the header
              
     Returns:
         fobs: arr(float)
@@ -204,13 +216,15 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt',
           the midpoint mjd of each integration in the visibilities
         transit_idx: int
           the index of the transit in the time axis of the visibilities
+        antenna_order: list
+          the order of the antennas (CASA ordering)
     """
     # Open the file and get info from the header and visibilities
     fo = pf.open(fl,ignore_missing_end=True)
     f  = fo[1]
     nchan, fobs, nt, blen, bname, tstart, tstop, antenna_order = \
         get_header_info(f,verbose=True,
-            antpos=antpos)
+            antpos=antpos,aname=antenna_order)
     vis,lst,mjd,transit_idx = extract_vis_from_psrfits(f,source.ra.to_value(u.rad),
                          (dur/2*(15*u.deg/u.h)).to_value(u.rad),
                         antenna_order,quiet,autocorrs)
@@ -263,7 +277,8 @@ def read_psrfits_file(fl,source,dur=50*u.min,antpos='./data/antpos_ITRF.txt',
         bname = bname.tolist()
     return fobs, blen, bname, tstart, tstop, vis, mjd, lst, transit_idx, antenna_order
 
-def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
+def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False,
+                   aname=None):
     """ Returns important header info from a visibility fits file.
     
     Args:
@@ -273,6 +288,11 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
           the path to the text file containing the antenna positions
         verbose: boolean
           whether to print information on the pyfits file
+        aname: list
+          the order of the antennas in the correlator (this is inverted 
+          relative to the CASA ordering).  this is typically found in the 
+          header of the psrfits file, and only needs to be passed if the info 
+          is missing from the header
 
     Returns:
         nchan: int
@@ -291,8 +311,13 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
         tstop: float
           the stop time in MJD
     """
-
-    aname = f.header['ANTENNAS'].split('-')
+    if aname is None:
+        if not 'ANAME' in f.header:
+            raise RuntimeError('FITS file does not include antenna information.  aname must be passed to get_header_info')
+        else:
+            aname = f.header['ANTENNAS'].split('-')
+    nant = len(aname)
+            
     nchan = f.header['NCHAN']
     fobs  = ((f.header['FCH1']*1e6-(np.arange(nchan)+0.5)*2.*2.5e8/2048.)*u.Hz
             ).to_value(u.GHz)
@@ -301,16 +326,20 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False):
     tp    = np.loadtxt(antpos)
     blen  = []
     bname = []
-    for i in np.arange(9)+1:
+    for i in np.arange(nant-1)+1:
         for j in np.arange(i):
             a1 = int(aname[i])-1
             a2 = int(aname[j])-1
             bname.append([a1+1,a2+1])
             blen.append(tp[a1,1:]-tp[a2,1:])
     blen  = np.array(blen)
-
-    tstart = f.header['MJD'] + ct.time_offset/ct.seconds_per_day
-    tstop  = tstart + nt*ct.tsamp/ct.seconds_per_day
+    if 'MJD' in f.header:
+        tstart = f.header['MJD'] + ct.time_offset/ct.seconds_per_day
+        tstop  = tstart + nt*ct.tsamp/ct.seconds_per_day
+    else:
+        print('No start time in header')
+        tstart = np.nan
+        tstop = np.nan
 
     if verbose:
         print('File covers {0:.2f} hours from MJD {1} to {2}'.format(
@@ -336,8 +365,8 @@ def extract_vis_from_psrfits(f,stmid,seg_len,antenna_order,
         quiet: boolean
           if False, information on the file will be printed
         autocorrs: boolean
-          if True, extracts autocorrelations, else extracts 
-          crosscorrelations
+          if True, extracts autocorrelations as well as crosscorrelations, 
+          if False, only extracts crosscorrelations
         badants: list
           list of bad antenna names, (base 1, actual names not 
           indices)
@@ -356,43 +385,55 @@ def extract_vis_from_psrfits(f,stmid,seg_len,antenna_order,
     nt    = f.header['NAXIS2']
     nchan = f.header['NCHAN']
     nant = len(antenna_order)
+    nbls = ((nant+1)*nant)//2
     
-    mjd0 = f.header['MJD'] + ct.time_offset/ct.seconds_per_day 
-    mjd1 = mjd0 + ct.tsamp*nt/ct.seconds_per_day  
-    if (mjd1-mjd0)>=1:
-        print("Data covers > 1 sidereal day. Only the first segment "+
+    if 'MJD' in f.header:
+        mjd0 = f.header['MJD'] + ct.time_offset/ct.seconds_per_day 
+        mjd1 = mjd0 + ct.tsamp*nt/ct.seconds_per_day  
+        if (mjd1-mjd0)>=1:
+            print("Data covers > 1 sidereal day. Only the first segment "+
               "will be extracted")
     
-    st0 = Time(mjd0, format='mjd').sidereal_time(
-        'apparent',longitude=ct.ovro_lon*u.rad).radian 
-    mjd = mjd0 + (np.arange(nt)+0.5) * ct.tsamp / ct.seconds_per_day
+        st0 = Time(mjd0, format='mjd').sidereal_time(
+            'apparent',longitude=ct.ovro_lon*u.rad).radian 
+        mjd = mjd0 + (np.arange(nt)+0.5) * ct.tsamp / ct.seconds_per_day
     
-    st  = np.angle(np.exp(1j*(st0 + 2*np.pi/ct.seconds_per_sidereal_day*
+        st  = np.angle(np.exp(1j*(st0 + 2*np.pi/ct.seconds_per_sidereal_day*
                           np.arange(nt+0.5)*ct.tsamp)))
     
-    st1 = Time(mjd1,format='mjd').sidereal_time(
+        st1 = Time(mjd1,format='mjd').sidereal_time(
             'apparent',longitude=ct.ovro_lon).radian
 
-    if not quiet:
-        print("\n-------------EXTRACT DATA--------------------")
-        print("Extracting data around {0}".format(stmid*180/np.pi))
-        print("{0} Time samples in data".format(nt))
-        print("LST range: {0:.1f} --- ({1:.1f}-{2:.1f}) --- {3:.1f}deg".format(st[0]*180./np.pi,(stmid-seg_len)*180./np.pi, (stmid+seg_len)*180./np.pi,st[-1]*180./np.pi))
+        if not quiet:
+            print("\n-------------EXTRACT DATA--------------------")
+            print("Extracting data around {0}".format(stmid*180/np.pi))
+            print("{0} Time samples in data".format(nt))
+            print("LST range: {0:.1f} --- ({1:.1f}-{2:.1f}) --- {3:.1f}deg".format(st[0]*180./np.pi,(stmid-seg_len)*180./np.pi, (stmid+seg_len)*180./np.pi,st[-1]*180./np.pi))
 
-    I1 = np.argmax(np.absolute(np.exp(1j*st)+
-                           np.exp(1j*stmid)*np.exp(-1j*seg_len)))
-    I2 = np.argmax(np.absolute(np.exp(1j*st)+
-                           np.exp(1j*stmid)*np.exp(1j*seg_len)))
-    I0 = np.argmax(np.absolute(np.exp(1j*st)+
-                           np.exp(1j*(stmid))))
-    
-    mjd = mjd[I1:I2]
-    st  = st[I1:I2]
-    dat = dat.reshape((nt,55,nchan,2,2))[I1:I2,:,:,:,:]
-
-    if not quiet:
-        print("Extract: {0} ----> {1} sample; transit at {2}".format(I1,I2,I0))
-        print("----------------------------------------------")
+        I1 = np.argmax(np.absolute(np.exp(1j*st)+
+                               np.exp(1j*stmid)*np.exp(-1j*seg_len)))
+        I2 = np.argmax(np.absolute(np.exp(1j*st)+
+                               np.exp(1j*stmid)*np.exp(1j*seg_len)))
+        I0 = np.argmax(np.absolute(np.exp(1j*st)+
+                               np.exp(1j*(stmid))))
+        transit_idx = I0-I1
+        
+        mjd = mjd[I1:I2]
+        st  = st[I1:I2]
+        dat = dat.reshape((nt,nbls,nchan,2,2))[I1:I2,:,:,:,:]
+        
+        if not quiet:
+            print("Extract: {0} ----> {1} sample; transit at {2}".format(I1,I2,I0))
+            print("----------------------------------------------")
+        
+    else:
+        print("No start time in header")
+        mjd0 = 0.
+        mjd1 = mjd0 + ct.tsamp*nt/ct.seconds_per_day
+        mjd = mjd0 + (np.arange(nt)+0.5) * ct.tsamp / ct.seconds_per_day
+        st = np.ones(len(mjd))*np.nan
+        transit_idx = np.nan
+        dat = dat.reshape((nt,nbls,nchan,2,2))
 
     # Now we have to extract the correct baselines
     auto_bls = []
@@ -403,12 +444,13 @@ def extract_vis_from_psrfits(f,stmid,seg_len,antenna_order,
         auto_bls += [i]
         cross_bls.remove(i)
 
-    basels = auto_bls if autocorrs else cross_bls
+    basels = list(range(int(nant/2*(nant+1)))) if autocorrs else cross_bls
     
     # Fancy indexing can have downfalls and may change in future numpy versions
     # See issue here https://github.com/numpy/numpy/issues/9450
     odata = dat[:,basels,:,:,0]+ 1j*dat[:,basels,:,:,1]
-    return odata,st,mjd,I0-I1
+    
+    return odata,st,mjd,transit_idx
 
 def get_antpos_itrf(antpos='data/antpos_ITRF.txt'):
     # Read in baseline info and order it as needed
