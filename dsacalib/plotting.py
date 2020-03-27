@@ -10,11 +10,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import astropy.units as u
 import dsacalib.constants as ct
-import __casac__ as cc
+import casatools as cc
 
 
 def plot_dyn_spec(vis,fobs,mjd,bname,normalize=False,
-                  outname=None,show=True):
+                  outname=None,show=True,nx=None):
     """Plots the dynamic spectrum of the real part for each visibility
     
     Args:
@@ -37,14 +37,22 @@ def plot_dyn_spec(vis,fobs,mjd,bname,normalize=False,
     Returns:
     """
     (nbl, nt, nf, npol) = vis.shape
-    ny = (nbl*2)//5
-    if (nbl*2)%5 != 0: ny += 1
+    if nx is None:
+        nx = min(nbl,5)
+    ny = (nbl*2)//nx
+    if (nbl*2)%nx != 0: ny += 1
     
-    fig,ax = plt.subplots(ny,5,figsize=(8*5,8*ny))
+    fig,ax = plt.subplots(ny,nx,figsize=(8*nx,8*ny))
     ax = ax.flatten()
     
-    dplot = (np.nanmean(np.nanmean(vis[:,:nt//125*125,:nf//125*125,:].reshape(
-            nbl,125,-1,nf,npol),2).reshape(nbl,125,125,-1,npol),3)).real
+    if len(mjd)>125:
+        dplot = np.nanmean(vis[:,:nt//125*125,...].reshape(nbl,125,-1,nf,npol),2)
+    else:
+        dplot = vis.copy()
+    if len(fobs) > 125:
+        dplot = np.nanmean(dplot[:,:,:nf//125*125,:].reshape(nbl,dplot.shape[1],
+                                                          125,-1,npol),3)
+    dplot = dplot.real    
     dplot = dplot/dplot.reshape(nbl,-1,npol).mean(axis=1)[:,np.newaxis,np.newaxis,:]
     
     if normalize:
@@ -56,23 +64,29 @@ def plot_dyn_spec(vis,fobs,mjd,bname,normalize=False,
         vmax =  100
     dplot = dplot - 1
     
-    x = mjd[:mjd.shape[0]//125*125].reshape(125,-1).mean(-1)
+    if len(mjd)>125:
+        x = mjd[:mjd.shape[0]//125*125].reshape(125,-1).mean(-1)
+    else: 
+        x = mjd
     x = ((x - x[0])*u.d).to_value(u.min)
-    y = fobs[:nf//125*125].reshape(125,-1).mean(-1)
+    if len(fobs)>125:
+        y = fobs[:nf//125*125].reshape(125,-1).mean(-1)
+    else:
+        y = fobs
     for i in range(nbl):
         for j in range(npol):
-            ax[i*npol+j].imshow(dplot[i,:,:,j].T,origin='lower',
+            ax[j*nbl+i].imshow(dplot[i,:,:,j].T,origin='lower',
                     interpolation='none',aspect='auto',
                     vmin=vmin,vmax=vmax,
                     extent=[x[0],x[-1],y[0],y[-1]])
-            ax[i*npol+j].text(0.1,0.9,
+            ax[j*nbl+i].text(0.1,0.9,
                              '{0}, pol {1}'.format(bname[i],'A' if j==0 else 'B'),
-                             transform=ax[i].transAxes,
+                             transform=ax[j*nbl+i].transAxes,
                              size=22,color='white')
     plt.subplots_adjust(wspace=0.1,hspace=0.1)
-    for i in range((ny-1)*5,ny*5):
+    for i in range((ny-1)*nx,ny*nx):
         ax[i].set_xlabel('time (min)')
-    for i in np.arange(ny)*5:
+    for i in np.arange(ny)*nx:
         ax[i].set_ylabel('freq (GHz)')
     if outname is not None:
         plt.savefig('{0}_dynspec.png'.format(outname))
@@ -103,38 +117,39 @@ def plot_vis_freq(vis,fobs,bname,outname=None,show=True):
     Returns:
     """
     (nbl,nt,nf,npol) = vis.shape
-    ny = nbl//5
-    if nbl%5 != 0: ny += 1
+    nx = min(nbl,5)
+    ny = nbl//nx
+    if nbl%nx != 0: ny += 1
     
     dplot = vis[:,:,:nf//125*125,:].mean(1).reshape(nbl,125,-1,npol).mean(3)
     x = fobs[:nf//125*125].reshape(125,-1).mean(-1)
         
-    fig,ax = plt.subplots(ny,5,figsize=(8*5,8*ny))
+    fig,ax = plt.subplots(ny,nx,figsize=(8*nx,8*ny))
     ax = ax.flatten()
     for i in range(nbl):
         ax[i].plot(x,np.abs(dplot[i,:,0]),label='A')
         ax[i].plot(x,np.abs(dplot[i,:,1]),label='B')
-        ax[i].text(0.1,0.9,bname[i],transform=ax[i].transAxes,
+        ax[i].text(0.1,0.9,'{0}: amp'.format(bname[i]),transform=ax[i].transAxes,
                   size=22)
     plt.subplots_adjust(wspace=0.1,hspace=0.1)
     ax[0].legend()
-    for i in range((ny-1)*5,ny*5):
+    for i in range((ny-1)*nx,ny*nx):
         ax[i].set_xlabel('freq (GHz)')
     if outname is not None:
         plt.savefig('{0}_amp_freq.png'.format(outname))
     if not show:
         plt.close()
         
-    fig,ax = plt.subplots(ny,5,figsize=(8*5,8*ny))
+    fig,ax = plt.subplots(ny,nx,figsize=(8*nx,8*ny))
     ax = ax.flatten()
     for i in range(nbl):
         ax[i].plot(x,np.angle(dplot[i,:,0]),label='A')
         ax[i].plot(x,np.angle(dplot[i,:,1]),label='B')
-        ax[i].text(0.1,0.9,bname[i],transform=ax[i].transAxes,
+        ax[i].text(0.1,0.9,'{0}: phase'.format(bname[i]),transform=ax[i].transAxes,
                   size=22)
     plt.subplots_adjust(wspace=0.1,hspace=0.1)
     ax[0].legend()
-    for i in range((ny-1)*5,ny*5):
+    for i in range((ny-1)*nx,ny*nx):
         ax[i].set_xlabel('freq (GHz)')
     if outname is not None:
         plt.savefig('{0}_phase_freq.png'.format(outname))
@@ -165,38 +180,39 @@ def plot_vis_time(vis,mjd,bname,outname=None,show=True):
     Returns:
     """
     (nbl,nt,nf,npol) = vis.shape
-    ny = nbl//5
+    nx  = min(nbl,5)
+    ny = nbl//nx
     
-    if nbl%5 != 0: ny += 1
+    if nbl%nx != 0: ny += 1
     dplot = vis.mean(-2)
     x = ((mjd-mjd[0])*u.d).to_value(u.min)
     
-    fig,ax = plt.subplots(ny,5,figsize=(8*5,8*ny))
+    fig,ax = plt.subplots(ny,nx,figsize=(8*nx,8*ny))
     ax = ax.flatten()
     for i in range(nbl):
         ax[i].plot(x,np.abs(dplot[i,:,0]),label='A')
         ax[i].plot(x,np.abs(dplot[i,:,1]),label='B')
-        ax[i].text(0.1,0.9,bname[i],transform=ax[i].transAxes,
+        ax[i].text(0.1,0.9,'{0}: amp'.format(bname[i]),transform=ax[i].transAxes,
                   size=22)
     plt.subplots_adjust(wspace=0.1,hspace=0.1)
     ax[0].legend()
-    for i in range((ny-1)*5,ny):
+    for i in range((ny-1)*nx,ny):
         ax[i].set_xlabel('time (min)')
     if outname is not None:
         plt.savefig('{0}_abs_time.png'.format(outname))
     if not show:
         plt.close()
         
-    fig,ax = plt.subplots(ny,5,figsize=(8*5,8*ny))
+    fig,ax = plt.subplots(ny,nx,figsize=(8*nx,8*ny))
     ax = ax.flatten()
     for i in range(nbl):
         ax[i].plot(x,np.angle(dplot[i,:,0]),label='A')
         ax[i].plot(x,np.angle(dplot[i,:,1]),label='B')
-        ax[i].text(0.1,0.9,bname[i],transform=ax[i].transAxes,
+        ax[i].text(0.1,0.9,'{0}: phase'.format(bname[i]),transform=ax[i].transAxes,
                   size=22)
     plt.subplots_adjust(wspace=0.1,hspace=0.1)
     ax[0].legend()
-    for i in range((ny-1)*5,ny):
+    for i in range((ny-1)*nx,ny):
         ax[i].set_xlabel('time (min)')
     if outname is not None:
         plt.savefig('{0}_phase_time.png'.format(outname))
@@ -331,7 +347,7 @@ def plot_calibrated_vis(vis,vis_cal,mjd,fobs,bidx,pol=0,
     return
 
 
-def plot_delays(vis_ft,labels,delay_arr,bname,pol=0,outname=None,show=True):
+def plot_delays(vis_ft,labels,delay_arr,bname,outname=None,show=True):
     """Make amp vs delay plots for each visibility
 
     Args:
@@ -343,8 +359,6 @@ def plot_delays(vis_ft,labels,delay_arr,bname,pol=0,outname=None,show=True):
           the delay bins in nanoseconds
         bname: list(str)
           the baseline labels
-        pol: int
-          the polarization index to plot
         outname: str
           the base to use for the name of the 
           png file the plot is saved to.  The plot will 
@@ -355,31 +369,42 @@ def plot_delays(vis_ft,labels,delay_arr,bname,pol=0,outname=None,show=True):
           and show is True, the plot will show in the notebook
 
     Returns:
+        delays: the delays in ns calculated from the peak of the fringe
     """
     nvis = vis_ft.shape[0]
     nbl  = vis_ft.shape[1]
-    ny = nbl//5
-    if nbl%5 != 0: ny+= 1
+    npol = vis_ft.shape[-1]
+    nx = min(nbl,5)
+    ny = nbl//nx
+    if nbl%nx != 0: ny+= 1
     
     alpha = 0.5 if nvis>2 else 1
-    fig,ax = plt.subplots(ny,5,figsize=(8*5,8*ny),sharex=True)#,sharey=True)
-    ax = ax.flatten()
-    for i in range(nbl):
-        ax[i].axvline(0,color='red')
-        for j in range(nvis):
-            ax[i].plot(delay_arr, np.log10(np.abs(vis_ft[j,i,:,pol])),
+    delays = delay_arr[np.argmax(np.abs(vis_ft),axis=2)]
+    # could use scipy.signal.find_peaks instead
+    for pidx in range(npol):
+        fig,ax = plt.subplots(ny,nx,figsize=(8*nx,8*ny),sharex=True)#,sharey=True)
+        ax = ax.flatten()
+        for i in range(nbl):
+            ax[i].axvline(0,color='black')
+            for j in range(nvis):
+                ax[i].plot(delay_arr, np.log10(np.abs(vis_ft[j,i,:,pidx])),
                       label=labels[j],alpha=alpha)
-        ax[i].text(0.1,0.9,bname[i],transform=ax[i].transAxes,
-                   size=22)
-    plt.subplots_adjust(wspace=0.1,hspace=0.1)
-    ax[0].legend()
-    for i in range(45-5,45):
-        ax[i].set_xlabel('delay (ns)')
-    if outname is not None:
-        plt.savefig('{0}_{1}_delays.png'.format(outname,'A' if pol==0 else 'B'))
-    if not show:
-        plt.close()
-    return
+                ax[i].axvline(delays[j,i,pidx],color='red')
+            ax[i].text(0.1,0.9,'{0}: {1}'.format(bname[i], 
+                                                 'A' if pidx==0 
+                                                 else 'B'), 
+                       transform=ax[i].transAxes,
+                       size=22)
+        plt.subplots_adjust(wspace=0.1,hspace=0.1)
+        ax[0].legend()
+        for i in range((ny-1)*nx,ny*nx):
+            ax[i].set_xlabel('delay (ns)')
+        if outname is not None:
+            plt.savefig('{0}_{1}_delays.png'.format(outname,'A' if pidx==0 else 'B'))
+        if not show:
+            plt.close()
+            
+    return delays
 
 def plot_image(msname,imtype,sr0,verbose=False,outname=None,
                show=True,npix=256):
@@ -409,10 +434,10 @@ def plot_image(msname,imtype,sr0,verbose=False,outname=None,
     Returns:
     """
     error = 0
-    im = cc.imager.imager()
+    im = cc.imager()
     error += not im.open('{0}.ms'.format(msname))
-    me = cc.measures.measures()
-    qa = cc.quanta.quanta()
+    me = cc.measures()
+    qa = cc.quanta()
     direction = me.direction(sr0.epoch, 
             qa.quantity(sr0.ra.to_value(u.deg),'deg'), 
             qa.quantity(sr0.dec.to_value(u.deg),'deg'))
@@ -422,7 +447,7 @@ def plot_image(msname,imtype,sr0,verbose=False,outname=None,
              .format(msname,imtype))
     error += not im.done()
     
-    ia = cc.image.image()
+    ia = cc.image()
     error += not ia.open('{0}_{1}.im'.format(msname,imtype))
     dd = ia.summary()
     npixx,npixy,nch,npol = dd['shape']
@@ -488,7 +513,7 @@ def plot_antenna_delays(msname,calname,antenna_order,outname=None,show=True):
     
     # Pull the solutions for the entire timerange and the 
     # 60-s data from the measurement set tables
-    tb = cc.table.table()
+    tb = cc.table()
     print('opening {0}_{1}_2kcal'.format(msname,calname))
     error += not tb.open('{0}_{1}_2kcal'.format(msname,calname))
     antenna_delays = tb.getcol('FPARAM')
@@ -496,7 +521,7 @@ def plot_antenna_delays(msname,calname,antenna_order,outname=None,show=True):
     antenna_delays = antenna_delays.reshape(npol,-1,nant)
     times = (tb.getcol('TIME').reshape(-1,nant)[:,0]*u.s).to_value(u.d)
     error += not tb.close()
-    tb = cc.table.table()
+    tb = cc.table()
     print('opening {0}_{1}_kcal'.format(msname,calname))
     error += not tb.open('{0}_{1}_kcal'.format(msname,calname))
     kcorr = tb.getcol('FPARAM').reshape(npol,-1,nant)
@@ -548,20 +573,23 @@ def plot_gain_calibration(msname,calname,antenna_order,
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
     error = 0
     
-    tb = cc.table.table()
+    tb = cc.table()
     error += not tb.open('{0}_{1}_gpcal'.format(msname,calname))
     gain_phase = tb.getcol('CPARAM')
     npol = gain_phase.shape[0]
     gain_phase = gain_phase.reshape(npol,-1,nant)
+    time_phase = tb.getcol('TIME').reshape(-1,nant)[:,0]
     error += not tb.close()
 
-    tb = cc.table.table()
+    tb = cc.table()
     error += not tb.open('{0}_{1}_gacal'.format(msname,calname))
     gain_amp = tb.getcol('CPARAM')
     gain_amp = gain_amp.reshape(npol,-1,nant)
     time = tb.getcol('TIME').reshape(-1,nant)[:,0]
     error += not tb.close()
-    time = ((time - time[0])*u.s).to_value(u.min)
+    t0 = time[0]
+    time = ((time - t0)*u.s).to_value(u.min)
+    time_phase = ((time_phase - t0)*u.s).to_value(u.min)
     
     fig,ax = plt.subplots(1,2,figsize=(16,6),sharex=True)
     for i in range(nant):
@@ -582,10 +610,10 @@ def plot_gain_calibration(msname,calname,antenna_order,
                         np.abs(gain_amp[1,0,i])],
                           color=ccyc[i%len(ccyc)],ls = ':')
         if gain_phase.shape[1]>1:
-            ax[1].plot(time,
+            ax[1].plot(time_phase,
                    np.angle(gain_phase[0,:,i]),
                        color=ccyc[i%len(ccyc)])
-            ax[1].plot(time,
+            ax[1].plot(time_phase,
                    np.angle(gain_phase[1,:,i]),
                        color=ccyc[i%len(ccyc)],
                   ls = ':')
@@ -619,7 +647,7 @@ def plot_bandpass(msname,calname,antenna_order,fobs,
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
     error = 0
     
-    tb = cc.table.table()
+    tb = cc.table()
     error += not tb.open('{0}_{1}_bcal'.format(msname,calname))
     bpass = tb.getcol('CPARAM')
     error += not tb.close()

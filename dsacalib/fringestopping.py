@@ -7,7 +7,7 @@ Casa-based routines for calculating and applying fringe-stopping phases
 to visibilities
 """
 
-import __casac__ as cc
+import casatools as cc
 import numpy as np
 import astropy.units as u
 from . import constants as ct
@@ -49,8 +49,8 @@ def calc_uvw(b, tobs, src_epoch, src_lon, src_lat,obs='OVRO_MMA'):
     
 
     # Define the reference frame
-    me = cc.measures.measures()
-    qa = cc.quanta.quanta()
+    me = cc.measures()
+    qa = cc.quanta()
     if obs is not None:
         me.doframe(me.observatory(obs))
     
