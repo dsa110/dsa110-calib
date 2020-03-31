@@ -157,7 +157,7 @@ def plot_vis_freq(vis,fobs,bname,outname=None,show=True):
         plt.close()
     return
 
-def plot_vis_time(vis,mjd,bname,outname=None,show=True):
+def plot_vis_time(vis,mjd,bname,nx=None,outname=None,show=True):
     """Plots visibility against time of observation for 
     all baselines.  
     
@@ -180,7 +180,8 @@ def plot_vis_time(vis,mjd,bname,outname=None,show=True):
     Returns:
     """
     (nbl,nt,nf,npol) = vis.shape
-    nx  = min(nbl,5)
+    if nx is None:
+        nx  = min(nbl,5)
     ny = nbl//nx
     
     if nbl%nx != 0: ny += 1
@@ -347,7 +348,7 @@ def plot_calibrated_vis(vis,vis_cal,mjd,fobs,bidx,pol=0,
     return
 
 
-def plot_delays(vis_ft,labels,delay_arr,bname,outname=None,show=True):
+def plot_delays(vis_ft,labels,delay_arr,bname,nx=None,outname=None,show=True):
     """Make amp vs delay plots for each visibility
 
     Args:
@@ -374,7 +375,8 @@ def plot_delays(vis_ft,labels,delay_arr,bname,outname=None,show=True):
     nvis = vis_ft.shape[0]
     nbl  = vis_ft.shape[1]
     npol = vis_ft.shape[-1]
-    nx = min(nbl,5)
+    if nx is None:
+        nx = min(nbl,5)
     ny = nbl//nx
     if nbl%nx != 0: ny+= 1
     

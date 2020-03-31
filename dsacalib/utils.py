@@ -153,7 +153,6 @@ def read_hdf5_file(fl,source=None,dur=50*u.min,autocorrs=True,
            
     assert vis.shape[0] == len(mjd)
     vis = vis.swapaxes(0,1)
-    
     dt = np.median(np.diff(mjd))
     if len(mjd)>0:
         tstart = mjd[0]-dt/2
@@ -257,10 +256,11 @@ def read_psrfits_file(fl,source,dur=50*u.min,antenna_order=None,
     bname = [bname[i] for i in basels]
     
     # Reorder the visibilities to fit with CASA ms convention
-    vis = vis[::-1,...]
-    bname = bname[::-1]
-    blen = blen[::-1,...]
-    antenna_order=antenna_order[::-1]
+    if dsa10:
+        vis = vis[::-1,...]
+        bname = bname[::-1]
+        blen = blen[::-1,...]
+        antenna_order=antenna_order[::-1]
 
     if badants is not None:
         blen = np.array(blen)
@@ -342,12 +342,14 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False,
     tp    = np.loadtxt(antpos)
     blen  = []
     bname = []
-    for i in np.arange(len(aname)):
-        for j in np.arange(i+1):
+#     for i in np.arange(len(aname)-1)+1:
+#         for j in np.arange(i+1):
+    for j in range(len(aname)):
+        for i in range(j,len(aname)):
             a1 = int(aname[i])-1
             a2 = int(aname[j])-1
-            bname.append([a1+1,a2+1])
-            blen.append(tp[a1,1:]-tp[a2,1:])
+            bname.append([a2+1,a1+1])
+            blen.append(tp[a2,1:]-tp[a1,1:])
     blen  = np.array(blen)
 
     if dsa10:
@@ -764,81 +766,18 @@ def mask_bad_pixels(vis,ntbin=100,thresh=6.0):
     (nbls,nt,nchan,npol)=vis.shape
     bindata = np.copy(vis)
     bindata = bindata[:,:nt//ntbin*ntbin,...].reshape(nbls,nt//ntbin,ntbin,nchan,npol).mean(axis=2)
-    bindata = 5*(np.log10(np.abs(bindata)**2))
-    linbindata = 10**(bindata/5)
+    bindata = 10*(np.log10(np.abs(bindata)))
+    #linbindata = 10**(bindata/5)
     std = np.std(bindata,axis=2,keepdims=True)
     med = np.median(bindata,axis=2,keepdims=True)
-    good_pixels = np.where(np.abs(bindata-med)<thresh*std)
+    good_pixels = np.abs(bindata-med)<thresh*std
+    print(good_pixels.shape)
     mask = np.tile(good_pixels[:,:,np.newaxis,:,:],
-                  (1,1,ntbin,nchan,1)).reshape(nbls,-1,nchan,npol)
+                  (1,1,ntbin,1,1)).reshape(nbls,-1,nchan,npol)
     if mask.shape[1] < nt:
-        mask = np.append(mask,np.zeros(nbls,
-                                       nt-mask.shape[1],nchan,npol),
+        mask = np.append(mask,np.zeros((nbls,
+                                       nt-mask.shape[1],nchan,npol)),
                  axis=1)
     return mask
 
-"""
-def cleanVis(fl=None,tbin=100,thresh=6.0,plot=True,apply=False,filename='flagged.fits'\
-):
 
-    if fl is None:
-        print('cleanVis(fl=None,tbin=100,thresh=6.0,plot=True,apply=False)')
-        return
-
-    f = pf.open(fl,ignore_missing_end=True)[1]
-    nrow = (f.header['NAXIS2'])
-    mjd = f.header['MJD']
-    tsamp = f.header['TSAMP']
-    nchan = f.header['NCHAN']
-    fch1 = f.header['FCH1']-(nchan*2-1)*250./2048.
-    t1 = 0
-    t2 = nrow-1
-    freqs = (np.arange(nchan)*(500./2048.)+fch1)
-
-    ants = f.header['ANTENNAS'].split('-')
-    bases = []
-    for i in range(10):
-        for j in range(i+1):
-            bases.append(ants[i]+'-'+ants[j])
-
-    data = np.flip(f.data['VIS'].reshape((nrow,55,nchan,2,2)),axis=2)
-    tmax = np.floor((t2-t1)/(tbin*1.)).astype('int')*tbin
-    tims = np.arange(nrow)*tsamp
-    tims = tims[0:tmax]
-    bindata = (data[0:tmax,:,:,:,:]).reshape((tmax//tbin,tbin,55,nchan,2,2)).mean(axis\
-=1)
-    bindata = 5.*(np.log10(bindata[:,:,:,:,0]**2.+bindata[:,:,:,:,1]**2.))
-    linbindata = 10.**(bindata/5.)
-
-    bins = bindata.shape[0]
-    flags = np.zeros((55,nchan,2))+1.
-    for tmbin in range(bins):
-
-        flags *= 0.
-
-        for bl in range(55):
-            for pol in range(2):
-
-                stddev = 1.4826*MAD(bindata[tmbin,bl,:,pol])
-                med = np.median(bindata[tmbin,bl,:,pol])
-                wrs = np.where(np.abs(bindata[tmbin,bl,:,:]-med)>thresh*stddev)
-                flags[bl,wrs,pol] = 1.
-
-        print('TBIN ',tmbin,' of ',bins,': flagging percent ',np.sum(flags)*100./(1.*n\
-p.size(flags)))
-
-        
-    if apply is True:
-            flags -= 1.
-            flags *= -1.
-            data[tmbin*tbin:(tmbin+1)*tbin,:,:,:,0] *= flags
-            data[tmbin*tbin:(tmbin+1)*tbin,:,:,:,1] *= flags
-
-
-    if apply is True:
-    fout = pf.open(fl,ignore_missing_end=True)
-    data = np.flip(data,axis=2)
-        fout[1].data['VIS'] = data.ravel().reshape((nrow,data.size//nrow))
-    fout.writeto(filename)#,overwrite=True)
-
-"""
