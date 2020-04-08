@@ -94,7 +94,7 @@ def plot_dyn_spec(vis,fobs,mjd,bname,normalize=False,
         plt.close()
     return
 
-def plot_vis_freq(vis,fobs,bname,outname=None,show=True):
+def plot_vis_freq(vis,fobs,bname,nx=None,outname=None,show=True):
     """Plots visibility against frequency of observation for 
     all baselines.  Bins to 125 points for each baseline.
     
@@ -117,7 +117,8 @@ def plot_vis_freq(vis,fobs,bname,outname=None,show=True):
     Returns:
     """
     (nbl,nt,nf,npol) = vis.shape
-    nx = min(nbl,5)
+    if nx is None:
+        nx = min(nbl,5)
     ny = nbl//nx
     if nbl%nx != 0: ny += 1
     
