@@ -335,18 +335,18 @@ def calc_delays(vis,df,nfavg=5,tavg=True):
           the values of the delay pixels in nanoseconds
     """
     nfbins = vis.shape[-2]//nfavg*nfavg
+    npol = vis.shape[-1]
     if tavg:
-        print(vis.shape)
         vis_ft = fftshift(fft(np.pad(vis[...,:nfbins,:].mean(1),
                                 ((0,0), (0,nfbins),(0,0))),axis=-2),axes=-2)
-        vis_ft = vis_ft.reshape(vis_ft.shape[0],-1,2*nfavg,2).mean(-2)
+        vis_ft = vis_ft.reshape(vis_ft.shape[0],-1,2*nfavg,npol).mean(-2)
     else:
         vis_ft = fftshift(fft(np.pad(vis[...,:nfbins,:],
                                 ((0,0),(0,0),(0,nfbins),(0,0)))
                               ,axis=-2),axes=-2)
         vis_ft = vis_ft.reshape(vis_ft.shape[0],
                                 vis_ft.shape[1],
-                                -1,2*nfavg,2).mean(-2)
+                                -1,2*nfavg,npol).mean(-2)
     delay_arr = fftshift(fftfreq(nfbins))/df
     delay_arr = delay_arr.reshape(-1,nfavg).mean(-1)
     

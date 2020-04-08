@@ -22,7 +22,7 @@ from astropy.time import Time
 from . import constants as ct
 from antpos.utils import *
 import h5py
-from scipy.signal import medfilt
+from scipy.ndimage.filters import median_filter
 from astropy.utils import iers
 iers.conf.iers_auto_url_mirror = ct.iers_table
 
@@ -46,8 +46,14 @@ class src():
     def __init__(self,name,ra,dec,I=1.,epoch='J2000'):
         self.name = name
         self.I = I
-        self.ra = to_deg(ra)
-        self.dec = to_deg(dec)
+        if type(ra) is str:
+            self.ra = to_deg(ra)
+        else:
+            self.ra = ra
+        if type(dec) is str:
+            self.dec = to_deg(dec)
+        else:
+            self.dec = dec
         self.epoch = epoch
 
 def to_deg(string):
@@ -344,12 +350,20 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False,
     bname = []
 #     for i in np.arange(len(aname)-1)+1:
 #         for j in np.arange(i+1):
-    for j in range(len(aname)):
-        for i in range(j,len(aname)):
-            a1 = int(aname[i])-1
-            a2 = int(aname[j])-1
-            bname.append([a2+1,a1+1])
-            blen.append(tp[a2,1:]-tp[a1,1:])
+    if dsa10:
+        for i in np.arange(9)+1:
+            for j in np.arange(i):
+                a1 = int(aname[i])-1
+                a2 = int(aname[j])-1
+                bname.append([a1+1,a2+1])
+                blen.append(tp[a1,1:]-tp[a2,1:])
+    else:
+        for j in range(len(aname)):
+            for i in range(j,len(aname)):
+                a1 = int(aname[i])-1
+                a2 = int(aname[j])-1
+                bname.append([a2+1,a1+1])
+                blen.append(tp[a2,1:]-tp[a1,1:])
     blen  = np.array(blen)
 
     if dsa10:
@@ -448,7 +462,8 @@ def extract_vis_from_psrfits(f,stmid,seg_len,antenna_order,
     # Fancy indexing can have downfalls and may change in future numpy versions
     # See issue here https://github.com/numpy/numpy/issues/9450
     # odata = dat[:,basels,:,:,0]+ 1j*dat[:,basels,:,:,1]
-    odata = dat.view(np.complex64).squeeze().swapaxes(0,1)
+    odata = dat[...,0]+1j*dat[...,1]
+    odata = odata.swapaxes(0,1)
                   
     return odata,st,mjd,I0-I1
 
@@ -748,36 +763,158 @@ def initialize_hdf5_file(f,fobs,antenna_order,t0,nbls,nchan,npol,nant):
                            data = None)
     return vis_ds, t_ds
 
-def mask_bad_channels(vis,nsamples=129,cutoff=10):
-    """Mask bad channels in visibility data
+def mask_bad_bins(vis,axis,thresh=6.0,medfilt=False,nmed=129):
+    """Mask bad channels or time bins in visibility data
     
     Args:
-      vis: array(complex)"""
-    vis2 = np.copy(vis)
-#     vis2 = np.abs(vis2)/np.mean(np.abs(vis2.reshape(vis2.shape[0],-1,vis2.shape[-1])),axis=1)[:,np.newaxis,np.newaxis,:]
-    fstd = np.std(vis2,axis=1)
-    rmean = medfilt(fstd,(1,nsamples,1))
-    good_channels = (fstd-rmean)<cutoff
-    mask = np.tile(good_channels[:,np.newaxis,...],
-                  (1,vis.shape[1],1,1))
-    return mask
+      vis: array(complex)
+        the visibility array 
+        dimensions (nbls,nt,nf,npol)
+      axis: int
+        the axis to flag in
+        axis=1 will flag bad time bins
+        axis=2 will flag bad frequency bins
+      thresh: float
+        the threshold above which to flag data 
+        anything that deviates from the median by more than
+        thresh x the standard deviation is flagged
+      medfilt: Boolean
+        whether to median filter to remove an average trend
+        if True, will median filter
+        if False, subtract the median for the baseline/pol pair
+      nmed: int
+        the size of the median filter to use
+        only used in medfilt is True
+        must be odd
+      
+    Returns:
+      good_bins: array(boolean)
+        if axis==2: (nbls,1,nf,npol) 
+        if axis==1: (nbls,nt,1,npol)
+        returns 1 where the bin is good, 
+        0 where the bin should be flagged
+      fraction_flagged: array(float), dims (nbls,npol)
+        the amount of data binned for each baseline/pol
+    """
+    assert axis==1 or axis==2 
+    avg_axis = 1 if axis==2 else 2
 
-def mask_bad_pixels(vis,ntbin=100,thresh=6.0):
-    (nbls,nt,nchan,npol)=vis.shape
-    bindata = np.copy(vis)
-    bindata = bindata[:,:nt//ntbin*ntbin,...].reshape(nbls,nt//ntbin,ntbin,nchan,npol).mean(axis=2)
-    bindata = 10*(np.log10(np.abs(bindata)))
-    #linbindata = 10**(bindata/5)
-    std = np.std(bindata,axis=2,keepdims=True)
-    med = np.median(bindata,axis=2,keepdims=True)
-    good_pixels = np.abs(bindata-med)<thresh*std
-    print(good_pixels.shape)
-    mask = np.tile(good_pixels[:,:,np.newaxis,:,:],
-                  (1,1,ntbin,1,1)).reshape(nbls,-1,nchan,npol)
-    if mask.shape[1] < nt:
-        mask = np.append(mask,np.zeros((nbls,
-                                       nt-mask.shape[1],nchan,npol)),
-                 axis=1)
-    return mask
+    # average over time first
+    vis_avg = np.abs(np.mean(vis,axis=avg_axis))
+    # median filter over frequency and remove the median trend
+    # or remove the median
+    if medfilt:
+        vis_avg_mf = median_filter(vis_avg.real,size=(1,nmed,1))
+        vis_avg -= vis_avg_mf
+    else:
+        vis_avg -= np.median(vis_avg,axis=1)
+    # calculate the standard deviation along the frequency axis
+    vis_std = np.std(vis_avg,axis=1,keepdims=True)
+    # get good channels
+    good_bins = np.abs(vis_avg)<thresh*vis_std
+    fraction_flagged = (1-good_bins.sum(axis=1)/good_bins.shape[1])
+    if avg_axis==1:
+        good_bins = good_bins[:,np.newaxis,:,:] 
+    else:
+        good_bins = good_bins[:,:,np.newaxis,:]
+    return good_bins,fraction_flagged
+
+# def mask_bad_times(vis,thresh=6.0,medfilt=False):
+#     """Mask bad channels in visibility data
+#     Args:
+#       vis: array(complex)
+#         the visibility array 
+#         dimensions (nbls,nt,nf,npol)
+#       thresh: float
+#         the threshold above which to flag data 
+#         anything that deviates from the median by more than
+#         thresh x the standard deviation is flagged
+      
+#     Returns:
+#       good_times: array(boolean)
+#         (nbls,nt,1,npol)
+#         returns 1 where the timebin is good, 
+#         0 where the timebin should be flagged
+#     """
+#     #vis2 = np.copy(vis)
+#     tbin_mean = vis.mean(axis=2,keepdims=True)
+#     total_mean = tbin_mean.mean(axis=1,keepdims=True)
+#     total_std = tbin_mean.std(axis=1,keepdims=True)
+#     #fstd = np.std(vis2,axis=1)
+#     #rmean = medfilt(fstd,(1,nsamples,1))
+#     #good_channels = (fstd-rmean)<cutoff
+#     good_times = np.abs(tbin_mean-total_mean)<thresh*total_std
+#     return good_times
+
+
+def mask_bad_pixels(vis,thresh=6.0,mask=None):
+    """Masks bad pixels that are more than thresh*std above the
+    median in each visibility.
+    
+    Args:
+      vis: array(complex)
+        dims (nbls,nt, nf, npol)
+        the visiblities to flag
+      thresh: float
+        the threshold in stds above which to flag data
+      mask: array(bool)
+        optional, dims (nbls,nt,nf,npol)
+        a mask for data already flagged
+      
+    Returns:
+      good_pixels: array(bool)  
+        (nbls,nt,nf,npol)
+      fraction_flagged: array(float)
+        (nbls,npol)
+      
+    """
+    (nbls,nt,nf,npol) = vis.shape
+    vis = np.abs(vis.reshape(nbls,-1,npol))
+    vis = vis-np.median(vis,axis=1,keepdims=True)
+    if mask is not None:
+        vis = vis*mask.reshape(nbls,-1,npol)
+    std = np.std(vis,axis=1,keepdims=True)
+    good_pixels = np.abs(vis)<thresh*std
+    fraction_flagged = 1 - good_pixels.sum(1)/good_pixels.shape[1]
+    good_pixels = good_pixels.reshape(nbls,nt,nf,npol)
+    return good_pixels,fraction_flagged
+
+# def mask_bad_pixels(vis,ntbin=100,thresh=6.0):
+#     """Masks pixels thresh*std above the median in each visibility after 
+#     binning in time.
+    
+#     Args:
+#       vis: array(complex)
+#         (nbls, nt, nf, npol)
+#         the complex visibilities
+#       ntbin: int
+#         the number of time bins to average by 
+#       thresh: float
+#         the number of stddevs above which to flag data
+#     Returns:
+#       mask: array(boolean)
+#         same dimensions as vis
+#         1 for pixels which are good, 0 for pixels which should be flagged
+#       fraction_flagged: array(float), dims (nbls,npol)
+#         the fraction of data flagged on each baseline
+#       """
+#     (nbls,nt,nchan,npol)=vis.shape
+#     bindata = np.copy(vis)
+#     bindata = bindata[:,:nt//ntbin*ntbin,...].reshape(nbls,nt//ntbin,ntbin,nchan,npol).mean(axis=2)
+#     bindata = 10*(np.log10(np.abs(bindata)))
+#     std = np.std(bindata,axis=2,keepdims=True)
+#     med = np.median(bindata,axis=2,keepdims=True)
+#     good_pixels = np.abs(bindata-med)<thresh*std
+#     mask = np.tile(good_pixels[:,:,np.newaxis,:,:],
+#                   (1,1,ntbin,1,1)).reshape(nbls,-1,nchan,npol)
+#     if mask.shape[1] < nt:
+#         mask = np.append(mask,np.zeros((nbls,
+#                                        nt-mask.shape[1],nchan,npol)),
+#                  axis=1)
+#     print('{0} % of data flagged.'.format(
+#         100*(1-np.sum(mask)/(mask.flatten().shape[0]))))
+#     fraction_flagged = (1-mask.sum(1).sum(1)/(
+#         mask.reshape(mask.shape[0],-1,mask.shape[-1]).shape[1]))
+#     return mask,fraction_flagged
 
 
