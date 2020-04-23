@@ -77,7 +77,7 @@ def gain_calibration_blbased(msname,sourcename,tga='600s',tgp='inf',
                              format(msname,sourcename))
     error += not cb.setsolve(type='MF',table='{0}_{1}_bcal'.
                              format(msname,sourcename),
-                             refant=refant,apmode='a')#,solnorm=True)
+                             refant=refant,apmode='a',solnorm=True)
                             #solint='651.04167kHz')
     error += not cb.solve()
     error += not cb.close()
@@ -352,7 +352,7 @@ def calc_delays(vis,df,nfavg=5,tavg=True):
     
     return vis_ft, delay_arr
 
-def get_bad_times(msname,sourcename,nant,tint='59s'):
+def get_bad_times(msname,sourcename,nant,tint='59s',refant=0):
     """Use delays on short time periods to flag bad antenna/time
     pairs in the calibrator data. 
     
@@ -380,7 +380,7 @@ def get_bad_times(msname,sourcename,nant,tint='59s'):
     cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     error += not cb.setsolve(type='K',t=tint,
-        refant=0,table='{0}_{1}_2kcal'.format(msname,sourcename))
+        refant=refant,table='{0}_{1}_2kcal'.format(msname,sourcename))
     error += not cb.solve()
     error += not cb.close()
     # Pull the solutions for the entire timerange and the 
