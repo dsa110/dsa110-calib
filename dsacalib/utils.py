@@ -241,7 +241,6 @@ def read_psrfits_file(fl,source,dur=50*u.min,antenna_order=None,
             antenna_order = \
             get_header_info(f,verbose=True,
             antpos=antpos,antenna_order=antenna_order,dsa10=False)
-        fobs = 1.28 + (0.5+np.arange(nchan))*(1.53-1.28)/nchan
         tstart = (utc_start + tstart_offset*u.s).mjd
         tstop = (utc_start + tstop_offset*u.s).mjd
         vis,lst,mjd,transit_idx = extract_vis_from_psrfits(f,
@@ -252,14 +251,16 @@ def read_psrfits_file(fl,source,dur=50*u.min,antenna_order=None,
     
     # Now we have to extract the correct baselines
     nant = len(antenna_order)
-    basels = list(range((nant*(nant+1))//2))
     if not autocorrs:
+        basels = list(range((nant*(nant+1))//2))
         auto_bls = get_autobl_indices(nant)
+        if not dsa10:        
+            auto_bls = [(len(basels)-1)-auto_bl for auto_bl in auto_bls]
         for i in auto_bls:
             basels.remove(i)
-    vis = vis[basels,...]
-    blen = blen[basels,...]
-    bname = [bname[i] for i in basels]
+        vis = vis[basels,...]
+        blen = blen[basels,...]
+        bname = [bname[i] for i in basels]
     
     # Reorder the visibilities to fit with CASA ms convention
     if dsa10:
@@ -280,7 +281,6 @@ def read_psrfits_file(fl,source,dur=50*u.min,antenna_order=None,
 
         
     if badants is not None:
-        #badants = [str(ba) for ba in badants]
         for badant in badants:
             antenna_order.remove(badant)
             
@@ -335,13 +335,19 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False,
     """
     if dsa10:
         aname = f.header['ANTENNAS'].split('-')
+        aname = [int(an) for an in aname]
     else:
         assert antenna_order is not None, 'Antenna order must be provided'
         aname = antenna_order
 
     nchan = f.header['NCHAN']
-    fobs  = ((f.header['FCH1']*1e6-(np.arange(nchan)+0.5)*2.*2.5e8/2048.)*u.Hz
+    if dsa10:
+        fobs  = ((f.header['FCH1']*1e6-(np.arange(nchan)+0.5)*2.*2.5e8/nchan)*u.Hz
             ).to_value(u.GHz)
+    else:
+        fobs = ((f.header['FCH1']*1e6-
+                (np.arange(nchan)+0.5)*2.5e8/8192)*
+                u.Hz).to_value(u.GHz)
     nt    = f.header['NAXIS2']
     tsamp = f.header['TSAMP']
 
@@ -351,8 +357,9 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False,
 #     for i in np.arange(len(aname)-1)+1:
 #         for j in np.arange(i+1):
     if dsa10:
-        for i in np.arange(9)+1:
-            for j in np.arange(i):
+        # currently doesn't include autocorrelations
+        for i in np.arange(10):
+            for j in np.arange(i+1):
                 a1 = int(aname[i])-1
                 a2 = int(aname[j])-1
                 bname.append([a1+1,a2+1])

@@ -54,7 +54,7 @@ def calc_uvw(b, tobs, src_epoch, src_lon, src_lat,obs='OVRO_MMA'):
     if obs is not None:
         me.doframe(me.observatory(obs))
     
-    if src_lon.ndim > 0:
+    if type(src_lon.ndim) is not float and src_lon.ndim > 0:
         assert src_lon.ndim == 1
         assert src_lon.shape[0] == nt
         assert src_lat.shape[0] == nt
@@ -225,10 +225,41 @@ def visibility_sky_model(vis_shape,vis_dtype,b,sources,tobs,fobs,lst,pt_dec):
     visibility_sky_model_worker(vis_model,bws,famps,ct.f0,ct.spec_idx,fobs)
     return vis_model
 
-def fringestop(vis,b,source,tobs,fobs,return_model=False):
+def fringestop(vis,b,source,tobs,fobs,pt_dec,return_model=False):
+    """Fringestop on a source by dividing by a phase only
+    model to the input visibilities, vis, which are 
+    modified in place.
+    
+    Args:
+      vis: array(complex)
+        (baselines,time,freq,pol)
+        the visibilities to be fringestopped
+        modified in place
+      b: array(3, nbls)
+        the itrf coordinates of the baselines
+      source: src class instance
+        the source to fringestop on
+      tobs: array(float)
+        the observation time (center of each bin) 
+        in mjd
+      fobs: array(float)
+        the observing frequency (center of each bin)
+        in GHz
+      pt_dec: float
+        the declination the array is pointing at, in rad
+      return_model: boolean
+        if true, the fringestopping model is returned
+    Returns:
+      Nothing, unless return_model is True, in which case
+      the phase-only visibility model by which the 
+      visibilities were divided is returned.
+    """
     fobs,tobs,b = set_dimensions(fobs,tobs,b)
     bws = np.zeros((len(b),len(tobs),1,1))
     bu,bv,bw  = calc_uvw(b, tobs, source.epoch, source.ra, source.dec)
+    # note that the time shouldn't matter bleow
+    bup,bvp, bwp = calc_uvw(b,tobs[len(tobs)//2],'HADEC',0.*u.rad,pt_dec*u.rad)
+    bw = bw - bwp
     vis_model = np.exp(2j*np.pi/ct.c_GHz_m * fobs * bw[...,np.newaxis,np.newaxis])
     vis /= vis_model
     if return_model:

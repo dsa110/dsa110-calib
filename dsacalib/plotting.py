@@ -11,6 +11,7 @@ import numpy as np
 import astropy.units as u
 import dsacalib.constants as ct
 import casatools as cc
+from dsacalib.utils import get_autobl_indices
 
 
 def plot_dyn_spec(vis,fobs,mjd,bname,normalize=False,
@@ -122,8 +123,8 @@ def plot_vis_freq(vis,fobs,bname,nx=None,outname=None,show=True):
     ny = nbl//nx
     if nbl%nx != 0: ny += 1
     
-    dplot = vis[:,:,:nf//125*125,:].mean(1).reshape(nbl,125,-1,npol).mean(3)
-    x = fobs[:nf//125*125].reshape(125,-1).mean(-1)
+    dplot = vis.mean(1) #vis[:,:,:nf//125*125,:].mean(1).reshape(nbl,125,-1,npol).mean(3)
+    x = fobs#[:nf//125*125].reshape(125,-1).mean(-1)
         
     fig,ax = plt.subplots(ny,nx,figsize=(8*nx,8*ny))
     ax = ax.flatten()
@@ -553,6 +554,8 @@ def plot_antenna_delays(msname,calname,antenna_order,outname=None,show=True):
     return times, antenna_delays, kcorr
 
 def plot_gain_calibration(msname,calname,antenna_order,
+                          bname=None, blbased=False,
+                          plabels=['A','B'],
                           outname=None,show=True):
     """Plot the gain calibration solution
     
@@ -561,6 +564,11 @@ def plot_gain_calibration(msname,calname,antenna_order,
           the calibrator
         antenna_order: arr(int) or list(int)
           the order of the antennas 
+        blbased: boolean
+          whether or not the gain solutions are baseline 
+          based.  True = baseline based; False = antenna based
+        plabels: list
+          the labels for the polarizations
         outname: str
           the base to use for the name of the 
           png file the plot is saved to.  The plot will 
@@ -573,63 +581,76 @@ def plot_gain_calibration(msname,calname,antenna_order,
     Returns:
     """
     nant = len(antenna_order)
-    ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    if blbased:
+        labels = []
+        for i in range(nant):
+            for j in range(i,nant):
+                labels += [[i,j]]
+    else:
+        labels = antenna_order
+    
+    nlab = len(labels)
+    idxs_to_plot = list(range(nlab))
+    if blbased:
+        autocorr_idx = get_autobl_indices(nant)
+        autocorr_idx = [(nlab-1)-aidx for aidx in autocorr_idx]
+        for idx in autocorr_idx:
+            idxs_to_plot.remove(idx)
+    
     error = 0
     
     tb = cc.table()
     error += not tb.open('{0}_{1}_gpcal'.format(msname,calname))
     gain_phase = tb.getcol('CPARAM')
     npol = gain_phase.shape[0]
-    gain_phase = gain_phase.reshape(npol,-1,nant)
-    time_phase = tb.getcol('TIME').reshape(-1,nant)[:,0]
+    gain_phase = gain_phase.reshape(npol,-1,nlab)
+    time_phase = tb.getcol('TIME').reshape(-1,nlab)[:,0]
     error += not tb.close()
 
     tb = cc.table()
     error += not tb.open('{0}_{1}_gacal'.format(msname,calname))
     gain_amp = tb.getcol('CPARAM')
-    gain_amp = gain_amp.reshape(npol,-1,nant)
-    time = tb.getcol('TIME').reshape(-1,nant)[:,0]
+    gain_amp = gain_amp.reshape(npol,-1,nlab)
+    time = tb.getcol('TIME').reshape(-1,nlab)[:,0]
     error += not tb.close()
     t0 = time[0]
     time = ((time - t0)*u.s).to_value(u.min)
     time_phase = ((time_phase - t0)*u.s).to_value(u.min)
     
+    ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    lcyc = ['-',':']
     fig,ax = plt.subplots(1,2,figsize=(16,6),sharex=True)
-    for i in range(nant):
-        if gain_amp.shape[1]>1:
-            ax[0].plot(time,np.abs(gain_amp[0,:,i]),
-                       label=antenna_order[i],
-                       color=ccyc[i%len(ccyc)])
-            ax[0].plot(time,np.abs(gain_amp[1,:,i]),
+    
+    if gain_amp.shape[1]>1:
+        tplot = time
+        gplot = gain_amp
+    else:
+        tplot = [0,1]
+        gplot = np.tile(gain_amp,[1,2,1])
+        
+    for i,bidx in enumerate(idxs_to_plot):
+        for pidx in range(npol):
+            ax[0].plot(tplot,np.abs(gplot[pidx,:,bidx]),
+                       label='{0} {1}'.format(labels[bidx],
+                        plabels[pidx]),
+                       color=ccyc[i%len(ccyc)],ls=lcyc[pidx])
+
+            
+    if gain_phase.shape[1]>1:
+        tplot = time_phase
+        gplot = gain_phase
+    else:
+        tplot = [tplot[0],tplot[-1]] # use the time from the gains
+        gplot = np.tile(gain_phase,[1,2,1])
+    for i,bidx in enumerate(idxs_to_plot):
+        for pidx in range(npol):
+            ax[1].plot(tplot,np.angle(gplot[pidx,:,bidx]),
+                       label='{0} {1}'.format(labels[bidx],
+                            plabels[pidx]),
                        color=ccyc[i%len(ccyc)],
-                      ls=':')
-        else:
-            ax[0].plot([time[0],time[-1]],
-                       [np.abs(gain_amp[0,0,i]),
-                        np.abs(gain_amp[0,0,i])],
-                          color=ccyc[i%len(ccyc)])
-            ax[0].plot([time[0],time[-1]],
-                       [np.abs(gain_amp[1,0,i]),
-                        np.abs(gain_amp[1,0,i])],
-                          color=ccyc[i%len(ccyc)],ls = ':')
-        if gain_phase.shape[1]>1:
-            ax[1].plot(time_phase,
-                   np.angle(gain_phase[0,:,i]),
-                       color=ccyc[i%len(ccyc)])
-            ax[1].plot(time_phase,
-                   np.angle(gain_phase[1,:,i]),
-                       color=ccyc[i%len(ccyc)],
-                  ls = ':')
-        else:
-            ax[1].plot([time[0],time[-1]],
-                       [np.angle(gain_phase[0,0,i]),
-                        np.angle(gain_phase[0,0,i])],
-                  color=ccyc[i%len(ccyc)])
-            ax[1].plot([time[0],time[-1]],
-                       [np.angle(gain_phase[1,0,i]),
-                        np.angle(gain_phase[1,0,i])],
-                          color=ccyc[i%len(ccyc)],ls = ':')
-    ax[0].set_xlim(time[0],time[-1])
+                      ls = lcyc[pidx])
+
+    ax[0].set_xlim(tplot[0],tplot[-1])
     ax[1].set_ylim(-np.pi,np.pi)
     ax[0].legend(ncol=3,fontsize=12)
     ax[0].set_xlabel('time (min)')
@@ -642,32 +663,75 @@ def plot_gain_calibration(msname,calname,antenna_order,
         plt.close()
     if error > 0:
         print('{0} errors occured'.format(error))
-    return
+    return time,gain_amp,gain_phase,labels,t0
 
 def plot_bandpass(msname,calname,antenna_order,fobs,
+                  blbased=False,plabels=['A','B'],
                  outname=None,show=True):
+    """Plot the bandpass calibration solution
+    
+    Args:
+        source: src class
+          the calibrator
+        antenna_order: arr(int) or list(int)
+          the order of the antennas 
+        blbased: boolean
+          whether or not the gain solutions are baseline 
+          based.  True = baseline based; False = antenna based
+        fobs: arr(float)
+          the observing frequencies in GHz
+        plabels: list
+          the labels for the polarizations
+        outname: str
+          the base to use for the name of the 
+          png file the plot is saved to.  The plot will 
+          be saved to <outname>_gaincal.png if an outname is
+          provided, otherwise no plot will be saved.
+        show: boolean
+          if False the plot will be closed.  If using a notebook
+          and show is True, the plot will show in the notebook
+    
+    Returns:
+    """    
     nant = len(antenna_order)
-    ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    if blbased:
+        labels = []
+        for i in range(nant):
+            for j in range(i,nant):
+                labels += [[i,j]]
+    else:
+        labels = antenna_order
+    
+    nlab = len(labels)
+    idxs_to_plot = list(range(nlab))
+    if blbased:
+        autocorr_idx = get_autobl_indices(nant)
+        autocorr_idx = [(nlab-1)-aidx for aidx in autocorr_idx]
+        for idx in autocorr_idx:
+            idxs_to_plot.remove(idx)
+    
     error = 0
     
     tb = cc.table()
     error += not tb.open('{0}_{1}_bcal'.format(msname,calname))
     bpass = tb.getcol('CPARAM')
+    npol = bpass.shape[0]
     error += not tb.close()
     
+    ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    lcyc = ['-',':']
     fig,ax = plt.subplots(1,2,figsize=(16,6),sharex=True)
-    for i in range(nant):
-        ax[0].plot(fobs,np.abs(bpass[0,:,i]),'.',
-                 label=antenna_order[i],alpha=0.5,
+    for i,bidx in enumerate(idxs_to_plot):
+        for pidx in range(npol): 
+            ax[0].plot(fobs,np.abs(bpass[pidx,:,bidx]),'.',
+                 label='{0} {1}'.format(labels[bidx],
+                            plabels[pidx]),
+                alpha=0.5,ls=lcyc[pidx],
                 color=ccyc[i%len(ccyc)])
-        ax[0].plot(fobs,np.abs(bpass[1,:,i]),'x',
-                alpha=0.5,
-                color=ccyc[i%len(ccyc)])
-        ax[1].plot(fobs,np.angle(bpass[0,:,i]),'.',
-                 label=antenna_order[i],alpha=0.5,
-                color=ccyc[i%len(ccyc)])
-        ax[1].plot(fobs,np.angle(bpass[1,:,i]),'x',
-                alpha=0.5,
+            ax[1].plot(fobs,np.angle(bpass[pidx,:,bidx]),'.',
+                 label='{0} {1}'.format(labels[bidx],
+                                        plabels[pidx]),
+                       alpha=0.5,ls=lcyc[pidx],
                 color=ccyc[i%len(ccyc)])
     ax[0].set_xlabel('freq (GHz)')
     ax[1].set_xlabel('freq (GHz)')
@@ -680,5 +744,5 @@ def plot_bandpass(msname,calname,antenna_order,fobs,
         plt.close()
     if error > 0:
         print('{0} errors occured'.format(error))
-    return
+    return bpass
     
