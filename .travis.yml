@@ -20,9 +20,8 @@ install:
     - conda config --set always_yes yes --set changeps1 no
     - conda update -q conda
     - conda info -a
-    - conda config --add channels conda-forge
-    - pip install casatools
-    - conda install codecov
+    - conda env create -f environment.yml
+    - conda activate casa6
     - python setup.py install
 
 before_script:
@@ -30,6 +29,7 @@ before_script:
   - git config --global user.name "Travis-CI"
 
 script:
+  - conda install coverage
   - coverage run pytest
 
 after_success:
