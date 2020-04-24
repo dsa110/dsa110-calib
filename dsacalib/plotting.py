@@ -10,6 +10,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import astropy.units as u
 import dsacalib.constants as ct
+# Always import scipy before importing casatools
+import scipy 
 import casatools as cc
 from dsacalib.utils import get_autobl_indices
 

@@ -14,6 +14,8 @@ visibility in CASA measurement sets
 # To do:
 # Replace to_deg w/ astropy versions
 
+# always import scipy before importing casatools
+import scipy
 import casatools as cc
 import astropy.io.fits as pf
 import astropy.units as u
@@ -22,9 +24,9 @@ from astropy.time import Time
 from . import constants as ct
 from antpos.utils import *
 import h5py
-from scipy.ndimage.filters import median_filter
 from astropy.utils import iers
 iers.conf.iers_auto_url_mirror = ct.iers_table
+from scipy.ndimage.filters import median_filter
 
 class src():
     """ Simple class for holding source parameters.
@@ -541,7 +543,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         obstm: float
           start time of observation in MJD 
         ofile: str
-          name for the created ms
+          name for the created ms.  will write to <ofile>.ms
         bname: list(int)
           the list of baselines names in the form [[ant1, ant2],...]
         antenna_order: list()
@@ -635,7 +637,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     
     print(obstm-dt)
     print('beginning simulation')
-    simulate_ms(ofile,tname,anum,xx,yy,zz,diam,mount,
+    simulate_ms('{0}.ms'.format(ofile),tname,anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
                nchannels,integrationtime,obstm,dt,source,
                stoptime)
@@ -645,7 +647,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
 
     # Check that the time is correct
     ms = cc.ms()
-    ms.open(ofile)
+    ms.open('{0}.ms'.format(ofile))
     tstart_ms  = ms.summary()['BeginTime']
     ms.close()
     
@@ -653,7 +655,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         dt = dt + (tstart_ms - obstm)
         print('Updating casa time offset to {0}s'.format(dt*ct.seconds_per_day))
         print('Rerunning simulator')
-        simulate_ms(ofile,tname,anum,xx,yy,zz,diam,mount,
+        simulate_ms('{0}.ms'.format(ofile),tname,anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
                nchannels,integrationtime,obstm,dt,source,
                stoptime)
@@ -662,7 +664,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     print('modifying visibilities')
     # Reopen the measurement set and write the observed visibilities
     ms = cc.ms()
-    ms.open(ofile,nomodify=False)
+    ms.open('{0}.ms'.format(ofile),nomodify=False)
     ms.selectinit(datadescid=0)
     
     rec = ms.getdata(["data"]) 
@@ -673,7 +675,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     ms.close()
     
     ms = cc.ms()
-    ms.open(ofile,nomodify=False)
+    ms.open('{0}.ms'.format(ofile),nomodify=False)
     if model is None:
         model = np.ones(vis.shape,dtype=complex)
     else:
@@ -687,7 +689,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     print('confirming time correction')
     # Check that the time is correct
     ms = cc.ms()
-    ms.open(ofile)
+    ms.open('{0}.ms'.format(ofile))
     tstart_ms  = ms.summary()['BeginTime']
     tstart_ms2 = ms.getdata('TIME')['time'][0]/ct.seconds_per_day
     ms.close()
