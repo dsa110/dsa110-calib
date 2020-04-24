@@ -6,7 +6,8 @@ Dana Simard, dana.simard@astro.caltech.edu 11/2019
 Casa-based routines for calculating and applying fringe-stopping phases
 to visibilities
 """
-
+# always import scipy before importing casatools
+import scipy
 import casatools as cc
 import numpy as np
 import astropy.units as u

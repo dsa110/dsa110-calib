@@ -5,12 +5,13 @@ Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 
 Casa-based routines to calibrate visibilities using point sources
 """
-
+# Always import scipy before casatools
+import scipy 
 import casatools as cc
 import astropy.units as u
 import numpy as np
 import astropy.constants as c
-from . import constants as ct
+from dsacalib import constants as ct
 from scipy.fftpack import fft,fftshift,fftfreq
 
 def delay_calibration(msname,sourcename,refant='0',t='inf'):
