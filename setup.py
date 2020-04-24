@@ -7,7 +7,8 @@ setup(name='dsa110-calib',
       author_email='dana.simard@astro.caltech.edu',
       packages=['dsacalib'],
       package_data={'dsacalib':['data/*']},
-      requirements=['casatools','astropy','scipy',
+      install_requires=['casatools','astropy','scipy',
                     'numba','dsa110-antpos','h5py',
                     'matplotlib'],
-      zip_safe=False)
+      dependency_links = [
+          "https://github.com/dsa110/dsa110-antpos.git"])
