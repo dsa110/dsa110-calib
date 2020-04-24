@@ -32,12 +32,10 @@ before_script:
   - git config --global user.name "Travis-CI"
 
 script:
-  - conda install coverage
   - coverage run -m pytest
 
 after_success:
   - coverage report
-  - conda install codecov
   - codecov
 
 notifications:
