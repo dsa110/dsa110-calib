@@ -33,7 +33,7 @@ before_script:
 
 script:
   - conda install coverage
-  - coverage run pytest
+  - coverage run -m pytest
 
 after_success:
   - coverage report
