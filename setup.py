@@ -11,4 +11,5 @@ setup(name='dsa110-calib',
                     'numba','dsa110-antpos','h5py',
                     'matplotlib'],
       dependency_links = [
-          "https://github.com/dsa110/dsa110-antpos.git"])
+          "https://github.com/dsa110/dsa110-antpos/tarball/master#egg=antpos-1.0",
+          "https://casa-pip.nrao.edu/repository/pypi-casa-release/simple/casatools"])
