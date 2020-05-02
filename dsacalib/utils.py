@@ -28,6 +28,11 @@ from astropy.utils import iers
 iers.conf.iers_auto_url_mirror = ct.iers_table
 from scipy.ndimage.filters import median_filter
 
+logger = dsl.DsaSyslogger()    
+logger.subsystem("software")
+logger.app("dsacalib")
+de = dsa_store.DsaStore()
+
 class src():
     """ Simple class for holding source parameters.
     
@@ -927,3 +932,51 @@ def mask_bad_pixels(vis,thresh=6.0,mask=None):
 #     return mask,fraction_flagged
 
 
+
+def read_caltable(tablename, mode):
+    """    *not working yet*
+    Read a table for calibrations of type caltype
+    tablename can be any CASA calibration table.
+    mode defines what is read and returned.
+    Options are 'amps', 'delays', 'times', 'source'.
+    Solutions are return as arrays of mjd time
+    or (npol, nant?) or string name
+    """
+
+    tb = cc.table()
+    print('Opening table {0} as type {1}'.format(tablename, caltype))
+    tb.open(tablename)
+
+    if mode == 'delays':
+        vals = tb.getcol('FPARAM')
+    elif mode == 'amps':
+        vals = tb.getcol('CPARAM')
+    elif mode == 'time':
+        vals = (tb.getcol('TIME')*u.s).to_value(u.d)
+    elif mode == 'source':
+        vals = something...
+
+    tb.close()
+    return vals
+
+
+def caltable_to_etcd(tablename):
+    """ Copy calibration values from table to etcd
+    """
+
+    amps = read_caltable(tablename, 'amps')
+    delays = read_caltable(tablename, 'delays')
+    times = read_caltable(tablename, 'times')
+    source = read_caltable(tablename, 'calsource')
+
+    # *need input on this*
+    assert len(times) == amps.shape[1]
+    assert len(times) == delays.shape[1]
+
+    for i, time in enumerate(times):
+        gainamp = amps[i]
+        delay = delays[i]
+        dd = {'gainamp': gainamp, 'delay': delay, 'calsource': source, 'caltime': time}
+        de.put_dict('/mon/calibration/{0}{1}'.format(antnum, pol.lower()), dd)
+
+        
