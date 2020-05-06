@@ -42,10 +42,17 @@ class src():
           declination e.g. "+73d00m45.7s"
         epoch: str
           the epoch of the ra and dec, default "J2000"
+        pa: float
+          the position angle in degrees
+        maj_axis: float
+          the major axis in arcseconds
+        min_axis: float
+          the minor axis in arcseconds
            
     Returns:
     """
-    def __init__(self,name,ra,dec,I=1.,epoch='J2000'):
+    def __init__(self,name,ra,dec,I=1.,epoch='J2000',
+                pa=None,maj_axis=None,min_axis=None):
         self.name = name
         self.I = I
         if type(ra) is str:
@@ -57,6 +64,15 @@ class src():
         else:
             self.dec = dec
         self.epoch = epoch
+        self.pa = pa
+        if maj_axis is None:
+            self.maj_axis = None
+        else:
+            self.maj_axis = maj_axis*u.arcsecond
+        if min_axis is None:
+            self.min_axis = None
+        else:
+            self.min_axis = min_axis*u.arcsecond
 
 def to_deg(string):
     """ Converts a string direction to degrees.
