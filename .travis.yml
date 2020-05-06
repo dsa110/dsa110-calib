@@ -20,9 +20,11 @@ install:
     - conda config --set always_yes yes --set changeps1 no
     - conda update -q conda
     - conda info -a
-    - conda config --add channels conda-forge
-    - pip install casatools
-    - conda install codecov
+    - conda env create -f environment.yml
+    - conda activate casa6
+    - pip install casatools --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
+    - pip install casatasks --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
+    - pip install casadata --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
     - python setup.py install
 
 before_script:
@@ -30,11 +32,10 @@ before_script:
   - git config --global user.name "Travis-CI"
 
 script:
-  - coverage run pytest
+  - coverage run -m pytest
 
 after_success:
   - coverage report
-  - conda install codecov
   - codecov
 
 notifications:
