@@ -509,9 +509,10 @@ def plot_antenna_delays(msname,calname,antenna_order,outname=None,show=True):
         times: arr, real
           the times at which the antenna delays are calculated in mjd
         antenna_delays: arr, real
-          the delays of the antennas solved every 59s
+          the delays of the antennas solved every 59s in nanoseconds
         kcorr: arr, real
           the applied delay correction calculated using the entire time
+          in nanoseconds
     """
     nant = len(antenna_order)
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -720,21 +721,28 @@ def plot_bandpass(msname,calname,antenna_order,fobs,
     npol = bpass.shape[0]
     error += not tb.close()
     
+    if bpass.shape[1]!=fobs.shape[0]:
+        nint = fobs.shape[0]//bpass.shape[1]
+        fobs_plot = np.mean(fobs[:nint]) + \
+            np.arange(bpass.shape[1])*np.median(np.diff(fobs))*nint
+    else:
+        fobs_plot = fobs.copy()
+
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
     lcyc = ['-',':']
     fig,ax = plt.subplots(1,2,figsize=(16,6),sharex=True)
     for i,bidx in enumerate(idxs_to_plot):
         for pidx in range(npol): 
-            ax[0].plot(fobs,np.abs(bpass[pidx,:,bidx]),'.',
-                 label='{0} {1}'.format(labels[bidx],
+            ax[0].plot(fobs_plot,np.abs(bpass[pidx,:,bidx]),'.',
+                 label='{0}{1}'.format(labels[bidx],
                             plabels[pidx]),
                 alpha=0.5,ls=lcyc[pidx],
                 color=ccyc[i%len(ccyc)])
-            ax[1].plot(fobs,np.angle(bpass[pidx,:,bidx]),'.',
-                 label='{0} {1}'.format(labels[bidx],
+            ax[1].plot(fobs_plot,np.angle(bpass[pidx,:,bidx]),'.',
+                 label='{0}{1}'.format(labels[bidx],
                                         plabels[pidx]),
-                       alpha=0.5,ls=lcyc[pidx],
-                color=ccyc[i%len(ccyc)])
+                 alpha=0.5,ls=lcyc[pidx],
+                 color=ccyc[i%len(ccyc)])
     ax[0].set_xlabel('freq (GHz)')
     ax[1].set_xlabel('freq (GHz)')
     ax[0].set_ylabel('B cal amp')
@@ -744,7 +752,9 @@ def plot_bandpass(msname,calname,antenna_order,fobs,
         plt.savefig('{0}_bandpass.png'.format(outname))
     if not show:
         plt.close()
+    
     if error > 0:
         print('{0} errors occured'.format(error))
+        
     return bpass
     

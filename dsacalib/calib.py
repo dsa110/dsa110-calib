@@ -241,7 +241,48 @@ def flag_antenna(msname,antenna,datacolumn='data',pol=None):
         print('{0} errors occured during calibration'.format(error))
     return
 
+def reset_flags(msname,datacolumn=None):
+    """Reset all data to be unflagged.
+    
+    Args:
+      msname: str
+        the name of the measurement set to open
+        and reset flags for.
+        will open <msname>.ms
+      datacolumn: str
+        the datacolumn to reset flags for.
+        'data', 'model', or 'corrected'
+    
+    Returns:
+    """
+    error = 0 
+    ag = cc.agentflagger.agentflagger()
+    error += not ag.open('{0}.ms'.format(msname))
+    error += not ag.selectdata()
+    rec = {}
+    rec['mode']='unflag'
+    if datacolumn is not None:
+        rec['datacolumn']=datacolumn
+    error += not ag.parseagentparameters(rec)
+    error += not ag.init()
+    error += not ag.run()
+    error += not ag.done()
+    if error > 0:
+        print('{0} errors occured during flagging'.format(error))
+    return
+
 def flag_zeros(msname,datacolumn='data'):
+    """Flags all zeros in data
+    
+    Args:
+      msname: str
+        the measurement set name (will open <msname>.ms)
+      datacolumn: str
+        the name of the datacolumn.  
+        ('data', 'model', or 'corrected')
+    
+    Returns:
+    """
     error = 0 
     ag = cc.agentflagger()
     error += not ag.open('{0}.ms'.format(msname))
@@ -443,3 +484,17 @@ def apply_calibration(msname,calname,msnamecal=None):
     if error > 0:
         print('{0} errors occured during calibration'.format(error))
     return
+
+def fill_antenna_gains(gains):
+    """Fills in the autocorr gains after baseline-based gain 
+    calibration.
+    
+    Args:
+      gains: array(complex)
+        the gain table with the 
+    """
+    assert gains.shape[0]==6,'Will only calculate antenna gains for trio'
+    gains[0] = np.conjugate(gains[1])*gains[2]/gains[4]
+    gains[3] = gains[1]*gains[4]/gains[2]
+    gains[5] = gains[2]*np.conjugate(gains[4])/gains[1]
+    return gains

@@ -308,14 +308,17 @@ def divide_visibility_sky_model(vis,b, sources, tobs, fobs,lst,pt_dec,
     else:
         return
     
-def amplitude_sky_model(source,lst,pt_dec,fobs):
+def amplitude_sky_model(source,ant_ra,pt_dec,fobs,
+                        dish_dia=4.65,spind=0.7):
     """Computes the amplitude sky model due to the primary beam response 
     for a single source.
     
     Args:
       source: src class instance
         the source to model
-      lst: array(float)
+      ant_ra: array(float)
+        the right ascension pointing of the antenna in each time bin
+        of the observation, in radians.  if az=0 deg or az=180 deg, this is 
         the lst of each time bin in the observation, in radians
       pt_dec: float
         the pointing declination of the observation, in radians
@@ -326,8 +329,10 @@ def amplitude_sky_model(source,lst,pt_dec,fobs):
     Returns:
       the amplitude sky model
     """
-    return source.I * pb_resp(lst,pt_dec,source.ra.to_value(u.rad),
-                           source.dec.to_value(u.rad),fobs)
+    # Should add spectral index 
+    return source.I * (fobs/1.4)**(-spind) * pb_resp(ant_ra,pt_dec,
+                source.ra.to_value(u.rad),
+                source.dec.to_value(u.rad),fobs,dish_dia)
     
 def pb_resp(ant_ra,ant_dec,src_ra,src_dec,freq,dish_dia=4.65):
     """ Compute the primary beam response

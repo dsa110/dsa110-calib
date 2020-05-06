@@ -47,10 +47,17 @@ class src():
           declination e.g. "+73d00m45.7s"
         epoch: str
           the epoch of the ra and dec, default "J2000"
+        pa: float
+          the position angle in degrees
+        maj_axis: float
+          the major axis in arcseconds
+        min_axis: float
+          the minor axis in arcseconds
            
     Returns:
     """
-    def __init__(self,name,ra,dec,I=1.,epoch='J2000'):
+    def __init__(self,name,ra,dec,I=1.,epoch='J2000',
+                pa=None,maj_axis=None,min_axis=None):
         self.name = name
         self.I = I
         if type(ra) is str:
@@ -62,6 +69,15 @@ class src():
         else:
             self.dec = dec
         self.epoch = epoch
+        self.pa = pa
+        if maj_axis is None:
+            self.maj_axis = None
+        else:
+            self.maj_axis = maj_axis*u.arcsecond
+        if min_axis is None:
+            self.min_axis = None
+        else:
+            self.min_axis = min_axis*u.arcsecond
 
 def to_deg(string):
     """ Converts a string direction to degrees.
@@ -633,6 +649,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     # checking the order of baselines in bname
     idx_order = []
     autocorr = True if [anum[0],anum[0]] in list(bname) else False
+
     for i in range(len(anum)):
         for j in range(i if autocorr else i+1,len(anum)):
             idx_order += [bname.index([anum[i],anum[j]])]
@@ -640,7 +657,6 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         'Visibilities not ordered by baseline'
     anum = [str(a) for a in anum]
     
-    print(obstm-dt)
     print('beginning simulation')
     simulate_ms('{0}.ms'.format(ofile),tname,anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
