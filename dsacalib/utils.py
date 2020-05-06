@@ -948,51 +948,95 @@ def mask_bad_pixels(vis,thresh=6.0,mask=None):
 #     return mask,fraction_flagged
 
 
-
-def read_caltable(tablename, mode):
-    """    *not working yet*
-    Read a table for calibrations of type caltype
-    tablename can be any CASA calibration table.
-    mode defines what is read and returned.
-    Options are 'amps', 'delays', 'times', 'source'.
-    Solutions are return as arrays of mjd time
-    or (npol, nant?) or string name
+def read_caltable(tablename,nbls,cparam=False):
     """
-
+    Read a casa calibration table and return 
+    the time (or None if not in the table) and the value of the 
+    calibration parameter.
+    
+    Args:
+      tablename: str
+        the full path to the casa table
+      nbls: int
+        the number of baselines in the casa table 
+        calculate from the number of antennas, nant:
+          for delay calibration, nbls=nant
+          for antenna-based gain/bandpass calibration, nbls=nant 
+          for baseline-based gain/bandpass calibration, nbls=(nant*(nant+1))//2
+      cparam: boolean
+        whether the parameter of interest is complex (cparam=True) or
+        a float (cparam=False)
+          for delay calibration, cparam=False
+          for gain/bandpass calibratino, cparam=True
+          
+    Returns:
+      time: array(float) or None
+        shape (nt,nbls)
+        the times at which each solution is calculated, mjd
+        None if no time given in the table
+      val: array(float) or array(complex)
+        shape may be (npol,nt,nbls) or (npol,1,nbls) (for delay or gain cal)
+          or (npol,nf,nbls) where nf is frequency (for bandpass cal)
+        the values of the calibration parameter
+    """
+    param_type = 'CPARAM' if cparam else 'FPARAM'
+    
     tb = cc.table()
-    print('Opening table {0} as type {1}'.format(tablename, caltype))
+    print('Opening table {0} as type {1}'.format(tablename, 
+                                            param_type))
     tb.open(tablename)
-
-    if mode == 'delays':
-        vals = tb.getcol('FPARAM')
-    elif mode == 'amps':
-        vals = tb.getcol('CPARAM')
-    elif mode == 'time':
-        vals = (tb.getcol('TIME')*u.s).to_value(u.d)
-    elif mode == 'source':
-        vals = something...
-
+    if 'TIME' in tb.colnames():
+        time = (tb.getcol('TIME').reshape(-1,nbls)*u.s).to_value(u.d)
+    else:
+        time = None
+    vals = tb.getcol(param_type)
+    vals = vals.reshape(vals.shape[0],-1,nbls)
     tb.close()
-    return vals
+    
+    return time,vals
 
-
-def caltable_to_etcd(tablename):
+def caltable_to_etcd(msname,calname,antenna_order,
+                    baseline_cal=False,pol=['A','B']):
     """ Copy calibration values from table to etcd
+    
+    Not working yet.
     """
-
-    amps = read_caltable(tablename, 'amps')
-    delays = read_caltable(tablename, 'delays')
-    times = read_caltable(tablename, 'times')
-    source = read_caltable(tablename, 'calsource')
-
-    # *need input on this*
-    assert len(times) == amps.shape[1]
-    assert len(times) == delays.shape[1]
-
-    for i, time in enumerate(times):
+    nant = len(antenna_order)
+    
+    # Number of baselines included in the gain and bandpass calibrations
+    if baseline_cal:
+        nbls = (nant*(nant+1))//2
+    else:
+        nbls = nant
+    
+    # Complex gains for each antenna
+    tamp,amps = read_caltable('{0}_{1}_gcal_ant'.format(msname,calname),
+                             nbls,cparam=True)
+    if baseline_cal:
+        break
+        # get the correct indices for the autocorrelations
+    
+    assert tamp.shape[0]==amps.shape[1]
+    assert tamp.shape[1]==amps.shape[2]
+    assert tamp.shape[1]==len(antenna_order)
+    assert amps.shape[0]==len(pol)
+    assert np.all(np.equal.reduce(tamp)==np.ones(len(antenna_order)))
+    tamp = tamp[:,0]
+    
+    # Delays for each antenna
+    tdel,delays = read_caltable('{0}_{1}_kcal'.format(msname,calname),
+                               nant,cparam=False)
+    assert tdel.shape[0]==delays.shape[1]
+    assert tdel.shape[1]==delays.shape[2]
+    assert tdel.shape[1]==len(antenna_order)
+    assert delays.shape[0]==len(pol)
+    assert np.all(np.equal.reduce(tdel)==np.ones(len(antenna_order)))
+    tdel = tdel[:,0]
+    
+    for i, antnum in enumerate(antenna_order):
         gainamp = amps[i]
         delay = delays[i]
-        dd = {'gainamp': gainamp, 'delay': delay, 'calsource': source, 'caltime': time}
+        dd = {'gainamp': gainamp, 'delay': delay, 'calsource': calname, 'caltime': time}
         de.put_dict('/mon/calibration/{0}{1}'.format(antnum, pol.lower()), dd)
 
         
