@@ -4,11 +4,11 @@ Do not test validity of solutions.
 """
 import numpy as np
 import astropy.units as u
-import dsacalib
 from dsacalib.utils import *
 from dsacalib.calib import *
 from dsacalib.plotting import *
 from dsacalib.fringestopping import *
+import dsacalib
 import os
 import shutil
 
