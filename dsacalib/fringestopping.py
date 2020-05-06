@@ -6,8 +6,9 @@ Dana Simard, dana.simard@astro.caltech.edu 11/2019
 Casa-based routines for calculating and applying fringe-stopping phases
 to visibilities
 """
-
-import __casac__ as cc
+# always import scipy before importing casatools
+import scipy
+import casatools as cc
 import numpy as np
 import astropy.units as u
 from . import constants as ct
@@ -49,12 +50,12 @@ def calc_uvw(b, tobs, src_epoch, src_lon, src_lat,obs='OVRO_MMA'):
     
 
     # Define the reference frame
-    me = cc.measures.measures()
-    qa = cc.quanta.quanta()
+    me = cc.measures()
+    qa = cc.quanta()
     if obs is not None:
         me.doframe(me.observatory(obs))
     
-    if src_lon.ndim > 0:
+    if type(src_lon.ndim) is not float and src_lon.ndim > 0:
         assert src_lon.ndim == 1
         assert src_lon.shape[0] == nt
         assert src_lat.shape[0] == nt
@@ -225,10 +226,41 @@ def visibility_sky_model(vis_shape,vis_dtype,b,sources,tobs,fobs,lst,pt_dec):
     visibility_sky_model_worker(vis_model,bws,famps,ct.f0,ct.spec_idx,fobs)
     return vis_model
 
-def fringestop(vis,b,source,tobs,fobs,return_model=False):
+def fringestop(vis,b,source,tobs,fobs,pt_dec,return_model=False):
+    """Fringestop on a source by dividing by a phase only
+    model to the input visibilities, vis, which are 
+    modified in place.
+    
+    Args:
+      vis: array(complex)
+        (baselines,time,freq,pol)
+        the visibilities to be fringestopped
+        modified in place
+      b: array(3, nbls)
+        the itrf coordinates of the baselines
+      source: src class instance
+        the source to fringestop on
+      tobs: array(float)
+        the observation time (center of each bin) 
+        in mjd
+      fobs: array(float)
+        the observing frequency (center of each bin)
+        in GHz
+      pt_dec: float
+        the declination the array is pointing at, in rad
+      return_model: boolean
+        if true, the fringestopping model is returned
+    Returns:
+      Nothing, unless return_model is True, in which case
+      the phase-only visibility model by which the 
+      visibilities were divided is returned.
+    """
     fobs,tobs,b = set_dimensions(fobs,tobs,b)
     bws = np.zeros((len(b),len(tobs),1,1))
     bu,bv,bw  = calc_uvw(b, tobs, source.epoch, source.ra, source.dec)
+    # note that the time shouldn't matter bleow
+    bup,bvp, bwp = calc_uvw(b,tobs[len(tobs)//2],'HADEC',0.*u.rad,pt_dec*u.rad)
+    bw = bw - bwp
     vis_model = np.exp(2j*np.pi/ct.c_GHz_m * fobs * bw[...,np.newaxis,np.newaxis])
     vis /= vis_model
     if return_model:
@@ -276,14 +308,17 @@ def divide_visibility_sky_model(vis,b, sources, tobs, fobs,lst,pt_dec,
     else:
         return
     
-def amplitude_sky_model(source,lst,pt_dec,fobs):
+def amplitude_sky_model(source,ant_ra,pt_dec,fobs,
+                        dish_dia=4.65,spind=0.7):
     """Computes the amplitude sky model due to the primary beam response 
     for a single source.
     
     Args:
       source: src class instance
         the source to model
-      lst: array(float)
+      ant_ra: array(float)
+        the right ascension pointing of the antenna in each time bin
+        of the observation, in radians.  if az=0 deg or az=180 deg, this is 
         the lst of each time bin in the observation, in radians
       pt_dec: float
         the pointing declination of the observation, in radians
@@ -294,8 +329,10 @@ def amplitude_sky_model(source,lst,pt_dec,fobs):
     Returns:
       the amplitude sky model
     """
-    return source.I * pb_resp(lst,pt_dec,source.ra.to_value(u.rad),
-                           source.dec.to_value(u.rad),fobs)
+    # Should add spectral index 
+    return source.I * (fobs/1.4)**(-spind) * pb_resp(ant_ra,pt_dec,
+                source.ra.to_value(u.rad),
+                source.dec.to_value(u.rad),fobs,dish_dia)
     
 def pb_resp(ant_ra,ant_dec,src_ra,src_dec,freq,dish_dia=4.65):
     """ Compute the primary beam response

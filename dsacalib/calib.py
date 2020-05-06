@@ -5,12 +5,13 @@ Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 
 Casa-based routines to calibrate visibilities using point sources
 """
-
-import __casac__ as cc
+# Always import scipy before casatools
+import scipy 
+import casatools as cc
 import astropy.units as u
 import numpy as np
 import astropy.constants as c
-from . import constants as ct
+from dsacalib import constants as ct
 from scipy.fftpack import fft,fftshift,fftfreq
 
 def delay_calibration(msname,sourcename,refant='0',t='inf'):
@@ -31,7 +32,7 @@ def delay_calibration(msname,sourcename,refant='0',t='inf'):
     Returns:
     """
     error = 0
-    cb = cc.calibrater.calibrater()
+    cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     error += not cb.setsolve(type='K',t=t,
             refant=refant,table='{0}_{1}_kcal'.format(msname,sourcename))
@@ -43,6 +44,89 @@ def delay_calibration(msname,sourcename,refant='0',t='inf'):
     if error > 0:
         print('{0} errors occured during calibration'.format(error))
     return
+
+def gain_calibration_blbased(msname,sourcename,tga='600s',tgp='inf',
+                            refant='0'):
+    """Use Self-Cal to calibrate bandpass and complex gain solutions. 
+    Saves solutions to calibration tables.
+    Calibrates the measurement set by applying delay, bandpass, 
+    and complex gain solutions.
+    
+    Args:
+        msname: str
+          the measurement set.  will open <msname>.ms
+        sourcename: str
+          the name of the calibrator source
+          the calibration table will be written to <msname>_<sourcename>_kcal
+        tga: str
+          a CASA-understood time to integrate by. e.g. 'inf' or '60s'
+          the integration time for the amplitude gain solutions
+        tgp: str
+          a CASA-understood time to integrate by. e.g. 'inf' or '60s'
+          the integration time for the phase gain solutions
+        refant: str
+          the name of the reference antenna to use in calibration
+          
+    Returns:
+    """
+    error = 0
+    
+    # Solve for bandpass calibration
+    cb = cc.calibrater()
+    error += not cb.open('{0}.ms'.format(msname))
+    error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
+                             format(msname,sourcename))
+    error += not cb.setsolve(type='MF',table='{0}_{1}_bcal'.
+                             format(msname,sourcename),
+                             refant=refant,apmode='a',solnorm=True)
+                            #solint='651.04167kHz')
+    error += not cb.solve()
+    error += not cb.close()
+    
+    # Solve for phase calibration
+    cb = cc.calibrater()
+    error += not cb.open('{0}.ms'.format(msname))
+    error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
+                            format(msname,sourcename))
+    error += not cb.setapply(type='MF',table='{0}_{1}_bcal'.
+                            format(msname,sourcename))
+    error += not cb.setsolve(type='M',table='{0}_{1}_gpcal'.
+                            format(msname,sourcename),t=tgp,
+                            refant=refant,apmode='p')
+    error += not cb.solve()
+    error += not cb.close()
+
+    # Solve for gain calibration on 10 minute timescale
+    cb = cc.calibrater()
+    error += not cb.open('{0}.ms'.format(msname))
+    error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
+                             format(msname,sourcename))
+    error += not cb.setapply(type='MF',table='{0}_{1}_bcal'.
+                            format(msname,sourcename))
+    error += not cb.setapply(type='M',table='{0}_{1}_gpcal'.
+                             format(msname,sourcename))
+    error += not cb.setsolve(type='M',table='{0}_{1}_gacal'.
+                             format(msname,sourcename), t=tga,
+                             refant=refant,apmode='a')
+    error += not cb.solve()
+    error += not cb.close()
+
+    # Apply calibration
+    cb = cc.calibrater()
+    error += not cb.open('{0}.ms'.format(msname))
+    error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
+                             format(msname,sourcename))
+    error += not cb.setapply(type='MF',table='{0}_{1}_bcal'.
+                            format(msname,sourcename))
+    error += not cb.setapply(type='M',table='{0}_{1}_gpcal'.
+                             format(msname,sourcename))
+    error += not cb.setapply(type='M',table='{0}_{1}_gacal'.
+                             format(msname,sourcename))
+    error += not cb.correct()
+    error += not cb.close()
+    if error > 0:
+        print('{0} errors occured during calibration'.format(error))
+    return    
 
 def gain_calibration(msname,sourcename,tga='600s',tgp='inf',
                      refant='0'):
@@ -69,8 +153,8 @@ def gain_calibration(msname,sourcename,tga='600s',tgp='inf',
     Returns:
     """
     error = 0
-    
-    cb = cc.calibrater.calibrater()
+
+    cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
                format(msname,sourcename))
@@ -80,7 +164,7 @@ def gain_calibration(msname,sourcename,tga='600s',tgp='inf',
     error += not cb.close()
     
     # Solve for phase calibration over entire obs
-    cb = cc.calibrater.calibrater()
+    cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
                              format(msname,sourcename))
@@ -93,7 +177,7 @@ def gain_calibration(msname,sourcename,tga='600s',tgp='inf',
     error += not cb.close()
 
     # Solve for gain calibration on 10 minute timescale
-    cb = cc.calibrater.calibrater()
+    cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
                              format(msname,sourcename))
@@ -108,7 +192,7 @@ def gain_calibration(msname,sourcename,tga='600s',tgp='inf',
     error += not cb.close()
 
     # Apply calibration
-    cb = cc.calibrater.calibrater()
+    cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
                              format(msname,sourcename))
@@ -139,7 +223,7 @@ def flag_antenna(msname,antenna,datacolumn='data',pol=None):
     if type(antenna) is int:
         antenna = str(antenna)
     error = 0
-    ag = cc.agentflagger.agentflagger()
+    ag = cc.agentflagger()
     error += not ag.open('{0}.ms'.format(msname))
     error += not ag.selectdata()
     rec = {}
@@ -200,7 +284,7 @@ def flag_zeros(msname,datacolumn='data'):
     Returns:
     """
     error = 0 
-    ag = cc.agentflagger.agentflagger()
+    ag = cc.agentflagger()
     error += not ag.open('{0}.ms'.format(msname))
     error += not ag.selectdata()
     rec = {}
@@ -233,7 +317,7 @@ def flag_badtimes(msname,times,bad,nant,datacolumn='data',
     """
     error = 0
     tdiff = np.median(np.diff(times))
-    ag = cc.agentflagger.agentflagger()
+    ag = cc.agentflagger()
     error += not ag.open('{0}.ms'.format(msname))
     error += not ag.selectdata()
     for i in range(nant):
@@ -293,24 +377,24 @@ def calc_delays(vis,df,nfavg=5,tavg=True):
           the values of the delay pixels in nanoseconds
     """
     nfbins = vis.shape[-2]//nfavg*nfavg
+    npol = vis.shape[-1]
     if tavg:
-        print(vis.shape)
         vis_ft = fftshift(fft(np.pad(vis[...,:nfbins,:].mean(1),
                                 ((0,0), (0,nfbins),(0,0))),axis=-2),axes=-2)
-        vis_ft = vis_ft.reshape(vis_ft.shape[0],-1,2*nfavg,2).mean(-2)
+        vis_ft = vis_ft.reshape(vis_ft.shape[0],-1,2*nfavg,npol).mean(-2)
     else:
         vis_ft = fftshift(fft(np.pad(vis[...,:nfbins,:],
                                 ((0,0),(0,0),(0,nfbins),(0,0)))
                               ,axis=-2),axes=-2)
         vis_ft = vis_ft.reshape(vis_ft.shape[0],
                                 vis_ft.shape[1],
-                                -1,2*nfavg,2).mean(-2)
+                                -1,2*nfavg,npol).mean(-2)
     delay_arr = fftshift(fftfreq(nfbins))/df
     delay_arr = delay_arr.reshape(-1,nfavg).mean(-1)
     
     return vis_ft, delay_arr
 
-def get_bad_times(msname,sourcename,nant,tint='59s'):
+def get_bad_times(msname,sourcename,nant,tint='59s',refant=0):
     """Use delays on short time periods to flag bad antenna/time
     pairs in the calibrator data. 
     
@@ -335,22 +419,22 @@ def get_bad_times(msname,sourcename,nant,tint='59s'):
     """
     error = 0
     # Solve the calibrator data on minute timescales
-    cb = cc.calibrater.calibrater()
+    cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     error += not cb.setsolve(type='K',t=tint,
-        refant=0,table='{0}_{1}_2kcal'.format(msname,sourcename))
+        refant=refant,table='{0}_{1}_2kcal'.format(msname,sourcename))
     error += not cb.solve()
     error += not cb.close()
     # Pull the solutions for the entire timerange and the 
     # 60-s data from the measurement set tables
-    tb = cc.table.table()
+    tb = cc.table()
     error += not tb.open('{0}_{1}_2kcal'.format(msname,sourcename))
     antenna_delays = tb.getcol('FPARAM')
     npol = antenna_delays.shape[0]
     antenna_delays = antenna_delays.reshape(npol,-1,nant)
     times = (tb.getcol('TIME').reshape(-1,nant)[:,0]*u.s).to_value(u.d)
     error += not tb.close()
-    tb = cc.table.table()
+    tb = cc.table()
     error += not tb.open('{0}_{1}_kcal'.format(msname,sourcename))
     kcorr = tb.getcol('FPARAM').reshape(npol,-1,nant)
     error += not tb.close()
@@ -385,7 +469,7 @@ def apply_calibration(msname,calname,msnamecal=None):
     if msnamecal is None:
         msnamecal = msname
     error = 0
-    cb = cc.calibrater.calibrater()
+    cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     error += not cb.setapply(type='K',
                              table='{0}_{1}_kcal'.format(msnamecal,calname))
@@ -400,3 +484,17 @@ def apply_calibration(msname,calname,msnamecal=None):
     if error > 0:
         print('{0} errors occured during calibration'.format(error))
     return
+
+def fill_antenna_gains(gains):
+    """Fills in the autocorr gains after baseline-based gain 
+    calibration.
+    
+    Args:
+      gains: array(complex)
+        the gain table with the 
+    """
+    assert gains.shape[0]==6,'Will only calculate antenna gains for trio'
+    gains[0] = np.conjugate(gains[1])*gains[2]/gains[4]
+    gains[3] = gains[1]*gains[4]/gains[2]
+    gains[5] = gains[2]*np.conjugate(gains[4])/gains[1]
+    return gains
