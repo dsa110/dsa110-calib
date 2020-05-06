@@ -443,3 +443,17 @@ def apply_calibration(msname,calname,msnamecal=None):
     if error > 0:
         print('{0} errors occured during calibration'.format(error))
     return
+
+def fill_antenna_gains(gains):
+    """Fills in the autocorr gains after baseline-based gain 
+    calibration.
+    
+    Args:
+      gains: array(complex)
+        the gain table with the 
+    """
+    assert gains.shape[0]==6,'Will only calculate antenna gains for trio'
+    gains[0] = np.conjugate(gains[1])*gains[2]/gains[4]
+    gains[3] = gains[1]*gains[4]/gains[2]
+    gains[5] = gains[2]*np.conjugate(gains[4])/gains[1]
+    return gains
