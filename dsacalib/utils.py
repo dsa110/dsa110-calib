@@ -996,7 +996,7 @@ def read_caltable(tablename,nbls,cparam=False):
     return time,vals
 
 def caltable_to_etcd(msname,calname,antenna_order,
-                    baseline_cal=False,pol=['A','B']):
+                    baseline_cal=False,pols=['A','B']):
     """ Copy calibration values from table to etcd
     
     Not working yet.
@@ -1013,15 +1013,22 @@ def caltable_to_etcd(msname,calname,antenna_order,
     tamp,amps = read_caltable('{0}_{1}_gcal_ant'.format(msname,calname),
                              nbls,cparam=True)
     if baseline_cal:
-        break
+        raise NotImplementedError
         # get the correct indices for the autocorrelations
     
+    # Check the output shapes
     assert tamp.shape[0]==amps.shape[1]
     assert tamp.shape[1]==amps.shape[2]
     assert tamp.shape[1]==len(antenna_order)
-    assert amps.shape[0]==len(pol)
+    assert amps.shape[0]==len(pols)
+    
+    # Reduce tamp to a single value, amps to a single value for each ant/pol
     assert np.all(np.equal.reduce(tamp)==np.ones(len(antenna_order)))
     tamp = tamp[:,0]
+    if tamp.shape[0]>1:
+        tamp = np.median(tamp)
+    if amps.ndim == 3 : 
+        amps = np.median(amps,axis=1)
     
     # Delays for each antenna
     tdel,delays = read_caltable('{0}_{1}_kcal'.format(msname,calname),
@@ -1029,14 +1036,22 @@ def caltable_to_etcd(msname,calname,antenna_order,
     assert tdel.shape[0]==delays.shape[1]
     assert tdel.shape[1]==delays.shape[2]
     assert tdel.shape[1]==len(antenna_order)
-    assert delays.shape[0]==len(pol)
+    assert delays.shape[0]==len(pols)
+    
+    # Reduce tdel to a single value, delays to a single value for each ant/pol
     assert np.all(np.equal.reduce(tdel)==np.ones(len(antenna_order)))
     tdel = tdel[:,0]
+    if tdel.shape[0]>1:
+        tdel = np.median(tdel)
+    if delays.ndim == 3: 
+        delays = np.median(delays,axis=1)
     
     for i, antnum in enumerate(antenna_order):
-        gainamp = amps[i]
-        delay = delays[i]
-        dd = {'gainamp': gainamp, 'delay': delay, 'calsource': calname, 'caltime': time}
-        de.put_dict('/mon/calibration/{0}{1}'.format(antnum, pol.lower()), dd)
+        for j,pol in enumerate(pols):
+            gainamp = np.abs(amps[j,i])
+            gainphase = np.angle(amps[j,i])
+            delay = delays[j,i]
+            dd = {'gainamp': gainamp, 'gainphase': gainphase, 'delay': delay, 'calsource': calname, 'gaincaltime': tamp, 'delaycaltime': tdel}
+            de.put_dict('/mon/calibration/{0}{1}'.format(antnum, pol.lower()), dd)
 
         
