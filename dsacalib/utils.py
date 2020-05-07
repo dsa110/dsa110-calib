@@ -966,7 +966,9 @@ def caltable_to_etcd(msname,calname,antenna_order,
     tamp,amps,flags = \
         read_caltable('{0}_{1}_gcal_ant'.format(msname,calname),
                              nbls,cparam=True)
-    amps = amps * (np.nan*flags)
+    mask = np.ones(flags.shape)
+    mask[flags==1]=np.nan
+    amps = amps * mask
     if baseline_cal:
         autocorr_idx = get_autobl_indices(nant)
         autocorr_idx = [(nbls-1)-aidx for aidx in autocorr_idx]
@@ -990,7 +992,9 @@ def caltable_to_etcd(msname,calname,antenna_order,
     tdel,delays,flags = \
         read_caltable('{0}_{1}_kcal'.format(msname,calname),
                                nant,cparam=False)
-    delays = delays*(np.nan*flags)
+    mask = np.ones(flags.shape)
+    mask[flags==1]=np.nan
+    delays = delays*mask
     assert tdel.shape[0]==delays.shape[1]
     assert tdel.shape[1]==delays.shape[2]
     assert tdel.shape[1]==len(antenna_order)

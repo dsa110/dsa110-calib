@@ -523,6 +523,7 @@ def plot_antenna_delays(msname,calname,antenna_order,outname=None,show=True):
                                                .format(msname,calname),
                                                nant,cparam=False)
     npol = antenna_delays.shape[0]
+    times = times[:,0]
     tkcorr,kcorr,flags = read_caltable('{0}_{1}_kcal'
                                                .format(msname,calname),
                                                nant,cparam=False)
@@ -595,14 +596,16 @@ def plot_gain_calibration(msname,calname,antenna_order,
     time_phase,gain_phase,flags = read_caltable('{0}_{1}_gpcal'.
                                                format(msname,calname),
                                                nlab,cparam=True)
+    time_phase = time_phase[:,0]
     npol = gain_phase.shape[0]
     
     time,gain_amp,flags = read_caltable('{0}_{1}_gacal'.
                                        format(msname,calname),
-                                       nbla,cparam=True)
+                                       nlab,cparam=True)
+    time = time[:,0]
     t0 = time[0]
-    time = ((time - t0)*u.s).to_value(u.min)
-    time_phase = ((time_phase - t0)*u.s).to_value(u.min)
+    time = ((time - t0)*u.d).to_value(u.min)
+    time_phase = ((time_phase - t0)*u.d).to_value(u.min)
     
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
     lcyc = ['-',':']
@@ -629,6 +632,7 @@ def plot_gain_calibration(msname,calname,antenna_order,
     else:
         tplot = [tplot[0],tplot[-1]] # use the time from the gains
         gplot = np.tile(gain_phase,[1,2,1])
+
     for i,bidx in enumerate(idxs_to_plot):
         for pidx in range(npol):
             ax[1].plot(tplot,np.angle(gplot[pidx,:,bidx]),

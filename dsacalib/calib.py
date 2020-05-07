@@ -505,9 +505,9 @@ def fill_antenna_gains(gains,flags=None):
     gains[3] = gains[1]*gains[4]/gains[2]
     gains[5] = gains[2]*np.conjugate(gains[4])/gains[1]
     
-    if flags:
+    if flags is not None:
         flags[[0,3,5],...] = np.min(np.array([flags[1]+flags[2]+flags[4],
-                          np.ones(flags.shape,dtype=int)]),axis=0)
+                          np.ones(flags[0].shape,dtype=int)]),axis=0)
     
         return gains,flags
     return gains
