@@ -27,10 +27,13 @@ import h5py
 from astropy.utils import iers
 iers.conf.iers_auto_url_mirror = ct.iers_table
 from scipy.ndimage.filters import median_filter
+from dsautils import dsa_store
+import dsautils.dsa_syslog as dsl 
 
 logger = dsl.DsaSyslogger()    
 logger.subsystem("software")
 logger.app("dsacalib")
+
 de = dsa_store.DsaStore()
 
 class src():
@@ -997,9 +1000,22 @@ def read_caltable(tablename,nbls,cparam=False):
 
 def caltable_to_etcd(msname,calname,antenna_order,
                     baseline_cal=False,pols=['A','B']):
-    """ Copy calibration values from table to etcd
+    """ Copy calibration values from delay & gain tables to etcd
+    Not tested yet.
     
-    Not working yet.
+    Args:
+      msname: str
+        the measurement set name, will use solns from <msname>.ms
+      calname: str
+        the calibrator name, will open tables like <msname>_<calname>_kcal
+      antenna_order: list or array of str or int
+        the antenna numbers, in CASA ordering
+      baseline_cal: boolean
+        whether or not the gain calibration soluntions were generated 
+        using baseline-based calibration
+      pols: list of str
+        the names of the polarizations
+
     """
     nant = len(antenna_order)
     
@@ -1013,7 +1029,10 @@ def caltable_to_etcd(msname,calname,antenna_order,
     tamp,amps = read_caltable('{0}_{1}_gcal_ant'.format(msname,calname),
                              nbls,cparam=True)
     if baseline_cal:
-        raise NotImplementedError
+        autocorr_idx = get_autobl_indices(nant)
+        autocorr_idx = [(nbls-1)-aidx for aidx in autocorr_idx]
+        tamp = tamp[...,autocorr_idx]
+        amps = amps[...,autocorr_idx]
         # get the correct indices for the autocorrelations
     
     # Check the output shapes
@@ -1046,12 +1065,15 @@ def caltable_to_etcd(msname,calname,antenna_order,
     if delays.ndim == 3: 
         delays = np.median(delays,axis=1)
     
+    # Update antenna 24:
     for i, antnum in enumerate(antenna_order):
+        # Deal with old/new numbering system for now
+        if antnum==2:
+            antum=24
+            
         for j,pol in enumerate(pols):
             gainamp = np.abs(amps[j,i])
             gainphase = np.angle(amps[j,i])
             delay = delays[j,i]
             dd = {'gainamp': gainamp, 'gainphase': gainphase, 'delay': delay, 'calsource': calname, 'gaincaltime': tamp, 'delaycaltime': tdel}
             de.put_dict('/mon/calibration/{0}{1}'.format(antnum, pol.lower()), dd)
-
-        

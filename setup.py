@@ -19,9 +19,13 @@ setup(name='dsa110-calib',
                         'pandas',
                         'pytest',
                         'scipy',
-                        'dsa110-antpos'
+                        'etcd3',
+                        'structlog',
+                        'dsa110-antpos',
+                        'dsa110-pyutils'
                         ],
       dependency_links = [
           "https://github.com/dsa110/dsa110-antpos/tarball/master#egg=dsa110-antpos-0",
+           "https://github.com/dsa110/dsa110-pyutils/tarball/master#egg=dsa110-pyutils-0",
           "https://casa-pip.nrao.edu/repository/pypi-casa-release/simple"
       ])
