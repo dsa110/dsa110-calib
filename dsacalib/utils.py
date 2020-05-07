@@ -852,34 +852,6 @@ def mask_bad_bins(vis,axis,thresh=6.0,medfilt=False,nmed=129):
         good_bins = good_bins[:,:,np.newaxis,:]
     return good_bins,fraction_flagged
 
-# def mask_bad_times(vis,thresh=6.0,medfilt=False):
-#     """Mask bad channels in visibility data
-#     Args:
-#       vis: array(complex)
-#         the visibility array 
-#         dimensions (nbls,nt,nf,npol)
-#       thresh: float
-#         the threshold above which to flag data 
-#         anything that deviates from the median by more than
-#         thresh x the standard deviation is flagged
-      
-#     Returns:
-#       good_times: array(boolean)
-#         (nbls,nt,1,npol)
-#         returns 1 where the timebin is good, 
-#         0 where the timebin should be flagged
-#     """
-#     #vis2 = np.copy(vis)
-#     tbin_mean = vis.mean(axis=2,keepdims=True)
-#     total_mean = tbin_mean.mean(axis=1,keepdims=True)
-#     total_std = tbin_mean.std(axis=1,keepdims=True)
-#     #fstd = np.std(vis2,axis=1)
-#     #rmean = medfilt(fstd,(1,nsamples,1))
-#     #good_channels = (fstd-rmean)<cutoff
-#     good_times = np.abs(tbin_mean-total_mean)<thresh*total_std
-#     return good_times
-
-
 def mask_bad_pixels(vis,thresh=6.0,mask=None):
     """Masks bad pixels that are more than thresh*std above the
     median in each visibility.
@@ -912,48 +884,8 @@ def mask_bad_pixels(vis,thresh=6.0,mask=None):
     good_pixels = good_pixels.reshape(nbls,nt,nf,npol)
     return good_pixels,fraction_flagged
 
-# def mask_bad_pixels(vis,ntbin=100,thresh=6.0):
-#     """Masks pixels thresh*std above the median in each visibility after 
-#     binning in time.
-    
-#     Args:
-#       vis: array(complex)
-#         (nbls, nt, nf, npol)
-#         the complex visibilities
-#       ntbin: int
-#         the number of time bins to average by 
-#       thresh: float
-#         the number of stddevs above which to flag data
-#     Returns:
-#       mask: array(boolean)
-#         same dimensions as vis
-#         1 for pixels which are good, 0 for pixels which should be flagged
-#       fraction_flagged: array(float), dims (nbls,npol)
-#         the fraction of data flagged on each baseline
-#       """
-#     (nbls,nt,nchan,npol)=vis.shape
-#     bindata = np.copy(vis)
-#     bindata = bindata[:,:nt//ntbin*ntbin,...].reshape(nbls,nt//ntbin,ntbin,nchan,npol).mean(axis=2)
-#     bindata = 10*(np.log10(np.abs(bindata)))
-#     std = np.std(bindata,axis=2,keepdims=True)
-#     med = np.median(bindata,axis=2,keepdims=True)
-#     good_pixels = np.abs(bindata-med)<thresh*std
-#     mask = np.tile(good_pixels[:,:,np.newaxis,:,:],
-#                   (1,1,ntbin,1,1)).reshape(nbls,-1,nchan,npol)
-#     if mask.shape[1] < nt:
-#         mask = np.append(mask,np.zeros((nbls,
-#                                        nt-mask.shape[1],nchan,npol)),
-#                  axis=1)
-#     print('{0} % of data flagged.'.format(
-#         100*(1-np.sum(mask)/(mask.flatten().shape[0]))))
-#     fraction_flagged = (1-mask.sum(1).sum(1)/(
-#         mask.reshape(mask.shape[0],-1,mask.shape[-1]).shape[1]))
-#     return mask,fraction_flagged
-
-
 def read_caltable(tablename,nbls,cparam=False):
-    """
-    Read a casa calibration table and return 
+    """Reads a casa calibration table and return 
     the time (or None if not in the table) and the value of the 
     calibration parameter.
     
@@ -1043,9 +975,7 @@ def caltable_to_etcd(msname,calname,antenna_order,
     
     # Reduce tamp to a single value, amps to a single value for each ant/pol
     assert np.all(np.equal.reduce(tamp)==np.ones(len(antenna_order)))
-    tamp = tamp[:,0]
-    if tamp.shape[0]>1:
-        tamp = np.median(tamp)
+    tamp = np.median(tamp[:,0])
     if amps.ndim == 3 : 
         amps = np.median(amps,axis=1)
     
@@ -1059,9 +989,7 @@ def caltable_to_etcd(msname,calname,antenna_order,
     
     # Reduce tdel to a single value, delays to a single value for each ant/pol
     assert np.all(np.equal.reduce(tdel)==np.ones(len(antenna_order)))
-    tdel = tdel[:,0]
-    if tdel.shape[0]>1:
-        tdel = np.median(tdel)
+    tdel = np.median(tdel[:,0])
     if delays.ndim == 3: 
         delays = np.median(delays,axis=1)
     
@@ -1069,11 +997,13 @@ def caltable_to_etcd(msname,calname,antenna_order,
     for i, antnum in enumerate(antenna_order):
         # Deal with old/new numbering system for now
         if antnum==2:
-            antum=24
-            
+            antnum=24
+        
+        dd = {'calsource':calname,'gaincaltime': tamp, 'delaycaltime': tdel}
         for j,pol in enumerate(pols):
-            gainamp = np.abs(amps[j,i])
-            gainphase = np.angle(amps[j,i])
-            delay = delays[j,i]
-            dd = {'gainamp': gainamp, 'gainphase': gainphase, 'delay': delay, 'calsource': calname, 'gaincaltime': tamp, 'delaycaltime': tdel}
-            de.put_dict('/mon/calibration/{0}{1}'.format(antnum, pol.lower()), dd)
+            dd['gainamp_{0}'.format(pol.lower())] = \
+                np.abs(amps[j,i])
+            dd['gainphase_{0}'.format(pol.lower())] = \
+                np.angle(amps[j,i])
+            dd['delay_{0}'.format(pol.lower())] = delays[j,i]
+        de.put_dict('/mon/calibration/{0}'.format(antnum), dd)
