@@ -749,7 +749,7 @@ def extract_vis_from_ms(ms_name,nbls,nchan,npol=2):
             ['corrected_data'].reshape(npol,nchan,-1,nbls).T)
     error += not ms.close()
     if error > 0:
-        print('{0} errors occured during calibration'.format(error))
+        logger.info('{0} errors occured during calibration'.format(error))
     return vis_uncal, vis_cal
 
 def initialize_hdf5_file(f,fobs,antenna_order,t0,nbls,nchan,npol,nant):
@@ -985,8 +985,8 @@ def read_caltable(tablename,nbls,cparam=False):
     param_type = 'CPARAM' if cparam else 'FPARAM'
     
     tb = cc.table()
-    print('Opening table {0} as type {1}'.format(tablename, 
-                                            param_type))
+    logger.info('Opening table {0} as type {1}'.format(tablename, 
+                                                    param_type))
     tb.open(tablename)
     if 'TIME' in tb.colnames():
         time = (tb.getcol('TIME').reshape(-1,nbls)*u.s).to_value(u.d)
