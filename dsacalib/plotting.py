@@ -13,7 +13,7 @@ import dsacalib.constants as ct
 # Always import scipy before importing casatools
 import scipy 
 import casatools as cc
-from dsacalib.utils import get_autobl_indices
+from dsacalib.utils import get_autobl_indices,read_caltable
 
 
 def plot_dyn_spec(vis,fobs,mjd,bname,normalize=False,
@@ -516,23 +516,16 @@ def plot_antenna_delays(msname,calname,antenna_order,outname=None,show=True):
     """
     nant = len(antenna_order)
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    error = 0
     
     # Pull the solutions for the entire timerange and the 
     # 60-s data from the measurement set tables
-    tb = cc.table()
-    print('opening {0}_{1}_2kcal'.format(msname,calname))
-    error += not tb.open('{0}_{1}_2kcal'.format(msname,calname))
-    antenna_delays = tb.getcol('FPARAM')
+    times,antenna_delays,flags = read_caltable('{0}_{1}_2kcal'
+                                               .format(msname,calname),
+                                               nant,cparam=False)
     npol = antenna_delays.shape[0]
-    antenna_delays = antenna_delays.reshape(npol,-1,nant)
-    times = (tb.getcol('TIME').reshape(-1,nant)[:,0]*u.s).to_value(u.d)
-    error += not tb.close()
-    tb = cc.table()
-    print('opening {0}_{1}_kcal'.format(msname,calname))
-    error += not tb.open('{0}_{1}_kcal'.format(msname,calname))
-    kcorr = tb.getcol('FPARAM').reshape(npol,-1,nant)
-    error += not tb.close()
+    tkcorr,kcorr,flags = read_caltable('{0}_{1}_kcal'
+                                               .format(msname,calname),
+                                               nant,cparam=False)
     
     tplot = (times-times[0])*ct.seconds_per_day/60.
     fig,ax = plt.subplots(1,1,figsize=(10,8))
@@ -552,8 +545,7 @@ def plot_antenna_delays(msname,calname,antenna_order,outname=None,show=True):
         plt.savefig('{0}_antdelays.png'.format(outname))
     if not show:
         plt.close()
-    if error > 0:
-        print('{0} errors occured'.format(error))
+
     return times, antenna_delays, kcorr
 
 def plot_gain_calibration(msname,calname,antenna_order,
@@ -600,22 +592,14 @@ def plot_gain_calibration(msname,calname,antenna_order,
         for idx in autocorr_idx:
             idxs_to_plot.remove(idx)
     
-    error = 0
-    
-    tb = cc.table()
-    error += not tb.open('{0}_{1}_gpcal'.format(msname,calname))
-    gain_phase = tb.getcol('CPARAM')
+    time_phase,gain_phase,flags = read_caltable('{0}_{1}_gpcal'.
+                                               format(msname,calname),
+                                               nlab,cparam=True)
     npol = gain_phase.shape[0]
-    gain_phase = gain_phase.reshape(npol,-1,nlab)
-    time_phase = tb.getcol('TIME').reshape(-1,nlab)[:,0]
-    error += not tb.close()
-
-    tb = cc.table()
-    error += not tb.open('{0}_{1}_gacal'.format(msname,calname))
-    gain_amp = tb.getcol('CPARAM')
-    gain_amp = gain_amp.reshape(npol,-1,nlab)
-    time = tb.getcol('TIME').reshape(-1,nlab)[:,0]
-    error += not tb.close()
+    
+    time,gain_amp,flags = read_caltable('{0}_{1}_gacal'.
+                                       format(msname,calname),
+                                       nbla,cparam=True)
     t0 = time[0]
     time = ((time - t0)*u.s).to_value(u.min)
     time_phase = ((time_phase - t0)*u.s).to_value(u.min)
@@ -664,8 +648,6 @@ def plot_gain_calibration(msname,calname,antenna_order,
         plt.savefig('{0}_gaincal.png'.format(outname))
     if not show:
         plt.close()
-    if error > 0:
-        print('{0} errors occured'.format(error))
     return time,gain_amp,gain_phase,labels,t0
 
 def plot_bandpass(msname,calname,antenna_order,fobs,
@@ -713,13 +695,9 @@ def plot_bandpass(msname,calname,antenna_order,fobs,
         for idx in autocorr_idx:
             idxs_to_plot.remove(idx)
     
-    error = 0
-    
-    tb = cc.table()
-    error += not tb.open('{0}_{1}_bcal'.format(msname,calname))
-    bpass = tb.getcol('CPARAM')
+    tbpass,bpass,flags = read_caltable('{0}_{1}_bcal'.format(msname,calname),
+                                      nlab,cparam=True)
     npol = bpass.shape[0]
-    error += not tb.close()
     
     if bpass.shape[1]!=fobs.shape[0]:
         nint = fobs.shape[0]//bpass.shape[1]
@@ -753,8 +731,5 @@ def plot_bandpass(msname,calname,antenna_order,fobs,
     if not show:
         plt.close()
     
-    if error > 0:
-        print('{0} errors occured'.format(error))
-        
     return bpass
     

@@ -12,6 +12,7 @@ import astropy.units as u
 import numpy as np
 import astropy.constants as c
 from dsacalib import constants as ct
+from dsacalib.utils import read_caltable
 from scipy.fftpack import fft,fftshift,fftfreq
 
 def delay_calibration(msname,sourcename,refant='0',t='inf'):
@@ -427,17 +428,13 @@ def get_bad_times(msname,sourcename,nant,tint='59s',refant=0):
     error += not cb.close()
     # Pull the solutions for the entire timerange and the 
     # 60-s data from the measurement set tables
-    tb = cc.table()
-    error += not tb.open('{0}_{1}_2kcal'.format(msname,sourcename))
-    antenna_delays = tb.getcol('FPARAM')
+    times,antenna_delays,flags = read_caltable('{0}_{1}_2kcal'
+                                    .format(msname,sourcename),nant,
+                                    cparam=False)
     npol = antenna_delays.shape[0]
-    antenna_delays = antenna_delays.reshape(npol,-1,nant)
-    times = (tb.getcol('TIME').reshape(-1,nant)[:,0]*u.s).to_value(u.d)
-    error += not tb.close()
-    tb = cc.table()
-    error += not tb.open('{0}_{1}_kcal'.format(msname,sourcename))
-    kcorr = tb.getcol('FPARAM').reshape(npol,-1,nant)
-    error += not tb.close()
+    tkcorr,kcorr,flags = read_caltable('{0}_{1}_kcal'
+                                      .format(msname,sourcename),nant,
+                                      cparam=False)
     threshold = nant*npol//2
     bad_times = (np.abs(antenna_delays-kcorr)>1.5)
     bad_times[:,np.sum(np.sum(bad_times,axis=0),axis=1)
@@ -485,16 +482,32 @@ def apply_calibration(msname,calname,msnamecal=None):
         print('{0} errors occured during calibration'.format(error))
     return
 
-def fill_antenna_gains(gains):
+def fill_antenna_gains(gains,flags=None):
     """Fills in the autocorr gains after baseline-based gain 
     calibration.
     
     Args:
       gains: array(complex)
-        the gain table with the 
+        the gain table with cross-correlation baselines filled in
+      flags: array(boolean)
+        the flags table, 1 where the data is flagged, 0 where the data
+        is valid
+    
+    Returns:
+      gains: array(complex)
+        the gain table with auto-correlation baselines filled in
+      flags: array(boolean)
+        the updated flags table, 1 where the data is flagged, 0 where 
+        the data is valid
     """
     assert gains.shape[0]==6,'Will only calculate antenna gains for trio'
     gains[0] = np.conjugate(gains[1])*gains[2]/gains[4]
     gains[3] = gains[1]*gains[4]/gains[2]
     gains[5] = gains[2]*np.conjugate(gains[4])/gains[1]
+    
+    if flags:
+        flags[[0,3,5],...] = np.min(np.array([flags[1]+flags[2]+flags[4],
+                          np.ones(flags.shape,dtype=int)]),axis=0)
+    
+        return gains,flags
     return gains
