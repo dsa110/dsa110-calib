@@ -909,10 +909,13 @@ def read_caltable(tablename,nbls,cparam=False):
         shape (nt,nbls)
         the times at which each solution is calculated, mjd
         None if no time given in the table
-      val: array(float) or array(complex)
+      vals: array(float) or array(complex)
         shape may be (npol,nt,nbls) or (npol,1,nbls) (for delay or gain cal)
           or (npol,nf,nbls) where nf is frequency (for bandpass cal)
         the values of the calibration parameter
+      flags: array(boolean)
+        same shape as vals
+        1 if the data is flagged, 0 if the data is valid
     """
     param_type = 'CPARAM' if cparam else 'FPARAM'
     
@@ -926,9 +929,11 @@ def read_caltable(tablename,nbls,cparam=False):
         time = None
     vals = tb.getcol(param_type)
     vals = vals.reshape(vals.shape[0],-1,nbls)
+    flags = tb.getcol('FLAG')
+    flags = flags.reshape(flags.shape[0],-1,nbls)
     tb.close()
     
-    return time,vals
+    return time,vals,flags
 
 def caltable_to_etcd(msname,calname,antenna_order,
                     baseline_cal=False,pols=['A','B']):
@@ -958,8 +963,10 @@ def caltable_to_etcd(msname,calname,antenna_order,
         nbls = nant
     
     # Complex gains for each antenna
-    tamp,amps = read_caltable('{0}_{1}_gcal_ant'.format(msname,calname),
+    tamp,amps,flags = \
+        read_caltable('{0}_{1}_gcal_ant'.format(msname,calname),
                              nbls,cparam=True)
+    amps = amps * (np.nan*flags)
     if baseline_cal:
         autocorr_idx = get_autobl_indices(nant)
         autocorr_idx = [(nbls-1)-aidx for aidx in autocorr_idx]
@@ -977,11 +984,13 @@ def caltable_to_etcd(msname,calname,antenna_order,
     assert np.all(np.equal.reduce(tamp)==np.ones(len(antenna_order)))
     tamp = np.median(tamp[:,0])
     if amps.ndim == 3 : 
-        amps = np.median(amps,axis=1)
+        amps = np.nanmedian(amps,axis=1)
     
     # Delays for each antenna
-    tdel,delays = read_caltable('{0}_{1}_kcal'.format(msname,calname),
+    tdel,delays,flags = \
+        read_caltable('{0}_{1}_kcal'.format(msname,calname),
                                nant,cparam=False)
+    delays = delays*(np.nan*flags)
     assert tdel.shape[0]==delays.shape[1]
     assert tdel.shape[1]==delays.shape[2]
     assert tdel.shape[1]==len(antenna_order)
@@ -991,7 +1000,7 @@ def caltable_to_etcd(msname,calname,antenna_order,
     assert np.all(np.equal.reduce(tdel)==np.ones(len(antenna_order)))
     tdel = np.median(tdel[:,0])
     if delays.ndim == 3: 
-        delays = np.median(delays,axis=1)
+        delays = np.nanmedian(delays,axis=1)
     
     # Update antenna 24:
     for i, antnum in enumerate(antenna_order):
@@ -999,11 +1008,16 @@ def caltable_to_etcd(msname,calname,antenna_order,
         if antnum==2:
             antnum=24
         
-        dd = {'calsource':calname,'gaincaltime': tamp, 'delaycaltime': tdel}
+        dd = {'calsource':calname,'ant_num':antnum,
+              'gaincaltime': tamp, 'delaycaltime': tdel}
         for j,pol in enumerate(pols):
-            dd['gainamp_{0}'.format(pol.lower())] = \
-                np.abs(amps[j,i])
-            dd['gainphase_{0}'.format(pol.lower())] = \
-                np.angle(amps[j,i])
-            dd['delay_{0}'.format(pol.lower())] = delays[j,i]
+            gainamp = np.abs(amps[j,i])
+            gainphase = np.angle(amps[j,i])
+            delay = delays[j,i]
+            if gainamp==gainamp:
+                dd['gainamp_{0}'.format(pol.lower())] = gainamp
+            if gainphase==gainphase:
+                dd['gainphase_{0}'.format(pol.lower())] = gainphase
+            if delay==delay:
+                dd['delay_{0}'.format(pol.lower())] = delay
         de.put_dict('/mon/calibration/{0}'.format(antnum), dd)
