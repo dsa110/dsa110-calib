@@ -935,7 +935,7 @@ def read_caltable(tablename,nbls,cparam=False):
     
     return time,vals,flags
 
-def caltable_to_etcd(msname,calname,antenna_order,
+def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
                     baseline_cal=False,pols=['A','B']):
     """ Copy calibration values from delay & gain tables to etcd
     Not tested yet.
@@ -962,66 +962,100 @@ def caltable_to_etcd(msname,calname,antenna_order,
     else:
         nbls = nant
     
-    # Complex gains for each antenna
-    tamp,amps,flags = \
-        read_caltable('{0}_{1}_gcal_ant'.format(msname,calname),
-                             nbls,cparam=True)
-    mask = np.ones(flags.shape)
-    mask[flags==1]=np.nan
-    amps = amps * mask
-    if baseline_cal:
-        autocorr_idx = get_autobl_indices(nant)
-        autocorr_idx = [(nbls-1)-aidx for aidx in autocorr_idx]
-        tamp = tamp[...,autocorr_idx]
-        amps = amps[...,autocorr_idx]
-        # get the correct indices for the autocorrelations
-    
-    # Check the output shapes
-    assert tamp.shape[0]==amps.shape[1]
-    assert tamp.shape[1]==amps.shape[2]
-    assert tamp.shape[1]==len(antenna_order)
-    assert amps.shape[0]==len(pols)
-    
-    # Reduce tamp to a single value, amps to a single value for each ant/pol
-    assert np.all(np.equal.reduce(tamp)==np.ones(len(antenna_order)))
-    tamp = np.median(tamp[:,0])
-    if amps.ndim == 3 : 
-        amps = np.nanmedian(amps,axis=1)
+    try:
+        # Complex gains for each antenna
+        tamp,amps,flags = \
+            read_caltable('{0}_{1}_gcal_ant'.format(msname,calname),
+                                 nbls,cparam=True)
+        mask = np.ones(flags.shape)
+        mask[flags==1]=np.nan
+        amps = amps * mask
+        if baseline_cal:
+            autocorr_idx = get_autobl_indices(nant)
+            autocorr_idx = [(nbls-1)-aidx for aidx in autocorr_idx]
+            tamp = tamp[...,autocorr_idx]
+            amps = amps[...,autocorr_idx]
+            # get the correct indices for the autocorrelations
+
+        # Check the output shapes
+        assert tamp.shape[0]==amps.shape[1]
+        assert tamp.shape[1]==amps.shape[2]
+        assert tamp.shape[1]==len(antenna_order)
+        assert amps.shape[0]==len(pols)
+
+        # Reduce tamp to a single value, 
+        # amps to a single value for each ant/pol
+        assert np.all(np.equal.reduce(tamp)==np.ones(len(antenna_order)))
+        tamp = np.median(tamp[:,0])
+        if amps.ndim == 3 : 
+            amps = np.nanmedian(amps,axis=1)
+        gaincaltime_offset = (tamp-caltime)*ct.seconds_per_day
+    except Exception:
+        tamp = np.nan
+        amps = [np.nan]*len(pols)
+        gaincaltime_offset = None
     
     # Delays for each antenna
-    tdel,delays,flags = \
-        read_caltable('{0}_{1}_kcal'.format(msname,calname),
-                               nant,cparam=False)
-    mask = np.ones(flags.shape)
-    mask[flags==1]=np.nan
-    delays = delays*mask
-    assert tdel.shape[0]==delays.shape[1]
-    assert tdel.shape[1]==delays.shape[2]
-    assert tdel.shape[1]==len(antenna_order)
-    assert delays.shape[0]==len(pols)
-    
-    # Reduce tdel to a single value, delays to a single value for each ant/pol
-    assert np.all(np.equal.reduce(tdel)==np.ones(len(antenna_order)))
-    tdel = np.median(tdel[:,0])
-    if delays.ndim == 3: 
-        delays = np.nanmedian(delays,axis=1)
-    
+    try:
+        tdel,delays,flags = \
+            read_caltable('{0}_{1}_kcal'.format(msname,calname),
+                                   nant,cparam=False)
+        mask = np.ones(flags.shape)
+        mask[flags==1]=np.nan
+        delays = delays*mask
+        assert tdel.shape[0]==delays.shape[1]
+        assert tdel.shape[1]==delays.shape[2]
+        assert tdel.shape[1]==len(antenna_order)
+        assert delays.shape[0]==len(pols)
+        # Reduce tdel to a single value, 
+        # delays to a single value for each ant/pol
+        assert np.all(np.equal.reduce(tdel)==np.ones(len(antenna_order)))
+        tdel = np.median(tdel[:,0])
+        if delays.ndim == 3: 
+            delays = np.nanmedian(delays,axis=1)
+        delaycaltime_offset = (tdel-caltime)*ct.seconds_per_day
+    except Exception:
+        tdel = np.nan
+        delays = [np.nan]*len(pols)
+        delaycaltime_offset = None
+
     # Update antenna 24:
     for i, antnum in enumerate(antenna_order):
         # Deal with old/new numbering system for now
         if antnum==2:
             antnum=24
         
-        dd = {'calsource':calname,'ant_num':antnum,
-              'gaincaltime': tamp, 'delaycaltime': tdel}
+        dd_gain = {'calsource': calname,
+              'ant_num': antnum,
+              'time': caltime, 
+              'status':status,
+              'sim':False}
+        dd_delay = dd_gain.copy()
+        
+        # Write gains
+        pol_gain = []
+        pol_delay = []
+        ant_delay = []
+        gainamp = []
+        gainphase = []
         for j,pol in enumerate(pols):
-            gainamp = np.abs(amps[j,i])
-            gainphase = np.angle(amps[j,i])
-            delay = delays[j,i]
-            if gainamp==gainamp:
-                dd['gainamp_{0}'.format(pol.lower())] = gainamp
-            if gainphase==gainphase:
-                dd['gainphase_{0}'.format(pol.lower())] = gainphase
-            if delay==delay:
-                dd['delay_{0}'.format(pol.lower())] = delay
-        de.put_dict('/mon/calibration/{0}'.format(antnum), dd)
+            if amps[j,i]==amps[j,i]:
+                pol_gain += pol
+                gainamp += [np.abs(amps[j,i])]
+                gainphase += [np.angle(amps[j,i])]
+            if delays[j,i] == delays[j,i]:
+                pol_delay += pol
+                ant_delay += [delays[j,i]]
+        dd_gain['gainamp']=gainamp
+        dd_gain['gainphase']=gainphase
+        if gaincaltime_offset is not None:
+            dd_gain['gaincaltime_offset']=gaincaltime_offset
+        dd_gain['pol']=pol_gain
+        dd_delay['delay']=ant_delay
+        dd_delay['pol']=pol_delay
+        if delaycaltime_offset is not None:
+            dd_delay['delaycaltime_offset']=delaycaltime_offset
+        
+        de.put_dict('/mon/cal/{0}'.format(antnum),dd_gain)
+        de.put_dict('/mon/cal/{0}'.format(antnum),dd_delay)
+
