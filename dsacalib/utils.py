@@ -1051,7 +1051,7 @@ def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
         if gaincaltime_offset is not None:
             dd_gain['gaincaltime_offset']=gaincaltime_offset
         dd_gain['pol']=pol_gain
-        dd_delay['delay']=ant_delay
+        dd_delay['delay']=np.rint(ant_delay).astype(int)
         dd_delay['pol']=pol_delay
         if delaycaltime_offset is not None:
             dd_delay['delaycaltime_offset']=delaycaltime_offset
