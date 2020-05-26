@@ -1032,7 +1032,7 @@ def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
         gainphase = list(np.angle(amps[:,i]))
         gainphase[gainphase!=gainphase] = None
         
-        ant_delay = list(np.rint(delays[:,i]).astype(int))
+        ant_delay = [int(np.rint(d)) for d in delays[:,i]]
         ant_delay[ant_delay!=ant_delay] = None
         
         dd = {'ant_num': antnum,
