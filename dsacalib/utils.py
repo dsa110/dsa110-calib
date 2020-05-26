@@ -992,7 +992,7 @@ def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
         gaincaltime_offset = (tamp-caltime)*ct.seconds_per_day
     except Exception:
         tamp = np.nan
-        amps = [np.nan]*len(pols)
+        amps = np.ones((len(pols),nant))*np.nan
         gaincaltime_offset = None
     
     # Delays for each antenna
@@ -1016,7 +1016,7 @@ def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
         delaycaltime_offset = (tdel-caltime)*ct.seconds_per_day
     except Exception:
         tdel = np.nan
-        delays = [np.nan]*len(pols)
+        delays = np.ones((len(pols),nant))*np.nan
         delaycaltime_offset = None
 
     # Update antenna 24:
@@ -1025,37 +1025,61 @@ def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
         if antnum==2:
             antnum=24
         
-        dd_gain = {'calsource': calname,
-              'ant_num': antnum,
-              'time': caltime, 
-              'status':status,
-              'sim':False}
-        dd_delay = dd_gain.copy()
+        # {"ant_num", <i>, "time", <d>, "pol", [<s>, <s>], "gainamp": [<d>, <d>], "gainphase": [<d>, <d>], "delay": [<i>, <i>], "calsource": <s>, "gaincaltime_offset": <d>, "delaycaltime_offset": <d>, 'sim': <b>, 'status': <i>}
+        gainamp = list(np.abs(amps[:,i]))
+        gainamp[gainamp!=gainamp] = None
         
-        # Write gains
-        pol_gain = []
-        pol_delay = []
-        ant_delay = []
-        gainamp = []
-        gainphase = []
-        for j,pol in enumerate(pols):
-            if amps[j,i]==amps[j,i]:
-                pol_gain += pol
-                gainamp += [np.abs(amps[j,i])]
-                gainphase += [np.angle(amps[j,i])]
-            if delays[j,i] == delays[j,i]:
-                pol_delay += pol
-                ant_delay += [delays[j,i]]
-        dd_gain['gainamp']=gainamp
-        dd_gain['gainphase']=gainphase
-        if gaincaltime_offset is not None:
-            dd_gain['gaincaltime_offset']=gaincaltime_offset
-        dd_gain['pol']=pol_gain
-        dd_delay['delay']=np.rint(ant_delay).astype(int)
-        dd_delay['pol']=pol_delay
-        if delaycaltime_offset is not None:
-            dd_delay['delaycaltime_offset']=delaycaltime_offset
+        gainphase = list(np.angle(amps[:,i]))
+        gainphase[gainphase!=gainphase] = None
         
-        de.put_dict('/mon/cal/{0}'.format(antnum),dd_gain)
-        de.put_dict('/mon/cal/{0}'.format(antnum),dd_delay)
+        ant_delay = list(np.rint(delays[:,i]).astype(int))
+        ant_delay[ant_delay!=ant_delay] = None
+        
+        dd = {'ant_num': antnum,
+              'time': caltime,
+              'pol': pols,
+              'gainamp': gainamp,
+              'gainphase': gainphase,
+              'delay': ant_delay,
+              'calsource': calname,
+              'gaincaltime_offset': gaincaltime_offset,    
+              'delaycaltime_offset': delaycaltime_offset,
+              'sim': False,
+              'status':status}
+
+        de.put_dict('/mon/cal/{0}'.format(antnum),dd)
+        
+#         dd_gain = {'calsource': calname,
+#               'ant_num': antnum,
+#               'time': caltime, 
+#               'status':status,
+#               'sim':False}
+#         dd_delay = dd_gain.copy()
+        
+#         # Write gains
+#         pol_gain = []
+#         pol_delay = []
+#         ant_delay = []
+#         gainamp = []
+#         gainphase = []
+#         for j,pol in enumerate(pols):
+#             if amps[j,i]==amps[j,i]:
+#                 pol_gain += pol
+#                 gainamp += [np.abs(amps[j,i])]
+#                 gainphase += [np.angle(amps[j,i])]
+#             if delays[j,i] == delays[j,i]:
+#                 pol_delay += pol
+#                 ant_delay += [delays[j,i]]
+#         dd_gain['gainamp']=gainamp
+#         dd_gain['gainphase']=gainphase
+#         if gaincaltime_offset is not None:
+#             dd_gain['gaincaltime_offset']=gaincaltime_offset
+#         dd_gain['pol']=pol_gain
+#         dd_delay['delay']=np.rint(ant_delay).astype(int)
+#         dd_delay['pol']=pol_delay
+#         if delaycaltime_offset is not None:
+#             dd_delay['delaycaltime_offset']=delaycaltime_offset
+        
+#         de.put_dict('/mon/cal/{0}'.format(antnum),dd_gain)
+#         de.put_dict('/mon/cal/{0}'.format(antnum),dd_delay)
 
