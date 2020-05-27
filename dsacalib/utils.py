@@ -36,6 +36,11 @@ logger.app("dsacalib")
 
 de = dsa_store.DsaStore()
 
+def exception_logger(task,e,throw):
+    logger.error('During {0}, exception occurred: {1}'.format(task,e))#,exc_info=True)
+    if throw:
+        raise e
+
 class src():
     """ Simple class for holding source parameters.
     
@@ -1026,14 +1031,23 @@ def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
             antnum=24
         
         # {"ant_num", <i>, "time", <d>, "pol", [<s>, <s>], "gainamp": [<d>, <d>], "gainphase": [<d>, <d>], "delay": [<i>, <i>], "calsource": <s>, "gaincaltime_offset": <d>, "delaycaltime_offset": <d>, 'sim': <b>, 'status': <i>}
-        gainamp = list(np.abs(amps[:,i]))
-        gainamp[gainamp!=gainamp] = None
         
-        gainphase = list(np.angle(amps[:,i]))
-        gainphase[gainphase!=gainphase] = None
-        
-        ant_delay = [int(np.rint(d)) for d in delays[:,i]]
-        ant_delay[ant_delay!=ant_delay] = None
+        # Everything needs to be cast properly 
+        gainamp   = []
+        gainphase = []
+        ant_delay = []
+        for a in amps[:,i]:
+            if a == a:
+                gainamp   += [np.abs(a)]
+                gainphase += [np.angle(a)]
+            else:
+                gainamp   += [None]
+                gainphase += [None]
+        for d in delays[:,i]:
+            if d==d:
+                ant_delay += [int(np.rint(d))] 
+            else:
+                ant_delay += [None]
         
         dd = {'ant_num': antnum,
               'time': caltime,
@@ -1046,7 +1060,16 @@ def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
               'delaycaltime_offset': delaycaltime_offset,
               'sim': False,
               'status':status}
-
+        required_keys = ['ant_num','time','pol','calsource','sim',
+                        'status']
+        for key in required_keys:
+            assert dd[key] is not None, \
+                'key {0} must not be None to write to etcd'.format(key)
+            
+        for p in dd['pol']:
+            assert p is not None, \
+                'both polarizations must be defined to write to etcd'
+        
         de.put_dict('/mon/cal/{0}'.format(antnum),dd)
         
 #         dd_gain = {'calsource': calname,
