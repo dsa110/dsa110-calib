@@ -17,3 +17,6 @@ dependencies:
   - coverage=5.0
   - codecov=2.0.15
   - scipy=1.4.1
+  - click=7.0
+  - pyyaml=5.1.2
+  
