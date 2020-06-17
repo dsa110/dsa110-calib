@@ -27,6 +27,19 @@ import h5py
 from astropy.utils import iers
 iers.conf.iers_auto_url_mirror = ct.iers_table
 from scipy.ndimage.filters import median_filter
+from dsautils import dsa_store
+import dsautils.dsa_syslog as dsl 
+
+logger = dsl.DsaSyslogger()    
+logger.subsystem("software")
+logger.app("dsacalib")
+
+de = dsa_store.DsaStore()
+
+def exception_logger(task,e,throw):
+    logger.error('During {0}, exception occurred: {1}'.format(task,e))#,exc_info=True)
+    if throw:
+        raise e
 
 class src():
     """ Simple class for holding source parameters.
@@ -741,7 +754,7 @@ def extract_vis_from_ms(ms_name,nbls,nchan,npol=2):
             ['corrected_data'].reshape(npol,nchan,-1,nbls).T)
     error += not ms.close()
     if error > 0:
-        print('{0} errors occured during calibration'.format(error))
+        logger.info('{0} errors occured during calibration'.format(error))
     return vis_uncal, vis_cal
 
 def initialize_hdf5_file(f,fobs,antenna_order,t0,nbls,nchan,npol,nant):
@@ -844,34 +857,6 @@ def mask_bad_bins(vis,axis,thresh=6.0,medfilt=False,nmed=129):
         good_bins = good_bins[:,:,np.newaxis,:]
     return good_bins,fraction_flagged
 
-# def mask_bad_times(vis,thresh=6.0,medfilt=False):
-#     """Mask bad channels in visibility data
-#     Args:
-#       vis: array(complex)
-#         the visibility array 
-#         dimensions (nbls,nt,nf,npol)
-#       thresh: float
-#         the threshold above which to flag data 
-#         anything that deviates from the median by more than
-#         thresh x the standard deviation is flagged
-      
-#     Returns:
-#       good_times: array(boolean)
-#         (nbls,nt,1,npol)
-#         returns 1 where the timebin is good, 
-#         0 where the timebin should be flagged
-#     """
-#     #vis2 = np.copy(vis)
-#     tbin_mean = vis.mean(axis=2,keepdims=True)
-#     total_mean = tbin_mean.mean(axis=1,keepdims=True)
-#     total_std = tbin_mean.std(axis=1,keepdims=True)
-#     #fstd = np.std(vis2,axis=1)
-#     #rmean = medfilt(fstd,(1,nsamples,1))
-#     #good_channels = (fstd-rmean)<cutoff
-#     good_times = np.abs(tbin_mean-total_mean)<thresh*total_std
-#     return good_times
-
-
 def mask_bad_pixels(vis,thresh=6.0,mask=None):
     """Masks bad pixels that are more than thresh*std above the
     median in each visibility.
@@ -904,42 +889,220 @@ def mask_bad_pixels(vis,thresh=6.0,mask=None):
     good_pixels = good_pixels.reshape(nbls,nt,nf,npol)
     return good_pixels,fraction_flagged
 
-# def mask_bad_pixels(vis,ntbin=100,thresh=6.0):
-#     """Masks pixels thresh*std above the median in each visibility after 
-#     binning in time.
+def read_caltable(tablename,nbls,cparam=False):
+    """Reads a casa calibration table and return 
+    the time (or None if not in the table) and the value of the 
+    calibration parameter.
     
-#     Args:
-#       vis: array(complex)
-#         (nbls, nt, nf, npol)
-#         the complex visibilities
-#       ntbin: int
-#         the number of time bins to average by 
-#       thresh: float
-#         the number of stddevs above which to flag data
-#     Returns:
-#       mask: array(boolean)
-#         same dimensions as vis
-#         1 for pixels which are good, 0 for pixels which should be flagged
-#       fraction_flagged: array(float), dims (nbls,npol)
-#         the fraction of data flagged on each baseline
-#       """
-#     (nbls,nt,nchan,npol)=vis.shape
-#     bindata = np.copy(vis)
-#     bindata = bindata[:,:nt//ntbin*ntbin,...].reshape(nbls,nt//ntbin,ntbin,nchan,npol).mean(axis=2)
-#     bindata = 10*(np.log10(np.abs(bindata)))
-#     std = np.std(bindata,axis=2,keepdims=True)
-#     med = np.median(bindata,axis=2,keepdims=True)
-#     good_pixels = np.abs(bindata-med)<thresh*std
-#     mask = np.tile(good_pixels[:,:,np.newaxis,:,:],
-#                   (1,1,ntbin,1,1)).reshape(nbls,-1,nchan,npol)
-#     if mask.shape[1] < nt:
-#         mask = np.append(mask,np.zeros((nbls,
-#                                        nt-mask.shape[1],nchan,npol)),
-#                  axis=1)
-#     print('{0} % of data flagged.'.format(
-#         100*(1-np.sum(mask)/(mask.flatten().shape[0]))))
-#     fraction_flagged = (1-mask.sum(1).sum(1)/(
-#         mask.reshape(mask.shape[0],-1,mask.shape[-1]).shape[1]))
-#     return mask,fraction_flagged
+    Args:
+      tablename: str
+        the full path to the casa table
+      nbls: int
+        the number of baselines in the casa table 
+        calculate from the number of antennas, nant:
+          for delay calibration, nbls=nant
+          for antenna-based gain/bandpass calibration, nbls=nant 
+          for baseline-based gain/bandpass calibration, nbls=(nant*(nant+1))//2
+      cparam: boolean
+        whether the parameter of interest is complex (cparam=True) or
+        a float (cparam=False)
+          for delay calibration, cparam=False
+          for gain/bandpass calibratino, cparam=True
+          
+    Returns:
+      time: array(float) or None
+        shape (nt,nbls)
+        the times at which each solution is calculated, mjd
+        None if no time given in the table
+      vals: array(float) or array(complex)
+        shape may be (npol,nt,nbls) or (npol,1,nbls) (for delay or gain cal)
+          or (npol,nf,nbls) where nf is frequency (for bandpass cal)
+        the values of the calibration parameter
+      flags: array(boolean)
+        same shape as vals
+        1 if the data is flagged, 0 if the data is valid
+    """
+    param_type = 'CPARAM' if cparam else 'FPARAM'
+    
+    tb = cc.table()
+    logger.info('Opening table {0} as type {1}'.format(tablename, 
+                                                    param_type))
+    tb.open(tablename)
+    if 'TIME' in tb.colnames():
+        time = (tb.getcol('TIME').reshape(-1,nbls)*u.s).to_value(u.d)
+    else:
+        time = None
+    vals = tb.getcol(param_type)
+    vals = vals.reshape(vals.shape[0],-1,nbls)
+    flags = tb.getcol('FLAG')
+    flags = flags.reshape(flags.shape[0],-1,nbls)
+    tb.close()
+    
+    return time,vals,flags
 
+def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
+                    baseline_cal=False,pols=['A','B']):
+    """ Copy calibration values from delay & gain tables to etcd
+    Not tested yet.
+    
+    Args:
+      msname: str
+        the measurement set name, will use solns from <msname>.ms
+      calname: str
+        the calibrator name, will open tables like <msname>_<calname>_kcal
+      antenna_order: list or array of str or int
+        the antenna numbers, in CASA ordering
+      baseline_cal: boolean
+        whether or not the gain calibration soluntions were generated 
+        using baseline-based calibration
+      pols: list of str
+        the names of the polarizations
+
+    """
+    nant = len(antenna_order)
+    
+    # Number of baselines included in the gain and bandpass calibrations
+    if baseline_cal:
+        nbls = (nant*(nant+1))//2
+    else:
+        nbls = nant
+    
+    try:
+        # Complex gains for each antenna
+        tamp,amps,flags = \
+            read_caltable('{0}_{1}_gcal_ant'.format(msname,calname),
+                                 nbls,cparam=True)
+        mask = np.ones(flags.shape)
+        mask[flags==1]=np.nan
+        amps = amps * mask
+        if baseline_cal:
+            autocorr_idx = get_autobl_indices(nant)
+            autocorr_idx = [(nbls-1)-aidx for aidx in autocorr_idx]
+            tamp = tamp[...,autocorr_idx]
+            amps = amps[...,autocorr_idx]
+            # get the correct indices for the autocorrelations
+
+        # Check the output shapes
+        assert tamp.shape[0]==amps.shape[1]
+        assert tamp.shape[1]==amps.shape[2]
+        assert tamp.shape[1]==len(antenna_order)
+        assert amps.shape[0]==len(pols)
+
+        # Reduce tamp to a single value, 
+        # amps to a single value for each ant/pol
+        assert np.all(np.equal.reduce(tamp)==np.ones(len(antenna_order)))
+        tamp = np.median(tamp[:,0])
+        if amps.ndim == 3 : 
+            amps = np.nanmedian(amps,axis=1)
+        gaincaltime_offset = (tamp-caltime)*ct.seconds_per_day
+    except Exception:
+        tamp = np.nan
+        amps = np.ones((len(pols),nant))*np.nan
+        gaincaltime_offset = None
+    
+    # Delays for each antenna
+    try:
+        tdel,delays,flags = \
+            read_caltable('{0}_{1}_kcal'.format(msname,calname),
+                                   nant,cparam=False)
+        mask = np.ones(flags.shape)
+        mask[flags==1]=np.nan
+        delays = delays*mask
+        assert tdel.shape[0]==delays.shape[1]
+        assert tdel.shape[1]==delays.shape[2]
+        assert tdel.shape[1]==len(antenna_order)
+        assert delays.shape[0]==len(pols)
+        # Reduce tdel to a single value, 
+        # delays to a single value for each ant/pol
+        assert np.all(np.equal.reduce(tdel)==np.ones(len(antenna_order)))
+        tdel = np.median(tdel[:,0])
+        if delays.ndim == 3: 
+            delays = np.nanmedian(delays,axis=1)
+        delaycaltime_offset = (tdel-caltime)*ct.seconds_per_day
+    except Exception:
+        tdel = np.nan
+        delays = np.ones((len(pols),nant))*np.nan
+        delaycaltime_offset = None
+
+    # Update antenna 24:
+    for i, antnum in enumerate(antenna_order):
+        # Deal with old/new numbering system for now
+        if antnum==2:
+            antnum=24
+        
+        # {"ant_num", <i>, "time", <d>, "pol", [<s>, <s>], "gainamp": [<d>, <d>], "gainphase": [<d>, <d>], "delay": [<i>, <i>], "calsource": <s>, "gaincaltime_offset": <d>, "delaycaltime_offset": <d>, 'sim': <b>, 'status': <i>}
+        
+        # Everything needs to be cast properly 
+        gainamp   = []
+        gainphase = []
+        ant_delay = []
+        for a in amps[:,i]:
+            if a == a:
+                gainamp   += [np.abs(a)]
+                gainphase += [np.angle(a)]
+            else:
+                gainamp   += [None]
+                gainphase += [None]
+        for d in delays[:,i]:
+            if d==d:
+                ant_delay += [int(np.rint(d))] 
+            else:
+                ant_delay += [None]
+        
+        dd = {'ant_num': antnum,
+              'time': caltime,
+              'pol': pols,
+              'gainamp': gainamp,
+              'gainphase': gainphase,
+              'delay': ant_delay,
+              'calsource': calname,
+              'gaincaltime_offset': gaincaltime_offset,    
+              'delaycaltime_offset': delaycaltime_offset,
+              'sim': False,
+              'status':status}
+        required_keys = ['ant_num','time','pol','calsource','sim',
+                        'status']
+        for key in required_keys:
+            assert dd[key] is not None, \
+                'key {0} must not be None to write to etcd'.format(key)
+            
+        for p in dd['pol']:
+            assert p is not None, \
+                'both polarizations must be defined to write to etcd'
+        
+        de.put_dict('/mon/cal/{0}'.format(antnum),dd)
+        
+#         dd_gain = {'calsource': calname,
+#               'ant_num': antnum,
+#               'time': caltime, 
+#               'status':status,
+#               'sim':False}
+#         dd_delay = dd_gain.copy()
+        
+#         # Write gains
+#         pol_gain = []
+#         pol_delay = []
+#         ant_delay = []
+#         gainamp = []
+#         gainphase = []
+#         for j,pol in enumerate(pols):
+#             if amps[j,i]==amps[j,i]:
+#                 pol_gain += pol
+#                 gainamp += [np.abs(amps[j,i])]
+#                 gainphase += [np.angle(amps[j,i])]
+#             if delays[j,i] == delays[j,i]:
+#                 pol_delay += pol
+#                 ant_delay += [delays[j,i]]
+#         dd_gain['gainamp']=gainamp
+#         dd_gain['gainphase']=gainphase
+#         if gaincaltime_offset is not None:
+#             dd_gain['gaincaltime_offset']=gaincaltime_offset
+#         dd_gain['pol']=pol_gain
+#         dd_delay['delay']=np.rint(ant_delay).astype(int)
+#         dd_delay['pol']=pol_delay
+#         if delaycaltime_offset is not None:
+#             dd_delay['delaycaltime_offset']=delaycaltime_offset
+        
+#         de.put_dict('/mon/cal/{0}'.format(antnum),dd_gain)
+#         de.put_dict('/mon/cal/{0}'.format(antnum),dd_delay)
 
