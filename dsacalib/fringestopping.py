@@ -334,8 +334,8 @@ def amplitude_sky_model(source,ant_ra,pt_dec,fobs,
                 source.ra.to_value(u.rad),
                 source.dec.to_value(u.rad),fobs,dish_dia)
     
-def pb_resp(ant_ra,ant_dec,src_ra,src_dec,freq,dish_dia=4.65):
-    """ Compute the primary beam response
+def pb_resp_uniform_ill(ant_ra,ant_dec,src_ra,src_dec,freq,dish_dia=4.65):
+    """ Compute the primary beam response assuming uniform illumination
     Args:
       ant_ra: float
         antenna right ascension pointing in radians
@@ -358,4 +358,38 @@ def pb_resp(ant_ra,ant_dec,src_ra,src_dec,freq,dish_dia=4.65):
     dis = angular_separation(ant_ra,ant_dec,src_ra,src_dec)
     lam  = 0.299792458/freq
     pb   = (2.0*j1(np.pi*dis[:,np.newaxis]*dish_dia/lam)/(np.pi*dis[:,np.newaxis]*dish_dia/lam))**2
+    return pb
+
+
+def pb_resp(ant_ra,ant_dec,src_ra,src_dec,freq,dish_dia=4.65):
+    """ Compute the primary beam response assuming tapered illumination
+    Args:
+      ant_ra: float
+        antenna right ascension pointing in radians
+      ant_dec: float
+        antenna declination pointing in radiants
+      src_ra: float
+        source right ascension in radians
+      src_dec: float
+        source declination in radians
+      freq: array(float)
+        the frequency of each channel in GHz
+      dish_dia: float
+        the dish diameter in m 
+      
+    Returns:
+      pb: array(float)
+        if ant_ra is an array: 
+            dimensions distance, freq
+        if ant_ra is not an array:
+            dimensions freq
+        the primary beam response
+    """
+    dis = np.array(angular_separation(ant_ra,ant_dec,src_ra,src_dec))
+    if dis.ndim > 0 and dis.shape[0] > 1:
+        dis = dis[:,np.newaxis] # prepare for broadcasting
+        
+    lam = 0.299792458/freq
+    arg = dis*dish_dia/lam
+    pb  = (np.cos(np.pi*arg)/(1-4*arg**2))**2
     return pb
