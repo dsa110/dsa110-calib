@@ -28,9 +28,41 @@ def check_path(fname):
       'File {0} does not exist'.format(fname)
     
 def triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=True):
-    """ May 20th:
-    Turn assert statements into error codes
-    Change the etcd writing to match the new specifications
+    """Performs delay and complex gain calibration for visibilities between a triplet
+    of antennas recorded using the 6-input DSA-110 correlator.
+    
+    Args:
+      obs_params: dictionary, the following keys must be defined
+        obs_params['fname']: str
+          the full path to the fits or hdf5 file containing the visibilities
+        obs_params['msname']: str
+          the name to use for the ms containing the fringestopped visibilities
+        obs_params['cal']: src class object
+          details of the calibrator source
+        obs_params['utc_start']: astropy Time object
+          the start time of the correlator run 
+      ant_params: dictionary, the following keys must be defined
+        ant_params['antenna_order']: list(int)
+          the names of the antennas, in the order used in the correlator
+        ant_params['refant']: str
+          the name of the referance antenna
+          Note: if an integer is passed instead, it will be treated as the index of 
+          the reference antenna in the CASA MS
+        ant_params['antpos']: str
+          the full path to the antenna positions file
+      show_plots: boolean
+        if True, shows plots generated during calibration (e.g. if working
+        in a notebook or interactive python environment)
+      throw_exceptions: boolean
+        if True, throws exceptions; if False, handles them quietly.  In both cases, 
+        exception information is written to the system logs.
+        
+    Returns:
+      status: int 
+        the status code.  a non-zero status means at least one error has occured.
+        decode statuses using dsa110-pytools (dsatools.calstatus)
+      caltime: float
+        the time of the meridian crossing of the calibrator in mjd
     """
     status = 0
     
@@ -42,7 +74,6 @@ def triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=T
     antenna_order = ant_params['antenna_order']
     refant        = ant_params['refant']
     antpos        = ant_params['antpos']
-
     
     # Remove files that we will create so that things will fail
     # if casa doesn't write a table
@@ -240,6 +271,42 @@ def triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=T
 
 def calibration_master(obs_params,ant_params,show_plots=False,write_to_etcd=False,
                       throw_exceptions=None):
+    """Calibrates data and writes the solutions to etcd
+    
+    Args:
+      obs_params: dictionary, the following keys must be defined
+        obs_params['fname']: str
+          the full path to the fits or hdf5 file containing the visibilities
+        obs_params['msname']: str
+          the name to use for the ms containing the fringestopped visibilities
+        obs_params['cal']: src class object
+          details of the calibrator source
+        obs_params['utc_start']: astropy Time object
+          the start time of the correlator run 
+      ant_params: dictionary, the following keys must be defined
+        ant_params['antenna_order']: list(int)
+          the names of the antennas, in the order used in the correlator
+        ant_params['refant']: str
+          the name of the referance antenna
+          Note: if an integer is passed instead, it will be treated as the index of 
+          the reference antenna in the CASA MS
+        ant_params['antpos']: str
+          the full path to the antenna positions file
+      show_plots: boolean
+        if True, shows plots generated during calibration (e.g. if working
+        in a notebook or interactive python environment)
+      write_to_etcd: boolean
+        if True, solutions are pushed to etcd 
+      throw_exceptions: boolean or None
+        whether to throw exceptions, or handle them quietly.  In both cases, 
+        exception information is written to the system logs.  If None, set to 
+        `not write_to_etcd`
+    
+    Returns:
+      status: int 
+        the status code.  a non-zero status means at least one error has occured.
+        decode statuses using dsa110-pytools (dsatools.calstatus)
+    """
     if throw_exceptions is None:
         throw_exceptions = not write_to_etcd
     logger.info('Beginning calibration of ms {0}.ms (start time {1}) using source {2}'.
@@ -250,7 +317,6 @@ def calibration_master(obs_params,ant_params,show_plots=False,write_to_etcd=Fals
                format(obs_params['msname'],obs_params['utc_start'].isot,
                        obs_params['cal'].name,status))
     print('Status: {0}'.format(cs.decode(status)))
-    print('')
     if write_to_etcd:
         caltable_to_etcd(obs_params['msname'],obs_params['cal'].name,
                      ant_params['antenna_order'],caltime, status,baseline_cal=True)
