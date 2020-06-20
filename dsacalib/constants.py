@@ -1,8 +1,6 @@
-"""DSA_CONSTANTS.PY
+"""Constants used in the calibration of DSA-110 visibilities.
 
-Dana Simard, dana.simard@astro.caltech.edu, 10/2019
-
-Constants used for the DSA analysis
+Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 """
 import astropy.units as u
 import astropy.constants as c
