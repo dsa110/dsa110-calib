@@ -1,9 +1,6 @@
-"""
-CALIB.PY
+"""Functions for calibration of DSA-110 visibilities with casatools.
 
-Dana Simard, dana.simard@astro.caltech.edu, 10/2019
-
-Casa-based routines to calibrate visibilities using point sources
+Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 """
 # Always import scipy before casatools
 import scipy 
@@ -16,8 +13,10 @@ from dsacalib.utils import read_caltable
 from scipy.fftpack import fft,fftshift,fftfreq
 
 def delay_calibration(msname,sourcename,refant='0',t='inf'):
-    """Calibrate delays using CASA and write the calibrated 
-    visibilities to the corrected_data column of the measurement set
+    """Calibrates delays using CASA.
+
+    Uses CASA to calibrate delays and write the calibrated 
+    visibilities to the corrected_data column of the measurement set.
     
     Args:
         msname: str
@@ -29,8 +28,6 @@ def delay_calibration(msname,sourcename,refant='0',t='inf'):
           the reference antenna
         t: str
           a CASA-understood time to integrate by. e.g. 'inf' or '60s'
-
-    Returns:
     """
     error = 0
     cb = cc.calibrater()
@@ -49,8 +46,9 @@ def delay_calibration(msname,sourcename,refant='0',t='inf'):
 def gain_calibration_blbased(msname,sourcename,tga='600s',tgp='inf',
                             refant='0'):
     """Use Self-Cal to calibrate bandpass and complex gain solutions. 
-    Saves solutions to calibration tables.
-    Calibrates the measurement set by applying delay, bandpass, 
+
+    Saves solutions to calibration tables and calibrates the 
+    measurement set by applying delay, bandpass, 
     and complex gain solutions.
     
     Args:
@@ -67,8 +65,6 @@ def gain_calibration_blbased(msname,sourcename,tga='600s',tgp='inf',
           the integration time for the phase gain solutions
         refant: str
           the name of the reference antenna to use in calibration
-          
-    Returns:
     """
     error = 0
     
@@ -132,9 +128,9 @@ def gain_calibration_blbased(msname,sourcename,tga='600s',tgp='inf',
 def gain_calibration(msname,sourcename,tga='600s',tgp='inf',
                      refant='0'):
     """Use Self-Cal to calibrate bandpass and complex gain solutions. 
-    Saves solutions to calibration tables.
-    Calibrates the measurement set by applying delay, bandpass, 
-    and complex gain solutions.
+
+    Saves solutions to calibration tables and calibrates the measurement 
+    set by applying delay, bandpass, and complex gain solutions.
     
     Args:
         msname: str
@@ -150,8 +146,6 @@ def gain_calibration(msname,sourcename,tga='600s',tgp='inf',
           the integration time for the phase gain solutions
         refant: str
           the name of the reference antenna to use in calibration
-          
-    Returns:
     """
     error = 0
 
@@ -218,8 +212,6 @@ def flag_antenna(msname,antenna,datacolumn='data',pol=None):
         antenna: str or int 
           if str, a CASA-understood list of antennas to flag. If int,
           the index of a single antenna to flag
-
-    Returns:
     """
     if type(antenna) is int:
         antenna = str(antenna)
@@ -253,8 +245,6 @@ def reset_flags(msname,datacolumn=None):
       datacolumn: str
         the datacolumn to reset flags for.
         'data', 'model', or 'corrected'
-    
-    Returns:
     """
     error = 0 
     ag = cc.agentflagger.agentflagger()
@@ -273,7 +263,7 @@ def reset_flags(msname,datacolumn=None):
     return
 
 def flag_zeros(msname,datacolumn='data'):
-    """Flags all zeros in data
+    """Flags all zeros in data.
     
     Args:
       msname: str
@@ -281,8 +271,6 @@ def flag_zeros(msname,datacolumn='data'):
       datacolumn: str
         the name of the datacolumn.  
         ('data', 'model', or 'corrected')
-    
-    Returns:
     """
     error = 0 
     ag = cc.agentflagger()
@@ -302,7 +290,7 @@ def flag_zeros(msname,datacolumn='data'):
 
 def flag_badtimes(msname,times,bad,nant,datacolumn='data',
                   verbose=False):
-    """Flag antennas in a measurement set using CASA
+    """Flags antennas in a measurement set using CASA.
     
     Args:
       msname: str
@@ -313,8 +301,6 @@ def flag_badtimes(msname,times,bad,nant,datacolumn='data',
         dimensions (ntimes, nantennas), whether or not to flag a time bin
       verbose: boolean
         if True, will print information about the antenna/time pairs being flagged
-
-    Returns:
     """
     error = 0
     tdiff = np.median(np.diff(times))
@@ -360,7 +346,7 @@ def flag_badtimes(msname,times,bad,nant,datacolumn='data',
 
 
 def calc_delays(vis,df,nfavg=5,tavg=True):
-    """Calculate delays from the visibilities.
+    """Calculates delays from the visibilities.
     
     Args:
         vis: complex array
@@ -396,7 +382,10 @@ def calc_delays(vis,df,nfavg=5,tavg=True):
     return vis_ft, delay_arr
 
 def get_bad_times(msname,sourcename,nant,tint='59s',refant=0):
-    """Use delays on short time periods to flag bad antenna/time
+    """Flags bad times in the calibrator data.
+
+    Calculates delays on short time periods and compares them to the
+    solution using all of the data to flag bad antenna/time
     pairs in the calibrator data. 
     
     Args:
@@ -444,7 +433,9 @@ def get_bad_times(msname,sourcename,nant,tint='59s',refant=0):
     return bad_times,times
 
 def apply_calibration(msname,calname,msnamecal=None):
-    """Apply the calibration solution from the calibrator
+    """Applies the calibration solution.
+
+    Applies the solution from the calibrator
     to a measurement set.  Applies delay, bandpass, and complex 
     gain solutions.
     
@@ -483,8 +474,10 @@ def apply_calibration(msname,calname,msnamecal=None):
     return
 
 def fill_antenna_gains(gains,flags=None):
-    """Fills in the autocorr gains after baseline-based gain 
-    calibration.
+    """Fills in the antenna gains for triple-antenna calibration.
+
+    Reads in baseline-based gain calibration table, calculates the 
+    antenna-based gains, and writes them to the same table. 
     
     Args:
       gains: array(complex)
