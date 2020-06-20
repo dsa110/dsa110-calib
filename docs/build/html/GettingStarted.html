@@ -1,0 +1,131 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Getting Started &#8212; dsacalib 0.1 documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/language_data.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Error Codes for Real-time Calibration" href="ErrorCodes.html" />
+    <link rel="prev" title="Documentation for dsa110-calib" href="index.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="getting-started">
+<h1>Getting Started<a class="headerlink" href="#getting-started" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="installation">
+<h2>Installation<a class="headerlink" href="#installation" title="Permalink to this headline">¶</a></h2>
+<p>To get started, clone dsacalib from the github repository <a class="reference external" href="https://github.com/dsa110/dsa110-calib">https://github.com/dsa110/dsa110-calib</a> and follow the installation directions in the ReadMe.  dsacalib is built on CASA - the required modules can be downloaded using pip:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip install casatools --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
+pip install casatasks --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
+pip install casadata --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
+</pre></div>
+</div>
+</div>
+<div class="section" id="real-time-pipelines">
+<h2>Real-time pipelines<a class="headerlink" href="#real-time-pipelines" title="Permalink to this headline">¶</a></h2>
+<p>If you are using dsacalib for calibration of DSA antenna gains and delays, you likely want to use one of the pre-built pipelines.  These piplines include integration with the greater DSA system through writing of logs to syslog and pushing solutions to etcd.  These pipelines are in <cite>dsacalib/scripts</cite>.  The currently-available pipelines are:</p>
+<ul class="simple">
+<li><p><cite>triple_antenna_corr</cite> -  Reads in the output FITS files of the 3-antenna correlator and uses CASA to perform baseline-based calibration.  Antenna solutions are calculated from the baseline solutions and pushed to etcd</p></li>
+</ul>
+<p>If you are looking to build your own pipeline, these may be a good place to start.</p>
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">dsacalib</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Getting Started</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#installation">Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#real-time-pipelines">Real-time pipelines</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="ErrorCodes.html">Error Codes for Real-time Calibration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="Integration.html">Integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">dsacalib</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="index.html" title="previous chapter">Documentation for dsa110-calib</a></li>
+      <li>Next: <a href="ErrorCodes.html" title="next chapter">Error Codes for Real-time Calibration</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, Dana Simard.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.0.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/GettingStarted.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

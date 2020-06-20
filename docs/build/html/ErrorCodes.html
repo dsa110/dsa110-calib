@@ -1,0 +1,167 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>Error Codes for Real-time Calibration &#8212; dsacalib 0.1 documentation</title>
+    <link rel="stylesheet" href="_static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="_static/pygments.css" type="text/css" />
+    <script id="documentation_options" data-url_root="./" src="_static/documentation_options.js"></script>
+    <script src="_static/jquery.js"></script>
+    <script src="_static/underscore.js"></script>
+    <script src="_static/doctools.js"></script>
+    <script src="_static/language_data.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Integration" href="Integration.html" />
+    <link rel="prev" title="Getting Started" href="GettingStarted.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="error-codes-for-real-time-calibration">
+<h1>Error Codes for Real-time Calibration<a class="headerlink" href="#error-codes-for-real-time-calibration" title="Permalink to this headline">¶</a></h1>
+<p>The dsacalib real-time pipelines work as part of the larger software system of the DSA by:</p>
+<ul class="simple">
+<li><p>Writing messages to syslog, instead of warning and errors to stderr</p></li>
+<li><p>Pushing real-time calibration delays and gains to etcd</p></li>
+</ul>
+<p>Add some notes on pyutils, etc.</p>
+<p>If an error occurs during calibration, the dsacalib pipeline will return a non-zero error code instead of a traceback, while details on the error will be written to syslog.  Bits 0-3 code the error description, while the remaining bits each indicate the validity of information passed to etcd.  If you are building a new pipeline for the DSA, use these same error codes with syslog and etcd integration.</p>
+<div class="section" id="bits-0-3-error-description">
+<h2>Bits 0-3: Error description<a class="headerlink" href="#bits-0-3-error-description" title="Permalink to this headline">¶</a></h2>
+<p>Bits 0-3 code a single value describing the source of the error.
+Values of 1 through 5 indicate the error occured in reading the visibilities or fringestopping.
+Values of 6 through 8 indicate the error occured in calibration.
+Values of 9 through 14 indicate the error occured in storage of the calibration solutions in etcd.
+Value of 15 indicates that some other error occured.</p>
+<p>The detailed descriptions for each code are:</p>
+<ul class="simple">
+<li><p>1 = HDF5 or FITS file containing the visibilities cannot be found or opened</p></li>
+<li><p>2 = HDF5 of FITS file doesn’t contain the calibration source</p></li>
+<li><p>3 = File doesn’t meet specifications or is otherwise correct.  This error is returned, for e.g., if the file doesn’t contain the specified number of antennas (which is a required input for reading FITS files produced by the 3- and 6-antenna correlators), the reference antenna is not in the file, the dimensions of the visibilities don’t match the times, frequencies, or polarizations specified in the file (or input), etc.</p></li>
+<li><p>4 = Fringestopping on the calibrator source failed</p></li>
+<li><p>5 = Writing the fringe-stopped measurement set failed</p></li>
+<li><p>6 = Failure in flagging</p></li>
+<li><p>7 = Delay calibration failed</p></li>
+<li><p>8 = Gain or bandpass calibration failed</p></li>
+<li><p>9 = caltable_to_etcd cannot open the antenna gain table</p></li>
+<li><p>10 = caltable_to_etcd cannot open antenna delay table</p></li>
+<li><p>11 = caltable_to_etcd was passed an invalid calname</p></li>
+<li><p>12 = caltable_to_etcd was passed an invalid antenna_order</p></li>
+<li><p>13 = caltable_to_etcd was passed an invalid calibration time</p></li>
+<li><p>14 = caltable_to_etcd was passed an invalid status</p></li>
+<li><p>15 = An error not in this list occured</p></li>
+</ul>
+<p>Failures in delay and gain calibration gain typically occur because tables containing previous solutions cannot be opened, too much data in the measurement set is flagged, the data doesn’t have high enough signal-to-noise, or (in the case of 3-antenna solutions) CASA returned baseline-based solutions, but calculation of the antenna-based solutions from these failed.</p>
+</div>
+<div class="section" id="bits-4-15-validity-of-solutions-passed-to-etcd">
+<h2>Bits 4 - 15: Validity of solutions passed to etcd<a class="headerlink" href="#bits-4-15-validity-of-solutions-passed-to-etcd" title="Permalink to this headline">¶</a></h2>
+<p>Bits 4-15 each correspond to a particular piece of information passed to etcd.  A value of 0 indicates the information is valid, 1 indicates the information is invalid.</p>
+<ul class="simple">
+<li><p>Bit 4 = ant_num (antenna number)</p></li>
+<li><p>Bit 5 = time (calibration time, corresponds to the meridian-crossing time of the calibrator source</p></li>
+<li><p>Bit 6 = pol</p></li>
+<li><p>Bit 7 = gainamp (gain amplitude)</p></li>
+<li><p>Bit 8 = gainphase (gain phase)</p></li>
+<li><p>Bit 9 = delay (antenna delay)</p></li>
+<li><p>Bit 10 = calsource (calibrator source)</p></li>
+<li><p>Bit 11 = gaincaltime_offset (offset of gain calibration time given by CASA and the meridian crossing time)</p></li>
+<li><p>Bit 12 = delaycaltime_offset (offset of delay calibration time given by CASA and the meridian crossing time)</p></li>
+<li><p>Bit 13 = sim (if the data is from a simulation or valid data)</p></li>
+<li><p>Bit 14 = status (this error code)</p></li>
+<li><p>Bit 15 is currently unused</p></li>
+</ul>
+<p>For details on the etcd format, see (insert link and copy information).</p>
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">dsacalib</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="GettingStarted.html">Getting Started</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Error Codes for Real-time Calibration</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#bits-0-3-error-description">Bits 0-3: Error description</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#bits-4-15-validity-of-solutions-passed-to-etcd">Bits 4 - 15: Validity of solutions passed to etcd</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="Integration.html">Integration</a></li>
+<li class="toctree-l1"><a class="reference internal" href="modules.html">dsacalib</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+      <li>Previous: <a href="GettingStarted.html" title="previous chapter">Getting Started</a></li>
+      <li>Next: <a href="Integration.html" title="next chapter">Integration</a></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, Dana Simard.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.0.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="_sources/ErrorCodes.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
