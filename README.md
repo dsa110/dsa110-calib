@@ -1,5 +1,5 @@
 # dsa110-calib
-Calibration routines for DSA-110. Docs at [dsacalib.readthedocs.io](https://dsacalib.readthedocs.io)
+Calibration routines for DSA-110. Docs at [dsa110.github.io/dsa110-calib](https://dsa110.github.io/dsa110-calib)
 
 To install, 
 `python setup.py install`
