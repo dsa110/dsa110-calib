@@ -36,8 +36,379 @@
 <div class="section" id="submodules">
 <h2>Submodules<a class="headerlink" href="#submodules" title="Permalink to this headline">¶</a></h2>
 </div>
-<div class="section" id="dsacalib-calib-module">
-<h2>dsacalib.calib module<a class="headerlink" href="#dsacalib-calib-module" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="module-dsacalib.calib">
+<span id="dsacalib-calib-module"></span><h2>dsacalib.calib module<a class="headerlink" href="#module-dsacalib.calib" title="Permalink to this headline">¶</a></h2>
+<p>Functions for calibration of DSA-110 visibilities with casatools.</p>
+<p>Author: Dana Simard, <a class="reference external" href="mailto:dana&#46;simard&#37;&#52;&#48;astro&#46;caltech&#46;edu">dana<span>&#46;</span>simard<span>&#64;</span>astro<span>&#46;</span>caltech<span>&#46;</span>edu</a>, 10/2019</p>
+<dl class="py function">
+<dt id="dsacalib.calib.apply_calibration">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">apply_calibration</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">calname</span></em>, <em class="sig-param"><span class="n">msnamecal</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.apply_calibration" title="Permalink to this definition">¶</a></dt>
+<dd><p>Applies the calibration solution.</p>
+<p>Applies delay, bandpass and complex gain tables
+to a measurement set.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set to apply
+calibration solutions to.  Opens &lt;msname&gt;.ms</p></li>
+<li><p><strong>calname</strong> (<em>str</em>) – The name of the calibrator.  Tables that start
+with &lt;msnamecal&gt;_&lt;calname&gt; will be applied to the measurement
+set.</p></li>
+<li><p><strong>msnamecal</strong> (<em>str</em>) – The name of the measurement set used to model the
+calibraiton solutions.  Calibration tables prefixed with
+&lt;msnamecal&gt;_&lt;calname&gt; will be opened and applied.  Default None.
+If None, msnamecal is set to msname.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>error (int)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.calc_delays">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">calc_delays</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis</span></em>, <em class="sig-param"><span class="n">df</span></em>, <em class="sig-param"><span class="n">nfavg</span><span class="o">=</span><span class="default_value">5</span></em>, <em class="sig-param"><span class="n">tavg</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.calc_delays" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculates power as a function of delay from the visibilities.</p>
+<p>This uses scipy fftpack to fourier transform the visibilities
+along the frequency axis.  The power as a function of delay can
+then be used in fringe-fitting.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The complex visibilities. 4 dimensions,
+(baseline,time,frequency,polarization).</p></li>
+<li><p><strong>df</strong> (<em>float</em>) – The width of the frequency channels in GHz.</p></li>
+<li><p><strong>nfavg</strong> (<em>int</em>) – The number of frequency channels to average by
+after the Fourier transform.  Defaults to 5.</p></li>
+<li><p><strong>tavg</strong> (<em>boolean</em>) – If True, the visibilities are averaged
+in time before the Fourier transform. Defaults to True.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>The complex visibilities, Fourier-transformed</dt><dd><p>along the time axis.  3 (or 4, if tavg is set to False)
+dimensions, (baseline,delay,polarization) (or
+(baseline,time,delay,polarization) if tavg is set to False)</p>
+</dd>
+<dt>delay_arr (ndarray): Float, the values of the delay pixels</dt><dd><p>in nanoseconds</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>vis_ft (ndarray)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.delay_calibration">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">delay_calibration</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">sourcename</span></em>, <em class="sig-param"><span class="n">refant</span></em>, <em class="sig-param"><span class="n">t</span><span class="o">=</span><span class="default_value">'inf'</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.delay_calibration" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calibrates delays using CASA.</p>
+<p>Uses CASA to calibrate delays and write the calibrated
+visibilities to the corrected_data column of the measurement set.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.  The measurement set &lt;msname&gt;.ms
+will be opened.</p></li>
+<li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source. The calibration table will be
+written to &lt;msname&gt;_&lt;sourcename&gt;_kcal.</p></li>
+<li><p><strong>refant</strong> (<em>str</em>) – The reference antenna to use in calibration.
+If <cite>str</cite>, this is the name of the antenna.  If <cite>int</cite>, it is the
+index of the antenna in the measurement set.</p></li>
+<li><p><strong>t</strong> (<em>str</em>) – The integration time to use before calibrating, e.g. <cite>‘inf’</cite>
+or <cite>’60s’</cite>.  See the CASA documentation for more examples.
+Defaults to <cite>‘inf’</cite> (averaging over the entire observation time).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>error</strong> – the number of errors that occured during calibration</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.fill_antenna_gains">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">fill_antenna_gains</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">gains</span></em>, <em class="sig-param"><span class="n">flags</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.fill_antenna_gains" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fills in the antenna gains for triple-antenna calibration.</p>
+<p>Takes the gains from baseline-based calibration for a trio of
+antennas and calculates the corresponding antenna gains using
+produces of the baseline gains.  Also propagates flag information
+for the input baseline gains to the antenna gains.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gains</strong> (<em>narray</em>) – The complex gains matrix, first dimension
+is baseline.  Indices 1, 2 and 4 contain the gains for the
+cross-correlations. Information in indices 0, 3 and 5 is
+ignored and overwritten.</p></li>
+<li><p><strong>flags</strong> (<em>ndarray</em><em> or </em><em>None</em>) – A boolean array, containing flag information
+for the <cite>gains</cite> array. 1 if the data is flagged, 0 otherwise.
+If None, assumes no flag information available.  The first
+dimension is baseline.  Indices 1, 2 and 4 contain the flags
+for the cross-correlations.  Information in indices 0, 3 and 5
+is ignored and overwritten.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>The complex gains matrix, first dimension</dt><dd><p>is baseline.  Indices 1, 2 and 4 contain the gains for the
+cross-correlations. Indices 0, 3 and 5
+contain the calculated values for the antennas.</p>
+</dd>
+<dt>flags (ndarray): A boolean array, containing flag information</dt><dd><p>for the <cite>gains</cite> array.  1 if the data is flagged, 0 otherwise.
+If None, assumes no flag information available.  The first
+dimension is baseline.  Indices 1, 2 and 4 contain the flags
+for the cross-correlations.  Indices 0,3 and 5 contain
+the calculated values for the antennas.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>gains (ndarray)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.flag_antenna">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">flag_antenna</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">antenna</span></em>, <em class="sig-param"><span class="n">datacolumn</span><span class="o">=</span><span class="default_value">'data'</span></em>, <em class="sig-param"><span class="n">pol</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.flag_antenna" title="Permalink to this definition">¶</a></dt>
+<dd><p>Flags an antenna in a measurement set using CASA.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
+The MS &lt;msname&gt;.ms will be opened.</p></li>
+<li><p><strong>antenna</strong> (<em>str</em><em> or </em><em>int</em>) – The antenna flag.
+If <cite>str</cite>, this is the name of the antenna.  If <cite>int</cite>, it is the
+index of the antenna in the measurement set.</p></li>
+<li><p><strong>datacolumn</strong> (<em>str</em>) – The column of the measurement set to flag.
+Options are ‘data’,’model’,’corrected’ for the
+uncalibrated visibilities, the visibility model (used by
+CASA to calculate calibration solutions), the calibrated
+visibilities.  Defaults to ‘data’.</p></li>
+<li><p><strong>pol</strong> (<em>str</em><em> or </em><em>None</em>) – The polarization to flag.  Must be ‘A’
+(which is mapped to polarization ‘XX’ of the CASA measurement
+set) or ‘B’ (mapped to polarization ‘YY’).  If None, both
+polarizations are flagged.  Defaults to None.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>error (int)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.flag_badtimes">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">flag_badtimes</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">times</span></em>, <em class="sig-param"><span class="n">bad</span></em>, <em class="sig-param"><span class="n">nant</span></em>, <em class="sig-param"><span class="n">datacolumn</span><span class="o">=</span><span class="default_value">'data'</span></em>, <em class="sig-param"><span class="n">verbose</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.flag_badtimes" title="Permalink to this definition">¶</a></dt>
+<dd><p>Flags bad time bins for each antenna in a measurement set using CASA.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
+The MS &lt;msname&gt;.ms will be opened.</p></li>
+<li><p><strong>times</strong> (<em>ndarray</em>) – An 1-D array of times, type float, seconds since MJD=0.
+Times should be equally spaced and cover the entire time range
+of the measurement set, but can be coarser than the resolution of
+the measurement set.</p></li>
+<li><p><strong>bad</strong> (<em>ndarray</em>) – A 1-D boolean array with dimensions (len(times), nant).
+Should have a value of True if the corresponding timebins should be
+flagged.</p></li>
+<li><p><strong>nant</strong> (<em>int</em>) – The number of antennas in the measurement set.</p></li>
+<li><p><strong>datacolumn</strong> (<em>str</em>) – The column of the measurement set to flag.
+Options are ‘data’,’model’,’corrected’ for the
+uncalibrated visibilities, the visibility model (used by
+CASA to calculate calibration solutions), the calibrated
+visibilities.  Defaults to ‘data’.</p></li>
+<li><p><strong>verbose</strong> (<em>boolean</em>) – If True, will print information about the
+antenna/time pairs being flagged.  Defaults to False.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>error (int)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.flag_zeros">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">flag_zeros</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">datacolumn</span><span class="o">=</span><span class="default_value">'data'</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.flag_zeros" title="Permalink to this definition">¶</a></dt>
+<dd><p>Flags all zeros in a measurement set.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
+The MS &lt;msname&gt;.ms will be opened.</p></li>
+<li><p><strong>datacolumn</strong> (<em>str</em>) – The column of the measurement set to flag.
+Options are ‘data’,’model’,’corrected’ for the
+uncalibrated visibilities, the visibility model (used by
+CASA to calculate calibration solutions), the calibrated
+visibilities.  Defaults to ‘data’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>error (int)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.gain_calibration">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">gain_calibration</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">sourcename</span></em>, <em class="sig-param"><span class="n">tga</span></em>, <em class="sig-param"><span class="n">tgp</span></em>, <em class="sig-param"><span class="n">refant</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.gain_calibration" title="Permalink to this definition">¶</a></dt>
+<dd><p>Use CASA to calculate bandpass and complex gain solutions.</p>
+<p>Saves solutions to calibration tables and calibrates the
+measurement set by applying delay, bandpass,
+and complex gain solutions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
+The MS &lt;msname&gt;.ms will be opened.</p></li>
+<li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source.
+The calibration table will be written to
+&lt;msname&gt;_&lt;sourcename&gt;_kcal.</p></li>
+<li><p><strong>tga</strong> (<em>str</em>) – The integration time to use before calibrating
+the amplitudes of the complex gain, e.g. <cite>‘inf’</cite>
+or <cite>’60s’</cite>.  See the CASA documentation for more examples.</p></li>
+<li><p><strong>tgp</strong> (<em>str</em>) – The integration time to use before calibrating
+the amplitudes of the complex gain, e.g. <cite>‘inf’</cite>
+or <cite>’60s’</cite>.  See the CASA documentation for more examples.</p></li>
+<li><p><strong>refant</strong> (<em>str</em><em> or </em><em>int</em>) – The reference antenna to use in calibration.
+If <cite>str</cite>, this is the name of the antenna.  If <cite>int</cite>, it is the
+index of the antenna in the measurement set.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>error (int)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.gain_calibration_blbased">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">gain_calibration_blbased</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">sourcename</span></em>, <em class="sig-param"><span class="n">tga</span></em>, <em class="sig-param"><span class="n">tgp</span></em>, <em class="sig-param"><span class="n">refant</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.gain_calibration_blbased" title="Permalink to this definition">¶</a></dt>
+<dd><p>Use CASA to calculate bandpass and complex gain solutions.</p>
+<p>Saves solutions to calibration tables and calibrates the
+measurement set by applying delay, bandpass,
+and complex gain solutions.  Uses baseline-based calibration routines
+within CASA.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
+The MS &lt;msname&gt;.ms will be opened.</p></li>
+<li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source.
+The calibration table will be written to
+&lt;msname&gt;_&lt;sourcename&gt;_kcal.</p></li>
+<li><p><strong>tga</strong> (<em>str</em>) – The integration time to use before calibrating
+the amplitudes of the complex gain, e.g. <cite>‘inf’</cite>
+or <cite>’60s’</cite>.  See the CASA documentation for more examples.</p></li>
+<li><p><strong>tgp</strong> (<em>str</em>) – The integration time to use before calibrating
+the amplitudes of the complex gain, e.g. <cite>‘inf’</cite>
+or <cite>’60s’</cite>.  See the CASA documentation for more examples.</p></li>
+<li><p><strong>refant</strong> (<em>str</em><em> or </em><em>int</em>) – The reference antenna to use in calibration.
+If <cite>str</cite>, this is the name of the antenna.  If <cite>int</cite>, it is the
+index of the antenna in the measurement set.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>error (int)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.get_bad_times">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">get_bad_times</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">sourcename</span></em>, <em class="sig-param"><span class="n">nant</span></em>, <em class="sig-param"><span class="n">refant</span></em>, <em class="sig-param"><span class="n">tint</span><span class="o">=</span><span class="default_value">'59s'</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.get_bad_times" title="Permalink to this definition">¶</a></dt>
+<dd><p>Flags bad times in the calibrator data.</p>
+<p>Calculates delays on short time periods and compares them to the
+delay calibration solution. Can only be run after delay calibration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
+The MS &lt;msname&gt;.ms will be opened.</p></li>
+<li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source.
+The calibration table will be written to
+&lt;msname&gt;_&lt;sourcename&gt;_kcal.</p></li>
+<li><p><strong>nant</strong> (<em>int</em>) – The number of antennas in the array.</p></li>
+<li><p><strong>refant</strong> (<em>str</em><em> or </em><em>int</em>) – The reference antenna to use in calibration.
+If <cite>str</cite>, the name of the reference antenna, if <cite>int</cite>, the
+index of the antenna in the CASA measurement set.  This must
+be the same as the reference antenna used in the delay calibration,
+or this will fail.</p></li>
+<li><p><strong>tint</strong> (<em>str</em>) – The timescale on which to calculate the delay solutions (and
+evaluate the data quality).  Must be a CASA-interpreted string,
+e.g. ‘inf’ (average all of the data) or ’60s’ (average data to
+60-second bins before delay calibration).  Defaults to ’59s’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>A boolean, True if the data quality is poor and the</dt><dd><p>time-bin should be flagged, False otherwise.  Dimensions
+(time,antenna)</p>
+</dd>
+</dl>
+<p>times (ndarray): Float, the time (mjd) for each delay solution
+error (int): The number of errors that occured during calibration.</p>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>bad_times (ndarray)</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.reset_flags">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">reset_flags</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">datacolumn</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.reset_flags" title="Permalink to this definition">¶</a></dt>
+<dd><p>Resets all flags in a measurement set, so that all data is unflagged.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
+The MS &lt;msname&gt;.ms will be opened.</p></li>
+<li><p><strong>datacolumn</strong> (<em>str</em>) – The column of the measurement set to flag.
+Options are ‘data’,’model’,’corrected’ for the
+uncalibrated visibilities, the visibility model (used by
+CASA to calculate calibration solutions), the calibrated
+visibilities.  Defaults to ‘data’.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>error (int)</p>
+</dd>
+</dl>
+</dd></dl>
+
 </div>
 <div class="section" id="module-dsacalib.calib_quality">
 <span id="dsacalib-calib-quality-module"></span><h2>dsacalib.calib_quality module<a class="headerlink" href="#module-dsacalib.calib_quality" title="Permalink to this headline">¶</a></h2>
@@ -730,8 +1101,133 @@ the number of bins to rebin by along the 1st axis</p></li>
 </dd></dl>
 
 </div>
-<div class="section" id="dsacalib-routines-module">
-<h2>dsacalib.routines module<a class="headerlink" href="#dsacalib-routines-module" title="Permalink to this headline">¶</a></h2>
+<div class="section" id="module-dsacalib.routines">
+<span id="dsacalib-routines-module"></span><h2>dsacalib.routines module<a class="headerlink" href="#module-dsacalib.routines" title="Permalink to this headline">¶</a></h2>
+<dl class="py function">
+<dt id="dsacalib.routines.calibration_master">
+<code class="sig-prename descclassname">dsacalib.routines.</code><code class="sig-name descname">calibration_master</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">obs_params</span></em>, <em class="sig-param"><span class="n">ant_params</span></em>, <em class="sig-param"><span class="n">show_plots</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">write_to_etcd</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">throw_exceptions</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.routines.calibration_master" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calibrates data and writes the solutions to etcd</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>obs_params</strong> – <p>dictionary, the following keys must be defined
+obs_params[‘fname’]: str</p>
+<blockquote>
+<div><p>the full path to the fits or hdf5 file containing the visibilities</p>
+</div></blockquote>
+<dl class="simple">
+<dt>obs_params[‘msname’]: str</dt><dd><p>the name to use for the ms containing the fringestopped visibilities</p>
+</dd>
+<dt>obs_params[‘cal’]: src class object</dt><dd><p>details of the calibrator source</p>
+</dd>
+<dt>obs_params[‘utc_start’]: astropy Time object</dt><dd><p>the start time of the correlator run</p>
+</dd>
+</dl>
+</p></li>
+<li><p><strong>ant_params</strong> – <p>dictionary, the following keys must be defined
+ant_params[‘antenna_order’]: list(int)</p>
+<blockquote>
+<div><p>the names of the antennas, in the order used in the correlator</p>
+</div></blockquote>
+<dl class="simple">
+<dt>ant_params[‘refant’]: str</dt><dd><p>the name of the referance antenna
+Note: if an integer is passed instead, it will be treated as the index of
+the reference antenna in the CASA MS</p>
+</dd>
+<dt>ant_params[‘antpos’]: str</dt><dd><p>the full path to the antenna positions file</p>
+</dd>
+</dl>
+</p></li>
+<li><p><strong>show_plots</strong> – boolean
+if True, shows plots generated during calibration (e.g. if working
+in a notebook or interactive python environment)</p></li>
+<li><p><strong>write_to_etcd</strong> – boolean
+if True, solutions are pushed to etcd</p></li>
+<li><p><strong>throw_exceptions</strong> – boolean or None
+whether to throw exceptions, or handle them quietly.  In both cases,
+exception information is written to the system logs.  If None, set to
+<cite>not write_to_etcd</cite></p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>int</dt><dd><p>the status code.  a non-zero status means at least one error has occured.
+decode statuses using dsa110-pytools (dsatools.calstatus)</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>status</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.routines.check_path">
+<code class="sig-prename descclassname">dsacalib.routines.</code><code class="sig-name descname">check_path</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">fname</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.routines.check_path" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.routines.triple_antenna_cal">
+<code class="sig-prename descclassname">dsacalib.routines.</code><code class="sig-name descname">triple_antenna_cal</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">obs_params</span></em>, <em class="sig-param"><span class="n">ant_params</span></em>, <em class="sig-param"><span class="n">show_plots</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">throw_exceptions</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.routines.triple_antenna_cal" title="Permalink to this definition">¶</a></dt>
+<dd><p>Performs delay and complex gain calibration for visibilities between a triplet
+of antennas recorded using the 6-input DSA-110 correlator.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>obs_params</strong> – <p>dictionary, the following keys must be defined
+obs_params[‘fname’]: str</p>
+<blockquote>
+<div><p>the full path to the fits or hdf5 file containing the visibilities</p>
+</div></blockquote>
+<dl class="simple">
+<dt>obs_params[‘msname’]: str</dt><dd><p>the name to use for the ms containing the fringestopped visibilities</p>
+</dd>
+<dt>obs_params[‘cal’]: src class object</dt><dd><p>details of the calibrator source</p>
+</dd>
+<dt>obs_params[‘utc_start’]: astropy Time object</dt><dd><p>the start time of the correlator run</p>
+</dd>
+</dl>
+</p></li>
+<li><p><strong>ant_params</strong> – <p>dictionary, the following keys must be defined
+ant_params[‘antenna_order’]: list(int)</p>
+<blockquote>
+<div><p>the names of the antennas, in the order used in the correlator</p>
+</div></blockquote>
+<dl class="simple">
+<dt>ant_params[‘refant’]: str</dt><dd><p>the name of the referance antenna
+Note: if an integer is passed instead, it will be treated as the index of
+the reference antenna in the CASA MS</p>
+</dd>
+<dt>ant_params[‘antpos’]: str</dt><dd><p>the full path to the antenna positions file</p>
+</dd>
+</dl>
+</p></li>
+<li><p><strong>show_plots</strong> – boolean
+if True, shows plots generated during calibration (e.g. if working
+in a notebook or interactive python environment)</p></li>
+<li><p><strong>throw_exceptions</strong> – boolean
+if True, throws exceptions; if False, handles them quietly.  In both cases,
+exception information is written to the system logs.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><dl class="simple">
+<dt>int</dt><dd><p>the status code.  a non-zero status means at least one error has occured.
+decode statuses using dsa110-pytools (dsatools.calstatus)</p>
+</dd>
+<dt>caltime: float</dt><dd><p>the time of the meridian crossing of the calibrator in mjd</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>status</p>
+</dd>
+</dl>
+</dd></dl>
+
 </div>
 <div class="section" id="module-dsacalib.utils">
 <span id="dsacalib-utils-module"></span><h2>dsacalib.utils module<a class="headerlink" href="#module-dsacalib.utils" title="Permalink to this headline">¶</a></h2>
