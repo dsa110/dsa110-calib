@@ -50,21 +50,21 @@ to a measurement set.</p>
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set to apply
-calibration solutions to.  Opens &lt;msname&gt;.ms</p></li>
+calibration solutions to.  Opens <cite>msname</cite>.ms</p></li>
 <li><p><strong>calname</strong> (<em>str</em>) – The name of the calibrator.  Tables that start
-with &lt;msnamecal&gt;_&lt;calname&gt; will be applied to the measurement
+with <cite>msnamecal</cite>_`calname` will be applied to the measurement
 set.</p></li>
 <li><p><strong>msnamecal</strong> (<em>str</em>) – The name of the measurement set used to model the
 calibraiton solutions.  Calibration tables prefixed with
-&lt;msnamecal&gt;_&lt;calname&gt; will be opened and applied.  Default None.
-If None, msnamecal is set to msname.</p></li>
+<cite>msnamecal</cite>_`calname` will be opened and applied.
+If <code class="docutils literal notranslate"><span class="pre">None</span></code>, <cite>msnamecal</cite> is set to <cite>msname</cite>. Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
 </dd>
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>error (int)</p>
+<dd class="field-odd"><p>int</p>
 </dd>
 </dl>
 </dd></dl>
@@ -84,16 +84,16 @@ then be used in fringe-fitting.</p>
 <li><p><strong>df</strong> (<em>float</em>) – The width of the frequency channels in GHz.</p></li>
 <li><p><strong>nfavg</strong> (<em>int</em>) – The number of frequency channels to average by
 after the Fourier transform.  Defaults to 5.</p></li>
-<li><p><strong>tavg</strong> (<em>boolean</em>) – If True, the visibilities are averaged
-in time before the Fourier transform. Defaults to True.</p></li>
+<li><p><strong>tavg</strong> (<em>boolean</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, the visibilities are averaged
+in time before the Fourier transform. Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
 <dd class="field-even"><p><ul class="simple">
 <li><p><strong>vis_ft</strong> (<em>ndarray</em>) – The complex visibilities, Fourier-transformed
-along the time axis.  3 (or 4, if tavg is set to False)
+along the time axis.  3 (or 4, if <cite>tavg</cite> is set to False)
 dimensions, (baseline,delay,polarization) (or
-(baseline,time,delay,polarization) if tavg is set to False)</p></li>
+(baseline,time,delay,polarization) if <cite>tavg</cite> is set to False)</p></li>
 <li><p><strong>delay_arr</strong> (<em>ndarray</em>) – Float, the values of the delay pixels in nanoseconds</p></li>
 </ul>
 </p>
@@ -110,16 +110,16 @@ visibilities to the corrected_data column of the measurement set.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.  The measurement set &lt;msname&gt;.ms
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.  The measurement set <cite>msname</cite>.ms
 will be opened.</p></li>
 <li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source. The calibration table will be
-written to &lt;msname&gt;_&lt;sourcename&gt;_kcal.</p></li>
-<li><p><strong>refant</strong> (<em>str</em>) – The reference antenna to use in calibration.
-If <cite>str</cite>, this is the name of the antenna.  If <cite>int</cite>, it is the
+written to <cite>msname</cite>_`sourcename`_kcal.</p></li>
+<li><p><strong>refant</strong> (<em>str</em>) – The reference antenna to use in calibration. If  type <em>str</em>,
+this is the name of the antenna.  If type <em>int</em>, it is the
 index of the antenna in the measurement set.</p></li>
-<li><p><strong>t</strong> (<em>str</em>) – The integration time to use before calibrating, e.g. <cite>‘inf’</cite>
-or <cite>’60s’</cite>.  See the CASA documentation for more examples.
-Defaults to <cite>‘inf’</cite> (averaging over the entire observation time).</p></li>
+<li><p><strong>t</strong> (<em>str</em>) – The integration time to use before calibrating, e.g. <code class="docutils literal notranslate"><span class="pre">'inf'</span></code>
+or <code class="docutils literal notranslate"><span class="pre">'60s'</span></code>.  See the CASA documentation for more examples.
+Defaults to <code class="docutils literal notranslate"><span class="pre">'inf'</span></code> (averaging over the entire observation time).</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
@@ -146,31 +146,28 @@ for the input baseline gains to the antenna gains.</p>
 is baseline.  Indices 1, 2 and 4 contain the gains for the
 cross-correlations. Information in indices 0, 3 and 5 is
 ignored and overwritten.</p></li>
-<li><p><strong>flags</strong> (<em>ndarray</em><em> or </em><em>None</em>) – A boolean array, containing flag information
+<li><p><strong>flags</strong> (<em>ndarray</em>) – A boolean array, containing flag information
 for the <cite>gains</cite> array. 1 if the data is flagged, 0 otherwise.
-If None, assumes no flag information available.  The first
+If <code class="docutils literal notranslate"><span class="pre">None</span></code>, assumes no flag information available.  The first
 dimension is baseline.  Indices 1, 2 and 4 contain the flags
 for the cross-correlations.  Information in indices 0, 3 and 5
 is ignored and overwritten.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>The complex gains matrix, first dimension</dt><dd><p>is baseline.  Indices 1, 2 and 4 contain the gains for the
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>gains</strong> (<em>ndarray</em>) – The complex gains matrix, first dimension
+is baseline.  Indices 1, 2 and 4 contain the gains for the
 cross-correlations. Indices 0, 3 and 5
-contain the calculated values for the antennas.</p>
-</dd>
-<dt>flags (ndarray): A boolean array, containing flag information</dt><dd><p>for the <cite>gains</cite> array.  1 if the data is flagged, 0 otherwise.
+contain the calculated values for the antennas.</p></li>
+<li><p><strong>flags</strong> (<em>ndarray</em>) – A boolean array, containing flag information
+for the <cite>gains</cite> array.  1 if the data is flagged, 0 otherwise.
 If None, assumes no flag information available.  The first
 dimension is baseline.  Indices 1, 2 and 4 contain the flags
 for the cross-correlations.  Indices 0,3 and 5 contain
-the calculated values for the antennas.</p>
-</dd>
-</dl>
+the calculated values for the antennas.</p></li>
+</ul>
 </p>
-</dd>
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>gains (ndarray)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -182,27 +179,25 @@ the calculated values for the antennas.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
-The MS &lt;msname&gt;.ms will be opened.</p></li>
-<li><p><strong>antenna</strong> (<em>str</em><em> or </em><em>int</em>) – The antenna flag.
-If <cite>str</cite>, this is the name of the antenna.  If <cite>int</cite>, it is the
-index of the antenna in the measurement set.</p></li>
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.  The MS <cite>msname</cite>.ms will be opened.</p></li>
+<li><p><strong>antenna</strong> (<em>str</em>) – The antenna to flag. If type <em>str</em>, this is the name of the antenna.
+If type <em>int</em>, the index of the antenna in the measurement set.</p></li>
 <li><p><strong>datacolumn</strong> (<em>str</em>) – The column of the measurement set to flag.
-Options are ‘data’,’model’,’corrected’ for the
+Options are <code class="docutils literal notranslate"><span class="pre">'data'</span></code>,``’model’<code class="docutils literal notranslate"><span class="pre">,</span></code>’corrected’`` for the
 uncalibrated visibilities, the visibility model (used by
 CASA to calculate calibration solutions), the calibrated
-visibilities.  Defaults to ‘data’.</p></li>
-<li><p><strong>pol</strong> (<em>str</em><em> or </em><em>None</em>) – The polarization to flag.  Must be ‘A’
+visibilities.  Defaults to <code class="docutils literal notranslate"><span class="pre">'data'</span></code>.</p></li>
+<li><p><strong>pol</strong> (<em>str</em>) – The polarization to flag.  Must be <cite>‘A’</cite>
 (which is mapped to polarization ‘XX’ of the CASA measurement
-set) or ‘B’ (mapped to polarization ‘YY’).  If None, both
-polarizations are flagged.  Defaults to None.</p></li>
+set) or <cite>‘B’</cite> (mapped to polarization ‘YY’).  Can also be <cite>None</cite>,
+for which both polarizations are flagged.  Defaults to <cite>None</cite>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
 </dd>
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>error (int)</p>
+<dd class="field-odd"><p>int</p>
 </dd>
 </dl>
 </dd></dl>
@@ -214,30 +209,29 @@ polarizations are flagged.  Defaults to None.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
-The MS &lt;msname&gt;.ms will be opened.</p></li>
-<li><p><strong>times</strong> (<em>ndarray</em>) – An 1-D array of times, type float, seconds since MJD=0.
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set. The MS <cite>msname</cite>.ms will be opened.</p></li>
+<li><p><strong>times</strong> (<em>ndarray</em>) – A 1-D array of times, type float, seconds since MJD=0.
 Times should be equally spaced and cover the entire time range
 of the measurement set, but can be coarser than the resolution of
 the measurement set.</p></li>
-<li><p><strong>bad</strong> (<em>ndarray</em>) – A 1-D boolean array with dimensions (len(times), nant).
-Should have a value of True if the corresponding timebins should be
+<li><p><strong>bad</strong> (<em>ndarray</em>) – A 1-D boolean array with dimensions (len(<cite>times</cite>), <cite>nant</cite>).
+Should have a value of <code class="docutils literal notranslate"><span class="pre">True</span></code> if the corresponding timebins should be
 flagged.</p></li>
 <li><p><strong>nant</strong> (<em>int</em>) – The number of antennas in the measurement set.</p></li>
 <li><p><strong>datacolumn</strong> (<em>str</em>) – The column of the measurement set to flag.
-Options are ‘data’,’model’,’corrected’ for the
+Options are <code class="docutils literal notranslate"><span class="pre">'data'</span></code>,``’model’<code class="docutils literal notranslate"><span class="pre">,</span></code>’corrected’`` for the
 uncalibrated visibilities, the visibility model (used by
 CASA to calculate calibration solutions), the calibrated
-visibilities.  Defaults to ‘data’.</p></li>
-<li><p><strong>verbose</strong> (<em>boolean</em>) – If True, will print information about the
-antenna/time pairs being flagged.  Defaults to False.</p></li>
+visibilities.  Defaults to <code class="docutils literal notranslate"><span class="pre">'data'</span></code>.</p></li>
+<li><p><strong>verbose</strong> (<em>boolean</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, will print information about the
+antenna/time pairs being flagged.  Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
 </dd>
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>error (int)</p>
+<dd class="field-odd"><p>int</p>
 </dd>
 </dl>
 </dd></dl>
@@ -249,20 +243,19 @@ antenna/time pairs being flagged.  Defaults to False.</p></li>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
-The MS &lt;msname&gt;.ms will be opened.</p></li>
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set. The MS <cite>msname</cite>.ms will be opened.</p></li>
 <li><p><strong>datacolumn</strong> (<em>str</em>) – The column of the measurement set to flag.
-Options are ‘data’,’model’,’corrected’ for the
+Options are <code class="docutils literal notranslate"><span class="pre">'data'</span></code>,``’model’<code class="docutils literal notranslate"><span class="pre">,</span></code>’corrected’`` for the
 uncalibrated visibilities, the visibility model (used by
 CASA to calculate calibration solutions), the calibrated
-visibilities.  Defaults to ‘data’.</p></li>
+visibilities.  Defaults to <code class="docutils literal notranslate"><span class="pre">'data'</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
 </dd>
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>error (int)</p>
+<dd class="field-odd"><p>int</p>
 </dd>
 </dl>
 </dd></dl>
@@ -278,26 +271,26 @@ and complex gain solutions.</p>
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
 <li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
-The MS &lt;msname&gt;.ms will be opened.</p></li>
+The MS <cite>msname</cite>.ms will be opened.</p></li>
 <li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source.
 The calibration table will be written to
-&lt;msname&gt;_&lt;sourcename&gt;_kcal.</p></li>
+<cite>msname</cite>_`sourcename`_kcal.</p></li>
 <li><p><strong>tga</strong> (<em>str</em>) – The integration time to use before calibrating
-the amplitudes of the complex gain, e.g. <cite>‘inf’</cite>
-or <cite>’60s’</cite>.  See the CASA documentation for more examples.</p></li>
+the amplitudes of the complex gain, e.g. <code class="docutils literal notranslate"><span class="pre">'inf'</span></code>
+or <code class="docutils literal notranslate"><span class="pre">'60s'</span></code>.  See the CASA documentation for more examples.</p></li>
 <li><p><strong>tgp</strong> (<em>str</em>) – The integration time to use before calibrating
-the amplitudes of the complex gain, e.g. <cite>‘inf’</cite>
-or <cite>’60s’</cite>.  See the CASA documentation for more examples.</p></li>
-<li><p><strong>refant</strong> (<em>str</em><em> or </em><em>int</em>) – The reference antenna to use in calibration.
-If <cite>str</cite>, this is the name of the antenna.  If <cite>int</cite>, it is the
+the amplitudes of the complex gain, e.g. <code class="docutils literal notranslate"><span class="pre">'inf'</span></code>
+or <code class="docutils literal notranslate"><span class="pre">'60s'</span></code>.  See the CASA documentation for more examples.</p></li>
+<li><p><strong>refant</strong> (<em>str</em>) – The reference antenna to use in calibration. If type <em>str</em>,
+this is the name of the antenna.  If type <em>int</em>, it is the
 index of the antenna in the measurement set.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
 </dd>
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>error (int)</p>
+<dd class="field-odd"><p>int</p>
 </dd>
 </dl>
 </dd></dl>
@@ -313,27 +306,25 @@ within CASA.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
-The MS &lt;msname&gt;.ms will be opened.</p></li>
-<li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source.
-The calibration table will be written to
-&lt;msname&gt;_&lt;sourcename&gt;_kcal.</p></li>
-<li><p><strong>tga</strong> (<em>str</em>) – The integration time to use before calibrating
-the amplitudes of the complex gain, e.g. <cite>‘inf’</cite>
-or <cite>’60s’</cite>.  See the CASA documentation for more examples.</p></li>
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.  The MS <cite>msname</cite>.ms will be opened.</p></li>
+<li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source.  The calibration table will be
+written to <cite>msname</cite>_`sourcename`_kcal.</p></li>
+<li><p><strong>tga</strong> (<em>str</em>) – The integration time to use before calibrating the amplitudes of the
+complex gain, e.g. <code class="docutils literal notranslate"><span class="pre">'inf'</span></code> or <code class="docutils literal notranslate"><span class="pre">'60s'</span></code>.  See the CASA
+documentation for more examples.</p></li>
 <li><p><strong>tgp</strong> (<em>str</em>) – The integration time to use before calibrating
-the amplitudes of the complex gain, e.g. <cite>‘inf’</cite>
-or <cite>’60s’</cite>.  See the CASA documentation for more examples.</p></li>
-<li><p><strong>refant</strong> (<em>str</em><em> or </em><em>int</em>) – The reference antenna to use in calibration.
-If <cite>str</cite>, this is the name of the antenna.  If <cite>int</cite>, it is the
+the amplitudes of the complex gain, e.g. <code class="docutils literal notranslate"><span class="pre">'inf'</span></code>
+or <code class="docutils literal notranslate"><span class="pre">'60s'</span></code>.  See the CASA documentation for more examples.</p></li>
+<li><p><strong>refant</strong> (<em>str</em>) – The reference antenna to use in calibration.  If type <em>str</em>,
+this is the name of the antenna.  If type <em>int</em>, it is the
 index of the antenna in the measurement set.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
 </dd>
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>error (int)</p>
+<dd class="field-odd"><p>int</p>
 </dd>
 </dl>
 </dd></dl>
@@ -347,35 +338,31 @@ delay calibration solution. Can only be run after delay calibration.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
-The MS &lt;msname&gt;.ms will be opened.</p></li>
-<li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source.
-The calibration table will be written to
-&lt;msname&gt;_&lt;sourcename&gt;_kcal.</p></li>
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set. The MS <cite>msname</cite>.ms will be opened.</p></li>
+<li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source.  The calibration table will
+be written to <cite>msname</cite>_`sourcename`_kcal.</p></li>
 <li><p><strong>nant</strong> (<em>int</em>) – The number of antennas in the array.</p></li>
-<li><p><strong>refant</strong> (<em>str</em><em> or </em><em>int</em>) – The reference antenna to use in calibration.
-If <cite>str</cite>, the name of the reference antenna, if <cite>int</cite>, the
+<li><p><strong>refant</strong> (<em>str</em>) – The reference antenna to use in calibration.  If type <em>str</em>, the
+name of the reference antenna, if type <em>int</em>, the
 index of the antenna in the CASA measurement set.  This must
 be the same as the reference antenna used in the delay calibration,
-or this will fail.</p></li>
+or unexpected errors may occur.</p></li>
 <li><p><strong>tint</strong> (<em>str</em>) – The timescale on which to calculate the delay solutions (and
 evaluate the data quality).  Must be a CASA-interpreted string,
-e.g. ‘inf’ (average all of the data) or ’60s’ (average data to
-60-second bins before delay calibration).  Defaults to ’59s’.</p></li>
+e.g. <code class="docutils literal notranslate"><span class="pre">'inf'</span></code> (average all of the data) or <code class="docutils literal notranslate"><span class="pre">'60s'</span></code> (average
+data to 60-second bins before delay calibration).  Defaults to
+<code class="docutils literal notranslate"><span class="pre">'59s'</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>A boolean, True if the data quality is poor and the</dt><dd><p>time-bin should be flagged, False otherwise.  Dimensions
-(time,antenna)</p>
-</dd>
-</dl>
-<p>times (ndarray): Float, the time (mjd) for each delay solution
-error (int): The number of errors that occured during calibration.</p>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>bad_times</strong> (<em>ndarray</em>) – Booleans, <code class="docutils literal notranslate"><span class="pre">True</span></code> if the data quality is poor and the
+time-bin should be flagged, <code class="docutils literal notranslate"><span class="pre">False</span></code> otherwise.  Dimensions
+(time,antenna)</p></li>
+<li><p><strong>times</strong> (<em>ndarray</em>) – Floats, the time (mjd) for each delay solution</p></li>
+<li><p><strong>error</strong> (<em>int</em>) – The number of errors that occured during calibration.</p></li>
+</ul>
 </p>
-</dd>
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>bad_times (ndarray)</p>
 </dd>
 </dl>
 </dd></dl>
@@ -387,20 +374,19 @@ error (int): The number of errors that occured during calibration.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.
-The MS &lt;msname&gt;.ms will be opened.</p></li>
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set. The MS <cite>msname</cite>.ms will be opened.</p></li>
 <li><p><strong>datacolumn</strong> (<em>str</em>) – The column of the measurement set to flag.
-Options are ‘data’,’model’,’corrected’ for the
+Options are <code class="docutils literal notranslate"><span class="pre">'data'</span></code>,``’model’<code class="docutils literal notranslate"><span class="pre">,</span></code>’corrected’`` for the
 uncalibrated visibilities, the visibility model (used by
 CASA to calculate calibration solutions), the calibrated
-visibilities.  Defaults to ‘data’.</p></li>
+visibilities.  Defaults to <code class="docutils literal notranslate"><span class="pre">'data'</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p>The number of errors that occured during calibration.</p>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
 </dd>
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>error (int)</p>
+<dd class="field-odd"><p>int</p>
 </dd>
 </dl>
 </dd></dl>
