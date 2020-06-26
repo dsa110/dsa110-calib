@@ -38,7 +38,9 @@
 </div>
 <div class="section" id="module-dsacalib.calib">
 <span id="dsacalib-calib-module"></span><h2>dsacalib.calib module<a class="headerlink" href="#module-dsacalib.calib" title="Permalink to this headline">¶</a></h2>
-<p>Functions for calibration of DSA-110 visibilities with casatools.</p>
+<p>Functions for calibration of DSA-110 visibilities.</p>
+<p>These functions use the CASA package casatools to calibrate
+visibilities stored as measurement sets.</p>
 <p>Author: Dana Simard, <a class="reference external" href="mailto:dana&#46;simard&#37;&#52;&#48;astro&#46;caltech&#46;edu">dana<span>&#46;</span>simard<span>&#64;</span>astro<span>&#46;</span>caltech<span>&#46;</span>edu</a>, 10/2019</p>
 <dl class="py function">
 <dt id="dsacalib.calib.apply_calibration">
@@ -437,31 +439,30 @@ data flagging)</p></li>
 <p>Functions used in fringestopping of DSA-110 visibilities.</p>
 <p>Author: Dana Simard, <a class="reference external" href="mailto:dana&#46;simard&#37;&#52;&#48;astro&#46;caltech&#46;edu">dana<span>&#46;</span>simard<span>&#64;</span>astro<span>&#46;</span>caltech<span>&#46;</span>edu</a> 11/2019</p>
 <p>These functions use casatools to build sky models, divide
-visibilities by sky modes, and fringestop visibilities.</p>
+visibilities by sky models, and fringestop visibilities.</p>
 <dl class="py function">
 <dt id="dsacalib.fringestopping.amplitude_sky_model">
 <code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">amplitude_sky_model</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">source</span></em>, <em class="sig-param"><span class="n">ant_ra</span></em>, <em class="sig-param"><span class="n">pt_dec</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">dish_dia</span><span class="o">=</span><span class="default_value">4.65</span></em>, <em class="sig-param"><span class="n">spind</span><span class="o">=</span><span class="default_value">0.7</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.amplitude_sky_model" title="Permalink to this definition">¶</a></dt>
 <dd><p>Computes the amplitude sky model due to the primary beam.</p>
-<p>Computes the amplitude sky model due to the primary beam response
-for a single source.</p>
+<p>Computes the amplitude sky model for a single source due to the primary
+beam response of an antenna.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>source</strong> – src class instance
-the source to model</p></li>
-<li><p><strong>ant_ra</strong> – array(float)
-the right ascension pointing of the antenna in each time bin
-of the observation, in radians.  if az=0 deg or az=180 deg, this is
-the lst of each time bin in the observation, in radians</p></li>
-<li><p><strong>pt_dec</strong> – float
-the pointing declination of the observation, in radians</p></li>
-<li><p><strong>fobs</strong> – array
-the observing frequency of the center of each channel,
-in GHz</p></li>
+<li><p><strong>source</strong> (<em>src class instance</em>) – The source to model.  The source flux (<cite>src.I</cite>), right ascension
+(<cite>src.ra</cite>) and declination (<cite>src.dec</cite>) must be specified.</p></li>
+<li><p><strong>ant_ra</strong> (<em>ndarray</em>) – The right ascension pointing of the antenna in each time bin
+of the observation, in radians.  If az=0 deg or az=180 deg, this is
+the lst of each time bin in the observation in radians.</p></li>
+<li><p><strong>pt_dec</strong> (<em>float</em>) – The pointing declination of the observation in radians.</p></li>
+<li><p><strong>fobs</strong> (<em>array</em>) – The observing frequency of the center of each channel in GHz.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p>the amplitude sky model</p>
+<dd class="field-even"><p>The calculated amplitude sky model.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>ndarray</p>
 </dd>
 </dl>
 </dd></dl>
@@ -469,36 +470,36 @@ in GHz</p></li>
 <dl class="py function">
 <dt id="dsacalib.fringestopping.calc_uvw">
 <code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">calc_uvw</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">b</span></em>, <em class="sig-param"><span class="n">tobs</span></em>, <em class="sig-param"><span class="n">src_epoch</span></em>, <em class="sig-param"><span class="n">src_lon</span></em>, <em class="sig-param"><span class="n">src_lat</span></em>, <em class="sig-param"><span class="n">obs</span><span class="o">=</span><span class="default_value">'OVRO_MMA'</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.calc_uvw" title="Permalink to this definition">¶</a></dt>
-<dd><p>Calculates the uvw coordinates of a source.</p>
+<dd><p>Calculates uvw coordinates.</p>
+<p>Uses CASA to calculate the u,v,w coordinates of the
+baselines <cite>b</cite> towards a source or phase center
+(specified by <cite>src_epoch</cite>, <cite>src_lon</cite> and <cite>src_lat</cite>) at
+the specified time and observatory.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>b</strong> – real array
-the baseline, shape (nbaselines, 3), m in ITRF coords</p></li>
-<li><p><strong>tobs</strong> – real array
-times to calculate coordinates at</p></li>
-<li><p><strong>src_epoch</strong> – str
-casa-recognized descriptor of the source coordinates
-e.g. ‘J2000’ or ‘HADEC’</p></li>
-<li><p><strong>src_lon</strong> – astropy quantity
-longitude of source</p></li>
-<li><p><strong>src_lat</strong> – astropy quantity
-latitute of source</p></li>
+<li><p><strong>b</strong> (<em>ndarray</em>) – The ITRF coordinates of the baselines.  Type float,
+shape (nbaselines, 3), units of meters.</p></li>
+<li><p><strong>tobs</strong> (<em>ndarray</em>) – An array of floats, the times in MJD for which to
+calculate the uvw coordinates.</p></li>
+<li><p><strong>src_epoch</strong> (<em>str</em>) – The epoch of the source or phase-center, as a
+CASA-recognized string e.g. <code class="docutils literal notranslate"><span class="pre">'J2000'</span></code> or <code class="docutils literal notranslate"><span class="pre">'HADEC'</span></code></p></li>
+<li><p><strong>src_lon</strong> (<em>astropy quantity</em>) – The longitude of the source or phase-center, in
+degrees or an equivalent unit.</p></li>
+<li><p><strong>src_lat</strong> (<em>astropy quantity</em>) – The latitude of the source or phase-center, in
+degrees or an equivalent unit.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>real array</dt><dd><p>u, shape (nbaselines, ntimes), units m</p>
-</dd>
-<dt>v: real array</dt><dd><p>v, shape (nbaselines, ntimes), units m</p>
-</dd>
-<dt>w: real array</dt><dd><p>w, shape (nbaselines, ntimes), units m</p>
-</dd>
-</dl>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>u</strong> (<em>ndarray</em>) – The u-value for each time and baseline, in meters.
+Shape is <code class="docutils literal notranslate"><span class="pre">(len(b),</span> <span class="pre">len(tobs))</span></code>.</p></li>
+<li><p><strong>v</strong> (<em>ndarray</em>) – The v-value for each time and baseline, in meters.
+Shape is <code class="docutils literal notranslate"><span class="pre">(len(b),</span> <span class="pre">len(tobs))</span></code>.</p></li>
+<li><p><strong>w</strong> (<em>ndarray</em>) – The w-value for each time and baseline, in meters.
+Shape is <code class="docutils literal notranslate"><span class="pre">(len(b),</span> <span class="pre">len(tobs))</span></code>.</p></li>
+</ul>
 </p>
-</dd>
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>u</p>
 </dd>
 </dl>
 </dd></dl>
@@ -507,45 +508,35 @@ latitute of source</p></li>
 <dt id="dsacalib.fringestopping.divide_visibility_sky_model">
 <code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">divide_visibility_sky_model</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis</span></em>, <em class="sig-param"><span class="n">b</span></em>, <em class="sig-param"><span class="n">sources</span></em>, <em class="sig-param"><span class="n">tobs</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">lst</span></em>, <em class="sig-param"><span class="n">pt_dec</span></em>, <em class="sig-param"><span class="n">phase_only</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">return_model</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.divide_visibility_sky_model" title="Permalink to this definition">¶</a></dt>
 <dd><p>Calculates and applies the sky model visibilities.</p>
-<p>Calculates the sky model visibilities on the baselines b and at
-times tobs.  Divides the input visibilities,vis, by the sky model.
-vis is modified in-place.</p>
+<p>Calculates the sky model visibilities on the baselines <cite>b</cite> and at
+times <cite>tobs</cite>.  Divides the input visibilities, <cite>vis</cite>, by the sky model.
+<cite>vis</cite> is modified in-place.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>vis</strong> – complex array
-the visibilities, (baselines,time,frequency,polarization)
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The observed complex visibilities, with dimensions
+(baselines,time,frequency,polarization).  <cite>vis</cite>
 will be updated in place to the fringe-stopped visibilities</p></li>
-<li><p><strong>b</strong> – real array
-baselines to calculate visibilities for, shape (nbaselines, 3),
-units m in ITRF coords</p></li>
-<li><p><strong>sources</strong> – list(src)
-list of sources to include in the sky model</p></li>
-<li><p><strong>tobs</strong> – float or arr(float)
-times to calculate visibility model for, mjd</p></li>
-<li><p><strong>fobs</strong> – float or arr(float)
-frequency to calculate model for, in GHz</p></li>
-<li><p><strong>phase_only</strong> – Boolean
-if True, the fluxes of all sources will be set to 1 with a
-spectral index of 0.
-if False, the fluxes of all sources, spectral index,
-and primary beam correction will all be included in the sky
-model</p></li>
-<li><p><strong>return_model</strong> – Boolean
-if True, the visibility model will be returned</p></li>
+<li><p><strong>b</strong> (<em>ndarray</em>) – The baselines for which to calculate visibilities, shape (nbaselines, 3),
+units of meters in ITRF coords.</p></li>
+<li><p><strong>sources</strong> (<em>list</em><em>(</em><em>src class objects</em><em>)</em>) – The list of sources to include in the sky model.</p></li>
+<li><p><strong>tobs</strong> (<em>float</em><em> or </em><em>ndarray</em>) – The times for which to calculate the visibility model in MJD.</p></li>
+<li><p><strong>fobs</strong> (<em>float</em><em> or </em><em>arr</em><em>(</em><em>float</em><em>)</em>) – The frequency for which to calculate the model in GHz.</p></li>
+<li><p><strong>phase_only</strong> (<em>Boolean</em>) – If  set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, the fluxes of all sources will be set to 1 with a
+spectral index of 0. If set to <code class="docutils literal notranslate"><span class="pre">False</span></code>, the fluxes of all sources,
+spectral index, and primary beam correction will all be included
+in the sky model.  Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+<li><p><strong>return_model</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, the visibility model will be returned.
+Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>complex array</dt><dd><p>the modelled visibilities, dimensions
-(baselines, time, frequency,polarization)
-returned only if return_model is true</p>
-</dd>
-</dl>
-</p>
+<dd class="field-even"><p><strong>vis_model</strong> – The modelled visibilities, dimensions
+(baselines, time, frequency,polarization).
+Returned only if <cite>return_model</cite> is set to True.</p>
 </dd>
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>vis_model</p>
+<dd class="field-odd"><p>ndarray</p>
 </dd>
 </dl>
 </dd></dl>
@@ -560,37 +551,25 @@ are modified in place.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>vis</strong> – array(complex)
-(baselines,time,freq,pol)
-the visibilities to be fringestopped
-modified in place</p></li>
-<li><p><strong>b</strong> – array(3, nbls)
-the itrf coordinates of the baselines</p></li>
-<li><p><strong>source</strong> – src class instance
-the source to fringestop on</p></li>
-<li><p><strong>tobs</strong> – array(float)
-the observation time (center of each bin)
-in mjd</p></li>
-<li><p><strong>fobs</strong> – array(float)
-the observing frequency (center of each bin)
-in GHz</p></li>
-<li><p><strong>pt_dec</strong> – float
-the declination the array is pointing at, in rad</p></li>
-<li><p><strong>return_model</strong> – boolean
-if True, the fringestopping model is returned</p></li>
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The visibilities t be fringestopped, with dimensions
+(baselines,time,freq,pol). <cite>vis</cite> is modified in place.</p></li>
+<li><p><strong>b</strong> (<em>ndarray</em>) – The ITRF coordinates of the baselines in meters, with dimensions
+(3,baselines).</p></li>
+<li><p><strong>source</strong> (<em>src class instance</em>) – The source to fringestop on.</p></li>
+<li><p><strong>tobs</strong> (<em>ndarray</em>) – The observation time (the center of each bin) in MJD.</p></li>
+<li><p><strong>fobs</strong> (<em>ndarray</em>) – The observing frequency (the center of each bin) in GHz.</p></li>
+<li><p><strong>pt_dec</strong> (<em>float</em>) – The pointing declination of the array, in radians.</p></li>
+<li><p><strong>return_model</strong> (<em>boolean</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, the fringestopping model is returned.  Defaults
+<code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>array(complex)</dt><dd><p>the phase-only visibility model by which the
+<dd class="field-even"><p><strong>vis_model</strong> – The phase-only visibility model by which the
 visiblities were divided.  Returned only if
-return_model is True</p>
-</dd>
-</dl>
-</p>
+<cite>return_model</cite> is set to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p>
 </dd>
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>vis_model</p>
+<dd class="field-odd"><p>ndarray</p>
 </dd>
 </dl>
 </dd></dl>
@@ -598,34 +577,25 @@ return_model is True</p>
 <dl class="py function">
 <dt id="dsacalib.fringestopping.pb_resp">
 <code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">pb_resp</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">ant_ra</span></em>, <em class="sig-param"><span class="n">ant_dec</span></em>, <em class="sig-param"><span class="n">src_ra</span></em>, <em class="sig-param"><span class="n">src_dec</span></em>, <em class="sig-param"><span class="n">freq</span></em>, <em class="sig-param"><span class="n">dish_dia</span><span class="o">=</span><span class="default_value">4.65</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.pb_resp" title="Permalink to this definition">¶</a></dt>
-<dd><p>Computes the primary beam response.</p>
+<dd><p>Computes the primary beam response towards a direction on the sky.</p>
+<p>Returns a value between 0 and 1 for each value passed in <cite>ant_ra</cite>.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>ant_ra</strong> – float
-antenna right ascension pointing in radians</p></li>
-<li><p><strong>ant_dec</strong> – float
-antenna declination pointing in radiants</p></li>
-<li><p><strong>src_ra</strong> – float
-source right ascension in radians</p></li>
-<li><p><strong>src_dec</strong> – float
-source declination in radians</p></li>
-<li><p><strong>freq</strong> – array(float)
-the frequency of each channel in GHz</p></li>
-<li><p><strong>dish_dia</strong> – float
-the dish diameter in m</p></li>
+<li><p><strong>ant_ra</strong> (<em>float</em><em> or </em><em>ndarray</em>) – The antenna right ascension pointing in radians.  If an array, must be
+one-dimensional.</p></li>
+<li><p><strong>ant_dec</strong> (<em>float</em>) – The antenna declination pointing in radians.</p></li>
+<li><p><strong>src_ra</strong> (<em>float</em>) – The source right ascension in radians.</p></li>
+<li><p><strong>src_dec</strong> (<em>float</em>) – The source declination in radians.</p></li>
+<li><p><strong>freq</strong> (<em>ndarray</em>) – The frequency of each channel in GHz.</p></li>
+<li><p><strong>dish_dia</strong> (<em>float</em>) – The dish diameter in meters.  Defaults to <code class="docutils literal notranslate"><span class="pre">4.65</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>array(float)</dt><dd><p>dimensions distance, freq
-the primary beam response</p>
-</dd>
-</dl>
-</p>
+<dd class="field-even"><p><strong>pb</strong> – The primary beam response, dimensions (<cite>ant_ra</cite>,`freq`).</p>
 </dd>
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>pb</p>
+<dd class="field-odd"><p>ndarray</p>
 </dd>
 </dl>
 </dd></dl>
@@ -634,33 +604,36 @@ the primary beam response</p>
 <dt id="dsacalib.fringestopping.set_dimensions">
 <code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">set_dimensions</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">fobs</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">tobs</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">b</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.set_dimensions" title="Permalink to this definition">¶</a></dt>
 <dd><p>Sets the dimensions of arrays for fringestopping.</p>
-<p>Ensures that fobs, tobs and b are ndarrays with the correct
-dimensions for fringestopping using jit.</p>
+<p>Ensures that <cite>fobs</cite>, <cite>tobs</cite> and <cite>b</cite> are ndarrays with the correct
+dimensions for fringestopping using jit.  Any combination of these
+arrays may be passed.  If no arrays are passed, an empty list is returned</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>fobs</strong> – float or ndarray(float)
-The central frequency of each channel, in GHz</p></li>
-<li><p><strong>tobs</strong> – float or ndarray(float)
-The central time of each subintegration, in mjd</p></li>
-<li><p><strong>b</strong> – list or ndarray
-The baselines in ITRF coordinates, dimensions (nbaselines,3)
-or (3) if a single baseline</p></li>
+<li><p><strong>fobs</strong> (<em>float</em><em> or </em><em>ndarray</em>) – The central frequency of each channel in GHz.  Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>tobs</strong> (<em>float</em><em> or </em><em>ndarray</em>) – The central time of each subintegration in MJD.  Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>b</strong> (<em>ndarray</em>) – The baselines in ITRF coordinates with dimensions (nbaselines,3)
+or (3) if a single baseline.  Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>ndarray</dt><dd><p>dimensions (nchannels,1)</p>
+<dd class="field-even"><p><p>A list of the arrays passed, altered to contain the correct dimensions
+for fringestopping.  The list may contain:</p>
+<dl class="simple">
+<dt>fobs<span class="classifier">ndarray</span></dt><dd><p>The central frequency of each channel in GHz with
+dimensions (channels,1).  Included if <cite>fobs</cite> is not set to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
 </dd>
-<dt>tobs: ndarray</dt><dd><p>dimensions (nt)</p>
+<dt>tobs<span class="classifier">ndarray</span></dt><dd><p>The central time of each subintegration in MJD with dimensions (time).
+Included if <cite>tobs</cite> is not set to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
 </dd>
-<dt>b: ndarray</dt><dd><p>dimensions (nbaselines, 3)</p>
+<dt>b<span class="classifier">ndarray</span></dt><dd><p>The baselines in ITRF coordaintes with dimensions (baselines, 3)
+or (1,3) if a single baseline.  Included if <code class="docutils literal notranslate"><span class="pre">b</span></code> is not set to None.</p>
 </dd>
 </dl>
 </p>
 </dd>
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>fobs</p>
+<dd class="field-odd"><p>list</p>
 </dd>
 </dl>
 </dd></dl>
@@ -669,41 +642,30 @@ or (3) if a single baseline</p></li>
 <dt id="dsacalib.fringestopping.visibility_sky_model">
 <code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">visibility_sky_model</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis_shape</span></em>, <em class="sig-param"><span class="n">vis_dtype</span></em>, <em class="sig-param"><span class="n">b</span></em>, <em class="sig-param"><span class="n">sources</span></em>, <em class="sig-param"><span class="n">tobs</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">lst</span></em>, <em class="sig-param"><span class="n">pt_dec</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.visibility_sky_model" title="Permalink to this definition">¶</a></dt>
 <dd><p>Calculates the sky model visibilities.</p>
-<p>Calculates the sky model visibilities on the baselines b
-and at times tobs.</p>
+<p>Calculates the sky model visibilities on the baselines <cite>b</cite>
+and at times <cite>tobs</cite>.  Ensures that the returned sky model is the
+same datatype and the same shape as specified by <cite>vis_shape</cite> and
+<cite>vis_dtype</cite> to ensure compatability with jit.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>vis_shape</strong> – tuple
-the shape of the visibilities, dimensions
-(baselines,time,frequency,polarization)</p></li>
-<li><p><strong>vis_dtype</strong> – numpy datatype
-the datatype of the visibilities</p></li>
-<li><p><strong>b</strong> – real array
-baselines to calculate visibilities for, shape (nbaselines, 3),
-units m in ITRF coords</p></li>
-<li><p><strong>sources</strong> – list(src class instances)
-list of sources to include in the sky model</p></li>
-<li><p><strong>tobs</strong> – float or arr(float)
-times to calculate visibility model for, mjd</p></li>
-<li><p><strong>fobs</strong> – float or arr(float)
-frequency to calculate model for, in GHz</p></li>
-<li><p><strong>lst</strong> – array(float)
-the lst in radians for each time step</p></li>
-<li><p><strong>pt_dec</strong> – float
-the pointing declination in radians</p></li>
+<li><p><strong>vis_shape</strong> (<em>tuple</em>) – The shape of the visibilities: (baselines,time,frequency,polarization).</p></li>
+<li><p><strong>vis_dtype</strong> (<em>numpy datatype</em>) – The datatype of the visibilities.</p></li>
+<li><p><strong>b</strong> (<em>real array</em>) – The baselines to calculate visibilities for, shape (nbaselines, 3),
+units of meters in ITRF coords.</p></li>
+<li><p><strong>sources</strong> (<em>list</em><em>(</em><em>src class instances</em><em>)</em>) – The sources to include in the sky model.</p></li>
+<li><p><strong>tobs</strong> (<em>float</em><em> or </em><em>ndarray</em>) – The times at which to calculate the visibility model, in MJD.</p></li>
+<li><p><strong>fobs</strong> (<em>float</em><em> or </em><em>ndarray</em>) – The frequencies at which to calculate the visibility model, in GHz.</p></li>
+<li><p><strong>lst</strong> (<em>ndarray</em>) – The local sidereal time in radians for each time in tobs.</p></li>
+<li><p><strong>pt_dec</strong> (<em>float</em>) – The antenna pointing declination in radians.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>complex array</dt><dd><p>the modelled visibilities, dimensions (baselines,
-time, frequency,polarization)</p>
-</dd>
-</dl>
-</p>
+<dd class="field-even"><p><strong>vis_model</strong> – The modelled complex visibilities, dimensions (baselines,
+time, frequency,polarization).</p>
 </dd>
 <dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>vis_model</p>
+<dd class="field-odd"><p>ndarray</p>
 </dd>
 </dl>
 </dd></dl>
@@ -713,24 +675,19 @@ time, frequency,polarization)</p>
 <code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">visibility_sky_model_worker</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis_model</span></em>, <em class="sig-param"><span class="n">bws</span></em>, <em class="sig-param"><span class="n">famps</span></em>, <em class="sig-param"><span class="n">f0</span></em>, <em class="sig-param"><span class="n">spec_idx</span></em>, <em class="sig-param"><span class="n">fobs</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.visibility_sky_model_worker" title="Permalink to this definition">¶</a></dt>
 <dd><p>Builds complex sky models.</p>
 <p>This is a worker to contain the for loop in the visibility model
-calculation using jit. Modifies the input array vis_model in place.</p>
+calculation using jit. Modifies the input array <cite>vis_model</cite> in place.</p>
 <dl class="field-list simple">
 <dt class="field-odd">Parameters</dt>
 <dd class="field-odd"><ul class="simple">
-<li><p><strong>vis_model</strong> – complex array
-an array initialized to all zeros, the same dimensions as the array
-of visibilities</p></li>
-<li><p><strong>bws</strong> – real array
-the w component of the baselines towards the phasing direction,
-or the w comonents of the baselines towards each source in the
-sky model</p></li>
-<li><p><strong>famps</strong> – real array
-the intensities of each source at f0</p></li>
-<li><p><strong>f0</strong> – float
-the reference frequency for famps, in GHz</p></li>
-<li><p><strong>spec_idx</strong> – float
-the spectral index to use in the source model</p></li>
-<li><p><strong>fobs</strong> – the central frequency of each channel, in GHz</p></li>
+<li><p><strong>vis_model</strong> (<em>ndarray</em>) – A placeholder for the output.  A complex array initialized to zeros,
+with the same shape as the array of visibilities you wish to model.
+Dimensions (baseline,time,freq,polarization).</p></li>
+<li><p><strong>bws</strong> (<em>ndarray</em>) – The w component of the baselines towards the phase-center or towards
+each source in the sky model.  Dimensions (sources,baselines).</p></li>
+<li><p><strong>famps</strong> (<em>ndarray</em>) – The flux of each source at the reference frequency, in Jy.</p></li>
+<li><p><strong>f0</strong> (<em>float</em>) – The reference frequency, in GHz.</p></li>
+<li><p><strong>spec_idx</strong> (<em>float</em>) – The spectral index for the frequency dependence of the source flux.</p></li>
+<li><p><strong>fobs</strong> (<em>ndarray</em>) – The central frequency of each channel of the visibilities, in GHz.</p></li>
 </ul>
 </dd>
 </dl>
