@@ -19,9 +19,6 @@ logger.app("dsacalib")
 
 def __init__():
     return
-
-def exception_logger(task):
-    logger.error('Exception occured during {0}')#,exc_info=True)
     
 def check_path(fname):
     assert os.path.exists(fname), \

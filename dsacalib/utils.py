@@ -30,6 +30,7 @@ from scipy.ndimage.filters import median_filter
 from dsautils import dsa_store
 import dsautils.dsa_syslog as dsl 
 from dsautils import calstatus as cs
+import traceback
 
 logger = dsl.DsaSyslogger()    
 logger.subsystem("software")
@@ -38,7 +39,7 @@ logger.app("dsacalib")
 de = dsa_store.DsaStore()
 
 def exception_logger(task,e,throw):
-    logger.error('During {0}, exception occurred: {1}'.format(task,e))#,exc_info=True)
+    logger.error('During {0}, {1} occurred:\n{2}'.format(task,type(e).__name__,''.join(traceback.format_tb(e.__traceback__))))
     if throw:
         raise e
 
@@ -723,31 +724,45 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
                format(ofile))
     return
 
-def extract_vis_from_ms(ms_name,nbls,nchan,npol=2):
-    """ Extract calibrated and uncalibrated visibilities from 
-    measurement set.
+def extract_vis_from_ms(ms_name,nbls):
+    """ Extract visibilities from CASA measurement set.
     
     Args:
         ms_name: str
           the name of the measurement set (will open <ms>.ms)
+        nbls: int
+          the number of baselines in the measurement set
     
     Returns:
         vis_uncal: complex array
           the 'observed' data from the measurement set (baselines,time,freq)
         vis_cal: complex array
           the 'corrected' data from the measurement set (baselines,time,freq)
+        time: float array
+          the mjd of each time sample
+        freq: float array
+          the frequency of each channel, in GHz
     """
     error = 0
     ms = cc.ms()
     error += not ms.open('{0}.ms'.format(ms_name))
-    vis_uncal= (ms.getdata(["data"])
-                ['data'].reshape(npol,nchan,-1,nbls).T)
-    vis_cal  = (ms.getdata(["corrected_data"])
-            ['corrected_data'].reshape(npol,nchan,-1,nbls).T)
+    ai = ms.getdata(['axis_info'])['axis_info']
+    #pol = ai['corr_axis']
+    freq = ai['freq_axis']['chan_freq'].squeeze()/1e9
+    #ch_width = ai['freq_axis']['resolution'].squeeze()
+    time = ms.getdata(['time'])['time'].reshape(-1,nbls)[...,0]
+    time = time/ct.seconds_per_day
+    
+    vis_uncal = ms.getdata(["data"])['data']
+    vis_uncal = vis_uncal.reshape(vis_uncal.shape[0],vis_uncal.shape[1],
+                                  -1,nbls).T
+    vis_cal   = ms.getdata(["corrected_data"])['corrected_data']
+    vis_cal   = vis_cal.reshape(vis_cal.shape[0],vis_cal.shape[1],
+                                -1,nbls).T
     error += not ms.close()
     if error > 0:
         logger.info('{0} errors occured during calibration'.format(error))
-    return vis_uncal, vis_cal
+    return vis_uncal, vis_cal, time, freq
 
 def initialize_hdf5_file(f,fobs,antenna_order,t0,nbls,nchan,npol,nant):
     """Initialize the hdf5 file.
