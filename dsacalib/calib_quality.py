@@ -1,5 +1,5 @@
-""""
-Routines to automate quality verification of CASA calibration solutions.
+""""Routines to automate quality verification of CASA calibration solutions.
+
 Things we may want to consider including:
 - when flagging data, checking how much data is flagged and raising a warning if 
   it's over 20% or so

@@ -29,6 +29,8 @@ iers.conf.iers_auto_url_mirror = ct.iers_table
 from scipy.ndimage.filters import median_filter
 from dsautils import dsa_store
 import dsautils.dsa_syslog as dsl 
+from dsautils import calstatus as cs
+import traceback
 
 logger = dsl.DsaSyslogger()    
 logger.subsystem("software")
@@ -37,7 +39,7 @@ logger.app("dsacalib")
 de = dsa_store.DsaStore()
 
 def exception_logger(task,e,throw):
-    logger.error('During {0}, exception occurred: {1}'.format(task,e))#,exc_info=True)
+    logger.error('During {0}, {1} occurred:\n{2}'.format(task,type(e).__name__,''.join(traceback.format_tb(e.__traceback__))))
     if throw:
         raise e
 
@@ -413,10 +415,10 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False,
 
     if verbose:
         if dsa10:
-            print('File covers {0:.2f} hours from MJD {1} to {2}'.format(
+            logger.info('File covers {0:.2f} hours from MJD {1} to {2}'.format(
             ((tstop-tstart)*u.d).to(u.h),tstart,tstop))
         else:
-            print('File covers {0:.2f} h from {1} s to {2} s'.format(
+            logger.info('File covers {0:.2f} h from {1} s to {2} s'.format(
             ((tstop-tstart)*u.s).to(u.h),tstart,tstop))
     return nchan, fobs, nt, blen, bname, tstart, tstop, tsamp, aname
 
@@ -463,7 +465,7 @@ def extract_vis_from_psrfits(f,stmid,seg_len,antenna_order,
     #mjd0 = f.header['MJD'] + ct.time_offset/ct.seconds_per_day 
     #mjd1 = mjd0 + ct.tsamp*nt/ct.seconds_per_day  
     if (mjd1-mjd0)>=1:
-        print("Data covers > 1 sidereal day. Only the first segment "+
+        logger.info("Data covers > 1 sidereal day. Only the first segment "+
               "will be extracted")
     
     st0 = Time(mjd0, format='mjd').sidereal_time(
@@ -548,10 +550,7 @@ def simulate_ms(ofile,tname,anum,xx,yy,zz,diam,mount,
                                              qa.quantity(src.ra.to_value(u.rad),'rad'), 
                                              qa.quantity(src.dec.to_value(u.rad),'rad')))
     sm.setauto(autocorrwt=0.0)
-    print('simulation parameters set.')
-    print('observing')
     sm.observe(src.name, spwname, starttime='0s', stoptime=stoptime)
-    print('observation done')
     sm.close()
 
 def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
@@ -665,15 +664,12 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         'Visibilities not ordered by baseline'
     anum = [str(a) for a in anum]
     
-    print('beginning simulation')
-    simulate_ms('{0}.ms'.format(ofile),tname,anum,xx,yy,zz,diam,mount,
+    simulate_ms('{0}.ms'.format(ofile),tname,
+               anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
                nchannels,integrationtime,obstm,dt,source,
                stoptime)
     
-    print('simulation done')
-    print('checking time')
-
     # Check that the time is correct
     ms = cc.ms()
     ms.open('{0}.ms'.format(ofile))
@@ -682,15 +678,13 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     
     if np.abs(tstart_ms - obstm) > 1e-10:
         dt = dt + (tstart_ms - obstm)
-        print('Updating casa time offset to {0}s'.format(dt*ct.seconds_per_day))
-        print('Rerunning simulator')
+        logger.info('Updating casa time offset to {0}s'.format(dt*ct.seconds_per_day))
+        logger.info('Rerunning simulator')
         simulate_ms('{0}.ms'.format(ofile),tname,anum,xx,yy,zz,diam,mount,
                pos_obs,spwname,freq,deltafreq,freqresolution,
                nchannels,integrationtime,obstm,dt,source,
                stoptime)
     
-    print('time correction done')
-    print('modifying visibilities')
     # Reopen the measurement set and write the observed visibilities
     ms = cc.ms()
     ms.open('{0}.ms'.format(ofile),nomodify=False)
@@ -713,9 +707,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     rec['model_data'] = model
     ms.putdata(rec)
     ms.close()
-    print('visibilities modified')
     
-    print('confirming time correction')
     # Check that the time is correct
     ms = cc.ms()
     ms.open('{0}.ms'.format(ofile))
@@ -728,34 +720,49 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     
     assert np.abs(tstart_ms - obstm) < 1e-10 , \
         'Measurement set start time does not agree with input tstart'
-    print('done ms conversion')
+    logger.info('Visibilities writing to ms {0}.ms'.
+               format(ofile))
     return
 
-def extract_vis_from_ms(ms_name,nbls,nchan,npol=2):
-    """ Extract calibrated and uncalibrated visibilities from 
-    measurement set.
+def extract_vis_from_ms(ms_name,nbls):
+    """ Extract visibilities from CASA measurement set.
     
     Args:
         ms_name: str
           the name of the measurement set (will open <ms>.ms)
+        nbls: int
+          the number of baselines in the measurement set
     
     Returns:
         vis_uncal: complex array
           the 'observed' data from the measurement set (baselines,time,freq)
         vis_cal: complex array
           the 'corrected' data from the measurement set (baselines,time,freq)
+        time: float array
+          the mjd of each time sample
+        freq: float array
+          the frequency of each channel, in GHz
     """
     error = 0
     ms = cc.ms()
     error += not ms.open('{0}.ms'.format(ms_name))
-    vis_uncal= (ms.getdata(["data"])
-                ['data'].reshape(npol,nchan,-1,nbls).T)
-    vis_cal  = (ms.getdata(["corrected_data"])
-            ['corrected_data'].reshape(npol,nchan,-1,nbls).T)
+    ai = ms.getdata(['axis_info'])['axis_info']
+    #pol = ai['corr_axis']
+    freq = ai['freq_axis']['chan_freq'].squeeze()/1e9
+    #ch_width = ai['freq_axis']['resolution'].squeeze()
+    time = ms.getdata(['time'])['time'].reshape(-1,nbls)[...,0]
+    time = time/ct.seconds_per_day
+    
+    vis_uncal = ms.getdata(["data"])['data']
+    vis_uncal = vis_uncal.reshape(vis_uncal.shape[0],vis_uncal.shape[1],
+                                  -1,nbls).T
+    vis_cal   = ms.getdata(["corrected_data"])['corrected_data']
+    vis_cal   = vis_cal.reshape(vis_cal.shape[0],vis_cal.shape[1],
+                                -1,nbls).T
     error += not ms.close()
     if error > 0:
         logger.info('{0} errors occured during calibration'.format(error))
-    return vis_uncal, vis_cal
+    return vis_uncal, vis_cal, time, freq
 
 def initialize_hdf5_file(f,fobs,antenna_order,t0,nbls,nchan,npol,nant):
     """Initialize the hdf5 file.
@@ -998,7 +1005,11 @@ def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
     except Exception:
         tamp = np.nan
         amps = np.ones((len(pols),nant))*np.nan
-        gaincaltime_offset = None
+        gaincaltime_offset = 0.
+        status = cs.update(status,
+                    ['gain_tbl_err','inv_gainamp_p1','inv_gainamp_p2',
+                     'inv_gainphase_p1','inv_gainphase_p2',
+                     'inv_gaincaltime'])
     
     # Delays for each antenna
     try:
@@ -1022,7 +1033,10 @@ def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
     except Exception:
         tdel = np.nan
         delays = np.ones((len(pols),nant))*np.nan
-        delaycaltime_offset = None
+        delaycaltime_offset = 0.
+        status = cs.update(status,
+                ['delay_tbl-err','inv_delay_p1','inv_delay_p2',
+                'inv_delaycaltime'])
 
     # Update antenna 24:
     for i, antnum in enumerate(antenna_order):
@@ -1060,15 +1074,23 @@ def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
               'delaycaltime_offset': delaycaltime_offset,
               'sim': False,
               'status':status}
-        required_keys = ['ant_num','time','pol','calsource','sim',
-                        'status']
-        for key in required_keys:
-            assert dd[key] is not None, \
-                'key {0} must not be None to write to etcd'.format(key)
+        required_keys = dict({'ant_num':['inv_antnum',0],
+                              'time':['inv_time',0.],
+                              'pol':['inv_pol',['A','B']],
+                              'calsource':['inv_calsource','Unknown'],
+                              'sim':['inv_sim',False],
+                              'status':['other_err',0]})
+        for key in required_keys.keys():
+            if dd[key] is None:
+                logger.info('caltable_to_etcd: key {0} not be None to write to etcd'.format(key))
+                status = cs.update(status,required_keys[key][0])
+                dd[key]= required_keys[key][1]
             
         for p in dd['pol']:
-            assert p is not None, \
-                'both polarizations must be defined to write to etcd'
+            if p is None:
+                logger.info('caltable_to_etcd: pol must not be None to write to etcd')
+                status = cs.update(status,'inv_pol')
+                pol = ['A','B']
         
         de.put_dict('/mon/cal/{0}'.format(antnum),dd)
         
