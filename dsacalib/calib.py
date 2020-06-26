@@ -18,21 +18,27 @@ def delay_calibration(msname,sourcename,refant,t='inf'):
     Uses CASA to calibrate delays and write the calibrated 
     visibilities to the corrected_data column of the measurement set.
     
-    Args:
-        msname (str): The name of the measurement set.
-            The measurement set <msname>.ms will be opened.
-        sourcename (str): The name of the calibrator source.
-            The calibration table will be written to 
-            <msname>_<sourcename>_kcal.
-        refant (str or int): The reference antenna to use in calibration.
-            If `str`, this is the name of the antenna.  If `int`, it is the
-            index of the antenna in the measurement set.
-        t (str): The integration time to use before calibrating, e.g. `'inf'` 
-            or `'60s'`.  See the CASA documentation for more examples.  
-            Defaults to `'inf'` (averaging over the entire observation time).
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set.  The measurement set <msname>.ms 
+        will be opened.
+    sourcename : str 
+        The name of the calibrator source. The calibration table will be 
+        written to <msname>_<sourcename>_kcal.
+    refant : str
+        The reference antenna to use in calibration.
+        If `str`, this is the name of the antenna.  If `int`, it is the
+        index of the antenna in the measurement set.
+    t : str
+        The integration time to use before calibrating, e.g. `'inf'` 
+        or `'60s'`.  See the CASA documentation for more examples.  
+        Defaults to `'inf'` (averaging over the entire observation time).
           
-    Returns:
-        error (int): the number of errors that occured during calibration
+    Returns
+    -------
+    error : int
+        the number of errors that occured during calibration
     """
     error = 0
     cb = cc.calibrater()
@@ -47,7 +53,7 @@ def delay_calibration(msname,sourcename,refant,t='inf'):
 
     return error
 
-def gain_calibration_blbased(msname,sourcename,refant,tga,tgp,refant):
+def gain_calibration_blbased(msname,sourcename,tga,tgp,refant):
     """Use CASA to calculate bandpass and complex gain solutions. 
 
     Saves solutions to calibration tables and calibrates the 
