@@ -89,18 +89,14 @@ in time before the Fourier transform. Defaults to True.</p></li>
 </ul>
 </dd>
 <dt class="field-even">Returns</dt>
-<dd class="field-even"><p><dl class="simple">
-<dt>The complex visibilities, Fourier-transformed</dt><dd><p>along the time axis.  3 (or 4, if tavg is set to False)
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>vis_ft</strong> (<em>ndarray</em>) – The complex visibilities, Fourier-transformed
+along the time axis.  3 (or 4, if tavg is set to False)
 dimensions, (baseline,delay,polarization) (or
-(baseline,time,delay,polarization) if tavg is set to False)</p>
-</dd>
-<dt>delay_arr (ndarray): Float, the values of the delay pixels</dt><dd><p>in nanoseconds</p>
-</dd>
-</dl>
+(baseline,time,delay,polarization) if tavg is set to False)</p></li>
+<li><p><strong>delay_arr</strong> (<em>ndarray</em>) – Float, the values of the delay pixels in nanoseconds</p></li>
+</ul>
 </p>
-</dd>
-<dt class="field-odd">Return type</dt>
-<dd class="field-odd"><p>vis_ft (ndarray)</p>
 </dd>
 </dl>
 </dd></dl>

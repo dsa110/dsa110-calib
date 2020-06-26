@@ -395,22 +395,29 @@ def calc_delays(vis,df,nfavg=5,tavg=True):
     along the frequency axis.  The power as a function of delay can 
     then be used in fringe-fitting.
     
-    Args:
-        vis (ndarray): The complex visibilities. 4 dimensions,
-            (baseline,time,frequency,polarization).
-        df (float): The width of the frequency channels in GHz.
-        nfavg (int): The number of frequency channels to average by
-            after the Fourier transform.  Defaults to 5.
-        tavg (boolean): If True, the visibilities are averaged 
-            in time before the Fourier transform. Defaults to True.
+    Parameters
+    ----------
+    vis : ndarray
+        The complex visibilities. 4 dimensions,
+        (baseline,time,frequency,polarization).
+    df : float
+        The width of the frequency channels in GHz.
+    nfavg : int 
+        The number of frequency channels to average by
+        after the Fourier transform.  Defaults to 5.
+    tavg : boolean
+        If True, the visibilities are averaged 
+        in time before the Fourier transform. Defaults to True.
     
-    Returns:
-        vis_ft (ndarray): The complex visibilities, Fourier-transformed
-            along the time axis.  3 (or 4, if tavg is set to False) 
-            dimensions, (baseline,delay,polarization) (or 
-            (baseline,time,delay,polarization) if tavg is set to False)
-        delay_arr (ndarray): Float, the values of the delay pixels 
-            in nanoseconds
+    Returns
+    -------
+    vis_ft : ndarray
+        The complex visibilities, Fourier-transformed
+        along the time axis.  3 (or 4, if tavg is set to False) 
+        dimensions, (baseline,delay,polarization) (or 
+        (baseline,time,delay,polarization) if tavg is set to False)
+    delay_arr : ndarray
+        Float, the values of the delay pixels in nanoseconds
     """
     nfbins = vis.shape[-2]//nfavg*nfavg
     npol = vis.shape[-1]
