@@ -1,9 +1,10 @@
-"""
-CALIB.PY
+"""Functions for calibration of DSA-110 visibilities.
 
-Dana Simard, dana.simard@astro.caltech.edu, 10/2019
+These functions use the CASA package casatools to calibrate
+visibilities stored as measurement sets.
 
-Casa-based routines to calibrate visibilities using point sources
+Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
+
 """
 # Always import scipy before casatools
 import scipy 
@@ -15,22 +16,33 @@ from dsacalib import constants as ct
 from dsacalib.utils import read_caltable
 from scipy.fftpack import fft,fftshift,fftfreq
 
-def delay_calibration(msname,sourcename,refant='0',t='inf'):
-    """Calibrate delays using CASA and write the calibrated 
-    visibilities to the corrected_data column of the measurement set
-    
-    Args:
-        msname: str
-          the name of the measurement set (will open <msname>.ms)
-        sourcename: str
-          the name of the calibrator source
-          the calibration table will be written to <msname>_<sourcename>_kcal
-        refant: int
-          the reference antenna
-        t: str
-          a CASA-understood time to integrate by. e.g. 'inf' or '60s'
+def delay_calibration(msname,sourcename,refant,t='inf'):
+    """Calibrates delays using CASA.
 
-    Returns:
+    Uses CASA to calibrate delays and write the calibrated 
+    visibilities to the corrected_data column of the measurement set.
+    
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set.  The measurement set `msname`.ms 
+        will be opened.
+    sourcename : str 
+        The name of the calibrator source. The calibration table will be 
+        written to `msname`\_`sourcename`\_kcal.
+    refant : str
+        The reference antenna to use in calibration. If  type *str*, 
+        this is the name of the antenna.  If type *int*, it is the
+        index of the antenna in the measurement set.
+    t : str
+        The integration time to use before calibrating, e.g. ``'inf'`` 
+        or ``'60s'``.  See the CASA documentation for more examples.  
+        Defaults to ``'inf'`` (averaging over the entire observation time).
+          
+    Returns
+    -------
+    error : int
+        the number of errors that occured during calibration
     """
     error = 0
     cb = cc.calibrater()
@@ -42,33 +54,41 @@ def delay_calibration(msname,sourcename,refant='0',t='inf'):
                                                                  sourcename))
     error += not cb.correct()
     error += not cb.close()
-    if error > 0:
-        print('{0} errors occured during calibration'.format(error))
-    return
 
-def gain_calibration_blbased(msname,sourcename,tga='600s',tgp='inf',
-                            refant='0'):
-    """Use Self-Cal to calibrate bandpass and complex gain solutions. 
-    Saves solutions to calibration tables.
-    Calibrates the measurement set by applying delay, bandpass, 
-    and complex gain solutions.
+    return error
+
+def gain_calibration_blbased(msname,sourcename,tga,tgp,refant):
+    """Use CASA to calculate bandpass and complex gain solutions. 
+
+    Saves solutions to calibration tables and calibrates the 
+    measurement set by applying delay, bandpass, 
+    and complex gain solutions.  Uses baseline-based calibration routines
+    within CASA.
     
-    Args:
-        msname: str
-          the measurement set.  will open <msname>.ms
-        sourcename: str
-          the name of the calibrator source
-          the calibration table will be written to <msname>_<sourcename>_kcal
-        tga: str
-          a CASA-understood time to integrate by. e.g. 'inf' or '60s'
-          the integration time for the amplitude gain solutions
-        tgp: str
-          a CASA-understood time to integrate by. e.g. 'inf' or '60s'
-          the integration time for the phase gain solutions
-        refant: str
-          the name of the reference antenna to use in calibration
-          
-    Returns:
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set.  The MS `msname`.ms will be opened.
+    sourcename : str
+        The name of the calibrator source.  The calibration table will be 
+        written to `msname`\_`sourcename`\_kcal.
+    tga : str
+        The integration time to use before calibrating the amplitudes of the 
+        complex gain, e.g. ``'inf'`` or ``'60s'``.  See the CASA 
+        documentation for more examples.  
+    tgp : str
+        The integration time to use before calibrating
+        the amplitudes of the complex gain, e.g. ``'inf'``
+        or ``'60s'``.  See the CASA documentation for more examples.  
+    refant : str 
+        The reference antenna to use in calibration.  If type *str*, 
+        this is the name of the antenna.  If type *int*, it is the
+        index of the antenna in the measurement set.
+    
+    Returns 
+    -------
+    error : int
+        The number of errors that occured during calibration.
     """
     error = 0
     
@@ -125,33 +145,42 @@ def gain_calibration_blbased(msname,sourcename,tga='600s',tgp='inf',
                              format(msname,sourcename))
     error += not cb.correct()
     error += not cb.close()
-    if error > 0:
-        print('{0} errors occured during calibration'.format(error))
-    return    
 
-def gain_calibration(msname,sourcename,tga='600s',tgp='inf',
-                     refant='0'):
-    """Use Self-Cal to calibrate bandpass and complex gain solutions. 
-    Saves solutions to calibration tables.
-    Calibrates the measurement set by applying delay, bandpass, 
-    and complex gain solutions.
+    return error
+
+def gain_calibration(msname,sourcename,tga,tgp,refant):
+    """Use CASA to calculate bandpass and complex gain solutions. 
+
+    Saves solutions to calibration tables and calibrates the 
+    measurement set by applying delay, bandpass, 
+    and complex gain solutions. 
     
-    Args:
-        msname: str
-          the measurement set.  will open <msname>.ms
-        sourcename: str
-          the name of the calibrator source
-          the calibration table will be written to <msname>_<sourcename>_kcal
-        tga: str
-          a CASA-understood time to integrate by. e.g. 'inf' or '60s'
-          the integration time for the amplitude gain solutions
-        tgp: str
-          a CASA-understood time to integrate by. e.g. 'inf' or '60s'
-          the integration time for the phase gain solutions
-        refant: str
-          the name of the reference antenna to use in calibration
-          
-    Returns:
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set.
+        The MS `msname`.ms will be opened.
+    sourcename : str
+        The name of the calibrator source.
+        The calibration table will be written to 
+        `msname`\_`sourcename`\_kcal.
+    tga : str
+        The integration time to use before calibrating
+        the amplitudes of the complex gain, e.g. ``'inf'`` 
+        or ``'60s'``.  See the CASA documentation for more examples.  
+    tgp : str
+        The integration time to use before calibrating
+        the amplitudes of the complex gain, e.g. ``'inf'``
+        or ``'60s'``.  See the CASA documentation for more examples.  
+    refant : str
+        The reference antenna to use in calibration. If type *str*, 
+        this is the name of the antenna.  If type *int*, it is the
+        index of the antenna in the measurement set.
+    
+    Returns
+    -------
+    error : int
+        The number of errors that occured during calibration.
     """
     error = 0
 
@@ -205,21 +234,35 @@ def gain_calibration(msname,sourcename,tga='600s',tgp='inf',
                              format(msname,sourcename))
     error += not cb.correct()
     error += not cb.close()
-    if error > 0:
-        print('{0} errors occured during calibration'.format(error))
-    return
+
+    return error
 
 def flag_antenna(msname,antenna,datacolumn='data',pol=None):
-    """Flag antennas in a measurement set using CASA.
+    """Flags an antenna in a measurement set using CASA.
     
-    Args:
-        ms: str
-          the name of the measurement set (will open <ms>.ms)
-        antenna: str or int 
-          if str, a CASA-understood list of antennas to flag. If int,
-          the index of a single antenna to flag
-
-    Returns:
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set.  The MS `msname`.ms will be opened.
+    antenna : str
+        The antenna to flag. If type *str*, this is the name of the antenna.  
+        If type *int*, the index of the antenna in the measurement set.
+    datacolumn : str
+        The column of the measurement set to flag.
+        Options are ``'data'``,``'model'``,``'corrected'`` for the 
+        uncalibrated visibilities, the visibility model (used by 
+        CASA to calculate calibration solutions), the calibrated
+        visibilities.  Defaults to ``'data'``.
+    pol : str 
+        The polarization to flag.  Must be `'A'` 
+        (which is mapped to polarization 'XX' of the CASA measurement 
+        set) or `'B'` (mapped to polarization 'YY').  Can also be `None`, 
+        for which both polarizations are flagged.  Defaults to `None`.
+    
+    Returns
+    -------
+    error : int
+        The number of errors that occured during calibration.
     """
     if type(antenna) is int:
         antenna = str(antenna)
@@ -238,23 +281,27 @@ def flag_antenna(msname,antenna,datacolumn='data',pol=None):
     error += not ag.init()
     error += not ag.run()
     error += not ag.done()
-    if error > 0:
-        print('{0} errors occured during calibration'.format(error))
-    return
+
+    return error
 
 def reset_flags(msname,datacolumn=None):
-    """Reset all data to be unflagged.
+    """Resets all flags in a measurement set, so that all data is unflagged.
     
-    Args:
-      msname: str
-        the name of the measurement set to open
-        and reset flags for.
-        will open <msname>.ms
-      datacolumn: str
-        the datacolumn to reset flags for.
-        'data', 'model', or 'corrected'
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set. The MS `msname`.ms will be opened.
+    datacolumn : str
+        The column of the measurement set to flag.
+        Options are ``'data'``,``'model'``,``'corrected'`` for the 
+        uncalibrated visibilities, the visibility model (used by 
+        CASA to calculate calibration solutions), the calibrated
+        visibilities.  Defaults to ``'data'``.
     
-    Returns:
+    Returns
+    -------
+    error : int
+        The number of errors that occured during calibration.
     """
     error = 0 
     ag = cc.agentflagger.agentflagger()
@@ -268,21 +315,27 @@ def reset_flags(msname,datacolumn=None):
     error += not ag.init()
     error += not ag.run()
     error += not ag.done()
-    if error > 0:
-        print('{0} errors occured during flagging'.format(error))
-    return
+
+    return error
 
 def flag_zeros(msname,datacolumn='data'):
-    """Flags all zeros in data
+    """Flags all zeros in a measurement set.
     
-    Args:
-      msname: str
-        the measurement set name (will open <msname>.ms)
-      datacolumn: str
-        the name of the datacolumn.  
-        ('data', 'model', or 'corrected')
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set. The MS `msname`.ms will be opened.
+    datacolumn : str
+        The column of the measurement set to flag.
+        Options are ``'data'``,``'model'``,``'corrected'`` for the 
+        uncalibrated visibilities, the visibility model (used by 
+        CASA to calculate calibration solutions), the calibrated
+        visibilities.  Defaults to ``'data'``.
     
-    Returns:
+    Returns
+    -------
+    error : int
+        The number of errors that occured during calibration.
     """
     error = 0 
     ag = cc.agentflagger()
@@ -296,25 +349,43 @@ def flag_zeros(msname,datacolumn='data'):
     error += not ag.init()
     error += not ag.run()
     error += not ag.done()
-    if error > 0:
-        print('{0} errors occured during flagging'.format(error))
-    return
 
+    return error
+
+# Change times to not use mjds, but mjd instead
 def flag_badtimes(msname,times,bad,nant,datacolumn='data',
                   verbose=False):
-    """Flag antennas in a measurement set using CASA
+    """Flags bad time bins for each antenna in a measurement set using CASA.
     
-    Args:
-      msname: str
-        the name of the measurement set (will open <msname>.ms)
-      times : float array
-        the times of each calibration solution, MJD seconds
-      bad   : boolean array
-        dimensions (ntimes, nantennas), whether or not to flag a time bin
-      verbose: boolean
-        if True, will print information about the antenna/time pairs being flagged
-
-    Returns:
+    Parameters
+    ----------
+    msname : str 
+        The name of the measurement set. The MS `msname`.ms will be opened.
+    times : ndarray
+        A 1-D array of times, type float, seconds since MJD=0. 
+        Times should be equally spaced and cover the entire time range 
+        of the measurement set, but can be coarser than the resolution of
+        the measurement set.
+    bad : ndarray
+        A 1-D boolean array with dimensions (len(`times`), `nant`). 
+        Should have a value of ``True`` if the corresponding timebins should be
+        flagged.
+    nant : int 
+        The number of antennas in the measurement set.
+    datacolumn : str
+        The column of the measurement set to flag.
+        Options are ``'data'``,``'model'``,``'corrected'`` for the 
+        uncalibrated visibilities, the visibility model (used by 
+        CASA to calculate calibration solutions), the calibrated
+        visibilities.  Defaults to ``'data'``.
+    verbose : boolean
+        If ``True``, will print information about the 
+        antenna/time pairs being flagged.  Defaults to ``False``.
+            
+    Returns
+    -------
+    error : int
+        The number of errors that occured during calibration.
     """
     error = 0
     tdiff = np.median(np.diff(times))
@@ -353,29 +424,39 @@ def flag_badtimes(msname,times,bad,nant,datacolumn='data',
         error += not ag.init()
         error += not ag.run()
     error += not ag.done()
-    if error > 0:
-        print('{0} errors occured during calibration'.format(error))
-    return
 
-
+    return error
 
 def calc_delays(vis,df,nfavg=5,tavg=True):
-    """Calculate delays from the visibilities.
+    """Calculates power as a function of delay from the visibilities.
     
-    Args:
-        vis: complex array
-          the visibilities
-        df: float
-          the size of a single frequency channel in GHz
-        nfavg: int
-          the number of frequency channels to avg by
+    This uses scipy fftpack to fourier transform the visibilities 
+    along the frequency axis.  The power as a function of delay can 
+    then be used in fringe-fitting.
     
-    Returns:
-        vis_ft: complex array
-          the Fourier transform of the time-averaged 
-          visibilities, dimensions (baselines, delay)
-        delay_arr: real array
-          the values of the delay pixels in nanoseconds
+    Parameters
+    ----------
+    vis : ndarray
+        The complex visibilities. 4 dimensions,
+        (baseline,time,frequency,polarization).
+    df : float
+        The width of the frequency channels in GHz.
+    nfavg : int 
+        The number of frequency channels to average by
+        after the Fourier transform.  Defaults to 5.
+    tavg : boolean
+        If ``True``, the visibilities are averaged 
+        in time before the Fourier transform. Defaults to ``True``.
+    
+    Returns
+    -------
+    vis_ft : ndarray
+        The complex visibilities, Fourier-transformed
+        along the time axis.  3 (or 4, if `tavg` is set to False) 
+        dimensions, (baseline,delay,polarization) (or 
+        (baseline,time,delay,polarization) if `tavg` is set to False)
+    delay_arr : ndarray
+        Float, the values of the delay pixels in nanoseconds
     """
     nfbins = vis.shape[-2]//nfavg*nfavg
     npol = vis.shape[-1]
@@ -395,28 +476,45 @@ def calc_delays(vis,df,nfavg=5,tavg=True):
     
     return vis_ft, delay_arr
 
-def get_bad_times(msname,sourcename,nant,tint='59s',refant=0):
-    """Use delays on short time periods to flag bad antenna/time
-    pairs in the calibrator data. 
+# Change refant to no longer default
+def get_bad_times(msname,sourcename,nant,refant,tint='59s'):
+    """Flags bad times in the calibrator data.
+
+    Calculates delays on short time periods and compares them to the
+    delay calibration solution. Can only be run after delay calibration.
     
-    Args:
-        msname: str
-          the prefix of the measurement set.  Will open <msname>.ms
-        sourcename: str
-          the name of the calibrator
-          will extract the delay solutions on 'inf' timescales from 
-          <msname>_<sourcename>_kcal 
-          and save delay solutions on tint timescales in 
-          <msname>_<sourcename>_2kcal
-        nant: int
-          the number of antennas in the array
-    
-    Returns:
-        bad_times: boolean array 
-          shape (ntimes, nant), whether a time-antenna 
-          pair should be flagged
-        times: float array
-          the time (mjd) for each delay solution
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set. The MS `msname`.ms will be opened.
+    sourcename : str
+        The name of the calibrator source.  The calibration table will 
+        be written to `msname`\_`sourcename`\_kcal.
+    nant : int
+        The number of antennas in the array.
+    refant : str
+        The reference antenna to use in calibration.  If type *str*, the 
+        name of the reference antenna, if type *int*, the 
+        index of the antenna in the CASA measurement set.  This must
+        be the same as the reference antenna used in the delay calibration,
+        or unexpected errors may occur.
+    tint : str
+        The timescale on which to calculate the delay solutions (and 
+        evaluate the data quality).  Must be a CASA-interpreted string,
+        e.g. ``'inf'`` (average all of the data) or ``'60s'`` (average 
+        data to 60-second bins before delay calibration).  Defaults to 
+        ``'59s'``.
+
+    Returns
+    -------
+    bad_times : ndarray
+        Booleans, ``True`` if the data quality is poor and the
+        time-bin should be flagged, ``False`` otherwise.  Dimensions 
+        (time,antenna)
+    times : ndarray
+        Floats, the time (mjd) for each delay solution
+    error :int
+        The number of errors that occured during calibration.
     """
     error = 0
     # Solve the calibrator data on minute timescales
@@ -439,29 +537,34 @@ def get_bad_times(msname,sourcename,nant,tint='59s',refant=0):
     bad_times = (np.abs(antenna_delays-kcorr)>1.5)
     bad_times[:,np.sum(np.sum(bad_times,axis=0),axis=1)
               >threshold,:] = np.ones((npol,1,nant))
-    if error > 0:
-        print('{0} errors occured during calibration'.format(error))
-    return bad_times,times
+
+    return bad_times,times,error
 
 def apply_calibration(msname,calname,msnamecal=None):
-    """Apply the calibration solution from the calibrator
-    to a measurement set.  Applies delay, bandpass, and complex 
-    gain solutions.
+    """Applies the calibration solution.
+
+    Applies delay, bandpass and complex gain tables
+    to a measurement set.  
     
-    Args:
-      msname: str
-        the name of the measurement set to apply calibration solutions
-        to.  Will open <msname>.ms
-      calname: str
-        the name of the calibrator. used to identify the correct 
-        calibration tables.
-      msnamecal: str
-        the name of the measurement set containing the calibrator
-        visibilities.  calibration tables prefixed with 
-        <msnamecal>_<calname> will be opened and applied.  If not 
-        given, it is assumed that msnamecal = msname
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set to apply 
+        calibration solutions to.  Opens `msname`.ms
+    calname : str
+        The name of the calibrator.  Tables that start
+        with `msnamecal`\_`calname` will be applied to the measurement
+        set.
+    msnamecal : str
+        The name of the measurement set used to model the
+        calibraiton solutions.  Calibration tables prefixed with 
+        `msnamecal`\_`calname` will be opened and applied. 
+        If ``None``, `msnamecal` is set to `msname`. Defaults to ``None``.
           
-    Returns:
+    Returns
+    -------
+    error : int
+        The number of errors that occured during calibration.
     """
     if msnamecal is None:
         msnamecal = msname
@@ -478,27 +581,46 @@ def apply_calibration(msname,calname,msnamecal=None):
                              table='{0}_{1}_gpcal'.format(msnamecal,calname))
     error += not cb.correct()
     error += not cb.close()
-    if error > 0:
-        print('{0} errors occured during calibration'.format(error))
-    return
+
+    return error 
 
 def fill_antenna_gains(gains,flags=None):
-    """Fills in the autocorr gains after baseline-based gain 
-    calibration.
+    """Fills in the antenna gains for triple-antenna calibration.
+
+    Takes the gains from baseline-based calibration for a trio of
+    antennas and calculates the corresponding antenna gains using
+    produces of the baseline gains.  Also propagates flag information 
+    for the input baseline gains to the antenna gains.
     
-    Args:
-      gains: array(complex)
-        the gain table with cross-correlation baselines filled in
-      flags: array(boolean)
-        the flags table, 1 where the data is flagged, 0 where the data
-        is valid
+    Parameters
+    ----------
+    gains : narray
+        The complex gains matrix, first dimension
+        is baseline.  Indices 1, 2 and 4 contain the gains for the
+        cross-correlations. Information in indices 0, 3 and 5 is
+        ignored and overwritten.
+    flags : ndarray
+        A boolean array, containing flag information 
+        for the `gains` array. 1 if the data is flagged, 0 otherwise.
+        If ``None``, assumes no flag information available.  The first 
+        dimension is baseline.  Indices 1, 2 and 4 contain the flags
+        for the cross-correlations.  Information in indices 0, 3 and 5
+        is ignored and overwritten.
     
-    Returns:
-      gains: array(complex)
-        the gain table with auto-correlation baselines filled in
-      flags: array(boolean)
-        the updated flags table, 1 where the data is flagged, 0 where 
-        the data is valid
+    Returns
+    -------
+    gains : ndarray
+        The complex gains matrix, first dimension
+        is baseline.  Indices 1, 2 and 4 contain the gains for the
+        cross-correlations. Indices 0, 3 and 5
+        contain the calculated values for the antennas.
+    flags : ndarray
+        A boolean array, containing flag information 
+        for the `gains` array.  1 if the data is flagged, 0 otherwise.
+        If None, assumes no flag information available.  The first 
+        dimension is baseline.  Indices 1, 2 and 4 contain the flags
+        for the cross-correlations.  Indices 0,3 and 5 contain
+        the calculated values for the antennas.
     """
     assert gains.shape[0]==6,'Will only calculate antenna gains for trio'
     gains[0] = np.conjugate(gains[1])*gains[2]/gains[4]
