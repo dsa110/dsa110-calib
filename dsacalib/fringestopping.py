@@ -3,8 +3,10 @@
 Author: Dana Simard, dana.simard@astro.caltech.edu 11/2019
 
 These functions use casatools to build sky models, divide
-visibilities by sky modes, and fringestop visibilities.
+visibilities by sky models, and fringestop visibilities.
+
 """
+
 # always import scipy before importing casatools
 import scipy
 import casatools as cc
@@ -17,28 +19,42 @@ from scipy.special import j1
 from astropy.coordinates.angle_utilities import angular_separation
 
 def calc_uvw(b, tobs, src_epoch, src_lon, src_lat,obs='OVRO_MMA'):
-    """Calculates the uvw coordinates of a source.
+    """Calculates uvw coordinates.
     
-    Args:
-        b: real array
-          the baseline, shape (nbaselines, 3), m in ITRF coords
-        tobs: real array
-          times to calculate coordinates at
-        src_epoch: str
-          casa-recognized descriptor of the source coordinates
-          e.g. 'J2000' or 'HADEC'
-        src_lon: astropy quantity
-          longitude of source
-        src_lat: astropy quantity
-          latitute of source
+    Uses CASA to calculate the u,v,w coordinates of the 
+    baselines `b` towards a source or phase center
+    (specified by `src_epoch`, `src_lon` and `src_lat`) at 
+    the specified time and observatory.
+    
+    Parameters
+    ----------
+    b : ndarray
+        The ITRF coordinates of the baselines.  Type float,
+        shape (nbaselines, 3), units of meters.
+    tobs : ndarray 
+        An array of floats, the times in MJD for which to 
+        calculate the uvw coordinates.
+    src_epoch : str
+        The epoch of the source or phase-center, as a 
+        CASA-recognized string e.g. ``'J2000'`` or ``'HADEC'``
+    src_lon : astropy quantity
+        The longitude of the source or phase-center, in 
+        degrees or an equivalent unit.  
+    src_lat : astropy quantity
+        The latitude of the source or phase-center, in 
+        degrees or an equivalent unit.
 
-    Returns:
-        u: real array
-          u, shape (nbaselines, ntimes), units m
-        v: real array
-          v, shape (nbaselines, ntimes), units m
-        w: real array 
-          w, shape (nbaselines, ntimes), units m
+    Returns
+    -------
+    u : ndarray
+        The u-value for each time and baseline, in meters.
+        Shape is ``(len(b), len(tobs))``.
+    v : ndarray
+        The v-value for each time and baseline, in meters.
+        Shape is ``(len(b), len(tobs))``.
+    w : ndarray
+        The w-value for each time and baseline, in meters.
+        Shape is ``(len(b), len(tobs))``.
     """
     tobs, b = set_dimensions(tobs=tobs, b=b)
     nt = tobs.shape[0]
@@ -95,24 +111,25 @@ def visibility_sky_model_worker(vis_model,bws,famps,f0,spec_idx,fobs):
     """Builds complex sky models.
 
     This is a worker to contain the for loop in the visibility model 
-    calculation using jit. Modifies the input array vis_model in place.
+    calculation using jit. Modifies the input array `vis_model` in place.
         
-    Args:
-      vis_model: complex array
-        an array initialized to all zeros, the same dimensions as the array
-        of visibilities
-      bws: real array
-        the w component of the baselines towards the phasing direction, 
-        or the w comonents of the baselines towards each source in the 
-        sky model
-      famps: real array
-        the intensities of each source at f0
-      f0: float
-        the reference frequency for famps, in GHz
-      spec_idx: float
-        the spectral index to use in the source model
-      fobs: 
-        the central frequency of each channel, in GHz
+    Parameters
+    ----------
+    vis_model : ndarray
+        A placeholder for the output.  A complex array initialized to zeros,
+        with the same shape as the array of visibilities you wish to model.  
+        Dimensions (baseline,time,freq,polarization).
+    bws : ndarray 
+        The w component of the baselines towards the phase-center or towards 
+        each source in the sky model.  Dimensions (sources,baselines).
+    famps : ndarray
+        The flux of each source at the reference frequency, in Jy.
+    f0 : float
+        The reference frequency, in GHz.
+    spec_idx : float
+        The spectral index for the frequency dependence of the source flux.
+    fobs : ndarray
+        The central frequency of each channel of the visibilities, in GHz.
     """
     for i in range(bws.shape[0]):
         vis_model += famps[i,...] * ((fobs/f0)**(spec_idx)) * np.exp(2j*np.pi/ct.c_GHz_m * fobs * bws[i,...])
@@ -121,25 +138,26 @@ def visibility_sky_model_worker(vis_model,bws,famps,f0,spec_idx,fobs):
 def _py_visibility_sky_model_worker(vis_model,bws,famps,f0,spec_idx,fobs):
     """Builds complex sky models.
 
-    A pure python version of visibility_model_worker for timing against.
-    Modifies the input array vis_model in place.
+    A pure python version of `visibility_model_worker` for timing against.
+    Modifies the input array `vis_model` in place.
     
-    Args:
-      vis_model: complex array
-        an array initialized to all zeros, the same dimensions as the array
-        of visibilities
-      bws: real array
-        the w component of the baselines towards the phasing direction, 
-        or the w components of the baselines towards each source in the 
-        sky model
-      famps: real array
-        the intensities of each source at f0
-      f0: float
-        the reference frequency for famps, in GHz
-      spec_idx: float
-        the spectral index to use in the source model
-      fobs: array(float)
-        the central frequency of each channel, in GHz
+    Parameters
+    ----------
+    vis_model : ndarray
+        A placeholder for the output.  A complex array initialized to zeros,
+        with the same shape as the array of visibilities you wish to model.  
+        Dimensions (baseline,time,freq,polarization).
+    bws : ndarray 
+        The w component of the baselines towards the phase-center or towards 
+        each source in the sky model.  Dimensions (sources,baselines).
+    famps : ndarray
+        The flux of each source at the reference frequency, in Jy.
+    f0 : float
+        The reference frequency, in GHz.
+    spec_idx : float
+        The spectral index for the frequency dependence of the source flux.
+    fobs : ndarray
+        The central frequency of each channel of the visibilities, in GHz.
     """
     for i in range(bws.shape[0]):
         vis_model += famps[i,...] * ((fobs/f0)**(spec_idx)) * np.exp(2j*np.pi/ct.c_GHz_m * fobs * bws[i,...])
@@ -148,25 +166,37 @@ def _py_visibility_sky_model_worker(vis_model,bws,famps,f0,spec_idx,fobs):
 def set_dimensions(fobs=None,tobs=None,b=None):
     """Sets the dimensions of arrays for fringestopping.
 
-    Ensures that fobs, tobs and b are ndarrays with the correct
-    dimensions for fringestopping using jit.
+    Ensures that `fobs`, `tobs` and `b` are ndarrays with the correct
+    dimensions for fringestopping using jit.  Any combination of these 
+    arrays may be passed.  If no arrays are passed, an empty list is returned
     
-    Args:
-      fobs: float or ndarray(float)
-        The central frequency of each channel, in GHz
-      tobs: float or ndarray(float)
-        The central time of each subintegration, in mjd
-      b: list or ndarray
-        The baselines in ITRF coordinates, dimensions (nbaselines,3)
-        or (3) if a single baseline
+    Parameters
+    ----------
+    fobs : float or ndarray
+        The central frequency of each channel in GHz.  Defaults ``None``.
+    tobs : float or ndarray
+        The central time of each subintegration in MJD.  Defaults ``None``.
+    b : ndarray
+        The baselines in ITRF coordinates with dimensions (nbaselines,3)
+        or (3) if a single baseline.  Defaults ``None``.
     
-    Returns:
-      fobs: ndarray
-        dimensions (nchannels,1)
-      tobs: ndarray
-        dimensions (nt)
-      b: ndarray
-        dimensions (nbaselines, 3) 
+    Returns
+    -------
+    list 
+        A list of the arrays passed, altered to contain the correct dimensions
+        for fringestopping.  The list may contain:
+        
+        fobs : ndarray
+            The central frequency of each channel in GHz with
+            dimensions (channels,1).  Included if `fobs` is not set to ``None``.
+            
+        tobs : ndarray
+            The central time of each subintegration in MJD with dimensions (time).
+            Included if `tobs` is not set to ``None``.
+            
+        b : ndarray
+            The baselines in ITRF coordaintes with dimensions (baselines, 3) 
+            or (1,3) if a single baseline.  Included if ``b`` is not set to None.
     """
     to_return = []
     if fobs is not None:
@@ -189,33 +219,36 @@ def set_dimensions(fobs=None,tobs=None,b=None):
 def visibility_sky_model(vis_shape,vis_dtype,b,sources,tobs,fobs,lst,pt_dec):
     """Calculates the sky model visibilities.
 
-    Calculates the sky model visibilities on the baselines b 
-    and at times tobs.
+    Calculates the sky model visibilities on the baselines `b` 
+    and at times `tobs`.  Ensures that the returned sky model is the 
+    same datatype and the same shape as specified by `vis_shape` and 
+    `vis_dtype` to ensure compatability with jit.
     
-    Args:
-      vis_shape: tuple
-        the shape of the visibilities, dimensions
-        (baselines,time,frequency,polarization)
-      vis_dtype: numpy datatype
-        the datatype of the visibilities
-      b: real array
-        baselines to calculate visibilities for, shape (nbaselines, 3), 
-        units m in ITRF coords
-      sources: list(src class instances)
-        list of sources to include in the sky model 
-      tobs: float or arr(float)
-        times to calculate visibility model for, mjd
-      fobs: float or arr(float)
-        frequency to calculate model for, in GHz
-      lst: array(float)
-        the lst in radians for each time step
-      pt_dec: float
-        the pointing declination in radians
+    Parameters
+    ----------
+    vis_shape : tuple
+        The shape of the visibilities: (baselines,time,frequency,polarization).
+    vis_dtype: numpy datatype
+        The datatype of the visibilities.
+    b: real array
+        The baselines to calculate visibilities for, shape (nbaselines, 3), 
+        units of meters in ITRF coords.
+    sources : list(src class instances)
+        The sources to include in the sky model.
+    tobs : float or ndarray
+        The times at which to calculate the visibility model, in MJD.
+    fobs : float or ndarray
+        The frequencies at which to calculate the visibility model, in GHz.
+    lst : ndarray
+        The local sidereal time in radians for each time in tobs.
+    pt_dec : float
+        The antenna pointing declination in radians.
     
-    Returns:
-      vis_model: complex array
-        the modelled visibilities, dimensions (baselines, 
-        time, frequency,polarization)
+    Returns
+    -------
+    vis_model : ndarray
+        The modelled complex visibilities, dimensions (baselines, 
+        time, frequency,polarization).
     """
     fobs, tobs, b = set_dimensions(fobs,tobs, b)
     # Calculate the w-vector and flux towards each source
@@ -240,31 +273,32 @@ def fringestop(vis,b,source,tobs,fobs,pt_dec,return_model=False):
     visibilities by a phase only model.  The input visibilities, vis, 
     are modified in place.
     
-    Args:
-      vis: array(complex)
-        (baselines,time,freq,pol)
-        the visibilities to be fringestopped
-        modified in place
-      b: array(3, nbls)
-        the itrf coordinates of the baselines
-      source: src class instance
-        the source to fringestop on
-      tobs: array(float)
-        the observation time (center of each bin) 
-        in mjd
-      fobs: array(float)
-        the observing frequency (center of each bin)
-        in GHz
-      pt_dec: float
-        the declination the array is pointing at, in rad
-      return_model: boolean
-        if True, the fringestopping model is returned
+    Parameters
+    ----------
+    vis : ndarray
+        The visibilities t be fringestopped, with dimensions
+        (baselines,time,freq,pol). `vis` is modified in place.
+    b : ndarray
+        The ITRF coordinates of the baselines in meters, with dimensions
+        (3,baselines).
+    source : src class instance
+        The source to fringestop on.
+    tobs : ndarray
+        The observation time (the center of each bin) in MJD.
+    fobs : ndarray
+        The observing frequency (the center of each bin) in GHz.
+    pt_dec : float
+        The pointing declination of the array, in radians.
+    return_model : boolean
+        If ``True``, the fringestopping model is returned.  Defaults 
+        ``False``.
 
-    Returns:
-      vis_model: array(complex)
-        the phase-only visibility model by which the
+    Returns
+    -------
+    vis_model : ndarray
+        The phase-only visibility model by which the
         visiblities were divided.  Returned only if 
-        return_model is True
+        `return_model` is set to ``True``.
     """
     fobs,tobs,b = set_dimensions(fobs,tobs,b)
     bws = np.zeros((len(b),len(tobs),1,1))
@@ -284,37 +318,40 @@ def divide_visibility_sky_model(vis,b, sources, tobs, fobs,lst,pt_dec,
                     phase_only=True,return_model=False):
     """Calculates and applies the sky model visibilities.
 
-    Calculates the sky model visibilities on the baselines b and at
-    times tobs.  Divides the input visibilities,vis, by the sky model.
-    vis is modified in-place.
+    Calculates the sky model visibilities on the baselines `b` and at
+    times `tobs`.  Divides the input visibilities, `vis`, by the sky model.
+    `vis` is modified in-place.
     
-    Args:
-      vis: complex array
-        the visibilities, (baselines,time,frequency,polarization)
+    Parameters
+    ----------
+    vis : ndarray
+        The observed complex visibilities, with dimensions 
+        (baselines,time,frequency,polarization).  `vis`
         will be updated in place to the fringe-stopped visibilities
-      b: real array
-        baselines to calculate visibilities for, shape (nbaselines, 3), 
-        units m in ITRF coords
-      sources: list(src)
-        list of sources to include in the sky model 
-      tobs: float or arr(float)
-        times to calculate visibility model for, mjd
-      fobs: float or arr(float)
-        frequency to calculate model for, in GHz
-      phase_only: Boolean
-        if True, the fluxes of all sources will be set to 1 with a
-        spectral index of 0.  
-        if False, the fluxes of all sources, spectral index, 
-        and primary beam correction will all be included in the sky
-        model
-      return_model: Boolean
-        if True, the visibility model will be returned
+    b : ndarray
+        The baselines for which to calculate visibilities, shape (nbaselines, 3), 
+        units of meters in ITRF coords.
+    sources : list(src class objects)
+        The list of sources to include in the sky model.
+    tobs : float or ndarray
+        The times for which to calculate the visibility model in MJD.
+    fobs: float or arr(float)
+        The frequency for which to calculate the model in GHz.
+    phase_only: Boolean
+        If  set to ``True``, the fluxes of all sources will be set to 1 with a
+        spectral index of 0. If set to ``False``, the fluxes of all sources, 
+        spectral index, and primary beam correction will all be included 
+        in the sky model.  Defaults to ``True``.
+    return_model: boolean
+        If set to ``True``, the visibility model will be returned.  
+        Defaults to ``False``.
     
-    Returns:
-      vis_model: complex array
-        the modelled visibilities, dimensions 
-        (baselines, time, frequency,polarization)
-        returned only if return_model is true
+    Returns
+    -------
+    vis_model: ndarray
+        The modelled visibilities, dimensions 
+        (baselines, time, frequency,polarization).
+        Returned only if `return_model` is set to True.
     """
     vis_model = visibility_sky_model(vis.shape,vis.dtype,b,sources,tobs,fobs,lst,pt_dec)
     vis /= vis_model
@@ -327,24 +364,27 @@ def amplitude_sky_model(source,ant_ra,pt_dec,fobs,
                         dish_dia=4.65,spind=0.7):
     """Computes the amplitude sky model due to the primary beam.
 
-    Computes the amplitude sky model due to the primary beam response 
-    for a single source.
+    Computes the amplitude sky model for a single source due to the primary 
+    beam response of an antenna.
     
-    Args:
-      source: src class instance
-        the source to model
-      ant_ra: array(float)
-        the right ascension pointing of the antenna in each time bin
-        of the observation, in radians.  if az=0 deg or az=180 deg, this is 
-        the lst of each time bin in the observation, in radians
-      pt_dec: float
-        the pointing declination of the observation, in radians
-      fobs: array
-        the observing frequency of the center of each channel,
-        in GHz
+    Parameters
+    ----------
+    source : src class instance
+        The source to model.  The source flux (`src.I`), right ascension
+        (`src.ra`) and declination (`src.dec`) must be specified.
+    ant_ra : ndarray
+        The right ascension pointing of the antenna in each time bin
+        of the observation, in radians.  If az=0 deg or az=180 deg, this is 
+        the lst of each time bin in the observation in radians.
+    pt_dec : float
+        The pointing declination of the observation in radians.
+    fobs : array
+        The observing frequency of the center of each channel in GHz.
     
-    Returns:
-      the amplitude sky model
+    Returns
+    -------
+    ndarray
+        The calculated amplitude sky model.
     """
     # Should add spectral index 
     return source.I * (fobs/1.4)**(-spind) * pb_resp(ant_ra,pt_dec,
@@ -352,26 +392,30 @@ def amplitude_sky_model(source,ant_ra,pt_dec,fobs,
                 source.dec.to_value(u.rad),fobs,dish_dia)
     
 def pb_resp(ant_ra,ant_dec,src_ra,src_dec,freq,dish_dia=4.65):
-    """Computes the primary beam response.
+    """Computes the primary beam response towards a direction on the sky.
+    
+    Returns a value between 0 and 1 for each value passed in `ant_ra`. 
 
-    Args:
-      ant_ra: float
-        antenna right ascension pointing in radians
-      ant_dec: float
-        antenna declination pointing in radiants
-      src_ra: float
-        source right ascension in radians
-      src_dec: float
-        source declination in radians
-      freq: array(float)
-        the frequency of each channel in GHz
-      dish_dia: float
-        the dish diameter in m 
+    Parameters
+    ----------
+    ant_ra : float or ndarray
+        The antenna right ascension pointing in radians.  If an array, must be 
+        one-dimensional.
+    ant_dec : float 
+        The antenna declination pointing in radians.  
+    src_ra : float
+        The source right ascension in radians.
+    src_dec : float
+        The source declination in radians.
+    freq : ndarray
+        The frequency of each channel in GHz.
+    dish_dia : float
+        The dish diameter in meters.  Defaults to ``4.65``.
       
-    Returns:
-      pb: array(float)
-        dimensions distance, freq
-        the primary beam response
+    Returns
+    -------
+    pb : ndarray
+        The primary beam response, dimensions (`ant_ra`,`freq`).
     """
     dis = angular_separation(ant_ra,ant_dec,src_ra,src_dec)
     lam  = 0.299792458/freq

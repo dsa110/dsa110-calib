@@ -1,6 +1,10 @@
-"""Functions for calibration of DSA-110 visibilities with casatools.
+"""Functions for calibration of DSA-110 visibilities.
+
+These functions use the CASA package casatools to calibrate
+visibilities stored as measurement sets.
 
 Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
+
 """
 # Always import scipy before casatools
 import scipy 
