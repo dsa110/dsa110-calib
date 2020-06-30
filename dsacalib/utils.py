@@ -44,30 +44,32 @@ def exception_logger(task,e,throw):
         raise e
 
 class src():
-    """ Simple class for holding source parameters.
-    
-    Args:
-        name: str
-          identifier for your source
-        I: float
-          the flux in Jy
-        ra: str
-          right ascension e.g. "12h00m19.21s"
-        dec: str
-          declination e.g. "+73d00m45.7s"
-        epoch: str
-          the epoch of the ra and dec, default "J2000"
-        pa: float
-          the position angle in degrees
-        maj_axis: float
-          the major axis in arcseconds
-        min_axis: float
-          the minor axis in arcseconds
-           
-    Returns:
+    """Simple class for holding source parameters.
     """
+
     def __init__(self,name,ra,dec,I=1.,epoch='J2000',
                 pa=None,maj_axis=None,min_axis=None):
+        """Initializes the src class.
+    
+        Parameters
+        ----------
+        name : str
+            Identifier for the source.
+        ra : str
+            The right ascension of the source. e.g. "12h00m19.21s"
+        dec : str
+            The declination of the source. e.g. "+73d00m45.7s"
+        I : float
+            The flux of the source in Jy.  Defaults 1.
+        epoch : str
+            The epoch of `ra` and `dec`. Defaults "J2000".
+        pa : float
+            The position angle in degrees.  Defaults ``None``.
+        maj_axis : float
+            The major axis in arcseconds.  Defaults ``None``.
+        min_axis : float
+            The minor axis in arcseconds.  Defaults ``None``.
+        """
         self.name = name
         self.I = I
         if type(ra) is str:
@@ -90,15 +92,17 @@ class src():
             self.min_axis = min_axis*u.arcsecond
 
 def to_deg(string):
-    """ Converts a string direction to degrees.
+    """Converts a string representation of RA or DEC to degrees.
 
-    Args:
-        string: str
-          ra or dec in string format e.g. "12h00m19.21s" or "+73d00m45.7s"
+    Parameters
+    ----------
+    string : str
+        RA or DEC in string format e.g. "12h00m19.21s" or "+73d00m45.7s".
 
-    Returns:
-        deg: astropy quantity
-          the angle in degrees
+    Returns
+    -------
+    deg : astropy quantity
+        The angle in degrees.
     """
     if 'h' in string:
         h,m,s = string.strip('s').strip('s').replace('h','m').split('m')
@@ -209,52 +213,60 @@ def read_psrfits_file(fl,source,dur=50*u.min,antenna_order=None,
                       utc_start = None,
                      autocorrs=False,badants=None,quiet=True,
                      dsa10=True):
-    """Reads in the psrfits header and data
+    """Reads in the psrfits header and data.
     
-    Args:
-        fl: str
-          the full path to the psrfits file
-        source: src class 
-          the source to retrieve data for
-        dur: astropy quantity in minutes or equivalent
-          amount of time to extract
-        antenna_order: list
-          the order of the antennas in the correlator.  only used
-          if dsa10 is False
-        antpos: str
-          the full path of the text file containing the 
-          antenna positions
-        utc_start: astropy time object
-          the start time of the observation in UTC.  only used if dsa10 is False
-        autocorrs: boolean
-          if True, auto + cross correlations will be returned.
-          if False, only the cross correlations will be returned.
-        badants: None or list(int)
-          The antennas for which you do not want data to be returned
-        quiet: Boolean
-          If True, additional info on the file printed 
-        dsa10: Boolean
-          If True, fits file is in dsa10 format, otherwise in the 3-antenna
-          correlator output format
+    Parameters
+    ----------
+    fl : str
+        The full path to the psrfits file.
+    source : src class instance
+        The source to retrieve data for.
+    dur : astropy quantity in minutes or equivalent
+        The amount of time to extract around the source meridian passing.
+        Defaults ``50*u.min``
+    antenna_order : list
+        The order of the antennas in the correlator.  Only used
+        if dsa10 is set to ``False``.  Defaults ``None``.
+    antpos : str
+        The full path of the text file containing the 
+        antenna ITRF positions.  Defaults './data/antpos_ITRF.txt'.
+    utc_start : astropy time object
+        The start time of the observation in UTC.  Only used if dsa10 is 
+        set to ``False``.
+    autocorrs : boolean
+        If set to ``True``, both auto and cross correlations will be returned.
+        If set to False, only the cross correlations will be returned.
+        Defaults ``False``.
+    badants : list(int)
+        The antennas for which you do not want data to be returned.  If 
+        set to ``None``, all antennas are returned.  Defaults ``None``.
+    quiet : boolean
+        If set to ``True``, infromation on the file printed to stdout.
+    dsa10 : boolean
+        If set to ``True``, assumes fits file is in dsa10 format, 
+        otherwise assumes fits file is in the 3-antenna
+        correlator output format.  Defaults ``True``.
              
-    Returns:
-        fobs: arr(float)
-          the frequency of the channels in GHz
-        blen: arr(float) 
-          the itrf coordinates of the baselines, shape (nbaselines, 3)
-        bname: list(int)
-          the station pairs for each baseline (in the same order as blen)
-          shape (nbaselines, 2)
-        tstart: float
-          the start time in MJD
-        tstop: float
-          the stop time in MJD
-        vis: complex array
-          the requested visibilities, dimensions (baselines, time, frequency)
-        mjd: arr(float)
-          the midpoint mjd of each integration in the visibilities
-        transit_idx: int
-          the index of the transit in the time axis of the visibilities
+    Returns
+    -------
+    fobs : array
+        The frequency of the channels in GHz.
+    blen : array
+        The itrf coordinates of the baselines, shape (nbaselines, 3)
+    bname : list
+        The station pairs for each baseline (in the same order as blen)
+        shape (nbaselines, 2)
+    tstart : float
+        The start time of the extracted data in MJD.
+    tstop : float
+        The stop time of the extracted data in MJD.
+    vis : ndarray
+        The requested visibilities, dimensions 
+        (baseline, time, frequency, polarization).
+    mjd : array
+        The midpoint MJD of each subintegration in the visibilities.
+    transit_idx : int
+        The index of the meridian passing in the time axis of the visibilities.
     """
     # Open the file and get info from the header and visibilities
     fo = pf.open(fl,ignore_missing_end=True)
@@ -331,40 +343,47 @@ def read_psrfits_file(fl,source,dur=50*u.min,antenna_order=None,
 
 def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False,
                    antenna_order=None,dsa10=True):
-    """ Returns important header info from a visibility fits file.
+    """Extracts important header info from a visibility fits file.
     
-    Args:
-        f: pyfits table handler 
-          the visibility data table
-        antpos: str
-          the path to the text file containing the antenna positions
-        verbose: boolean
-          whether to print information on the pyfits file
-        antenna_order: list
-          the order of the antennas in the correlator.  Required if 
-          dsa10 is False
-        dsa10: Boolean
-          if True, dsa10 fits format, otherwise 3-antenna correlator
-          fits format
+    Parameters
+    ----------
+    f : pyfits table handle
+        The visibility data from the correlator.
+    antpos : str
+        The path to the text file containing the antenna positions.
+        Defulats './data/antpos_ITRF.txt'.
+    verbose : boolean
+        If ``True``, information on the fits file is printed to stdout.
+    antenna_order : list
+        The order of the antennas in the correlator.  Required if 
+        dsa10 is set to ``False``.  Defaults ``None``.
+    dsa10 : Boolean
+        Set to ``True`` if the fits file is in dsa10 correlator format, 
+        ``False`` if the file is in 6-input correlator format.
 
-    Returns:
-        nchan: int
-          the number of frequency channels
-        fobs: arr(float)
-          the midpoint frequency of each channel in GHz
-        nt: int
-          the number of time samples
-        blen: arr(float)
-          the itrf coordinates of the baselines, shape (nbaselines, 3)
-        bname: list(int)
-          the station pairs for each baseline (in the same order as blen), 
-          shape (nbaselines, 2), numbering starts at 1
-        tstart: float
-          if dsa10: the start time in MJD
-          else: the start time in seconds past the utc start time
-        tstop: float
-          if dsa10: the stop time in MJD
-          else: the start time in seconds past the utc start time
+    Returns
+    -------
+    nchan : int
+        The number of frequency channels.
+    fobs : array
+        The midpoint frequency of each channel in GHz.
+    nt: int
+        The number of time subintegrations.
+    blen : ndarray
+        The ITRF coordinates of the baselines, shape (nbaselines, 3).
+    bname : list
+        The station pairs for each baseline (in the same order as blen), 
+        shape (nbaselines, 2).
+    tstart : float
+        The start time.
+        If `dsa10` is set to ``True``, `tstart` is the start time in MJD.
+        If `dsa10` is set to ``False``, `tstart` is the start time in seconds 
+        past the utc start time of the correlator run.
+    tstop : float
+        The stop time
+        If `dsa10` is set to ``True``, `tstart` is the stop time in MJD.
+        If `dsa10` is set to ``False``, `tstart` is the stop time in seconds 
+        past the utc start time of the correlator run.
     """
     if dsa10:
         aname = f.header['ANTENNAS'].split('-')
@@ -425,36 +444,39 @@ def get_header_info(f,antpos='./data/antpos_ITRF.txt',verbose=False,
 def extract_vis_from_psrfits(f,stmid,seg_len,antenna_order,
                              mjd0,mjd1,
                              quiet=True):
-    """ Routine to extract visibilities from a fits file output
-    by the DSA-10 system.  
+    """ Routine to extract visibilities from a fits file.
     
-    Based on clip.extract_segment from DSA-10 routines
+    Based on clip.extract_segment from DSA-10 routines.
 
-    Args:
-        f: pyfits table handler
-          the fits Visibility table
-        stmid: float
-          the LST around which to extract visibilities, in radians
-        seg_len: float
-          the duration of visibilities to extract, in radians
-        antenna_order: list
-          the order of the antennas in the correlator
-        mjd0: float
-          the start time of the file in mjd
-        mjd1: float
-          the stop time of the file in mjd
-        quiet: boolean
-          if False, information on the file will be printed
+    Parameters
+    ----------
+    f : pyfits table handle
+        The fits file containing the visibilities.
+    stmid : float
+        The LST around which to extract visibilities, in radians.
+    seg_len : float
+        The duration (in LST) of visibilities to extract, in radians.
+    antenna_order : list
+        The order of the antennas in the correlator.
+    mjd0 : float
+        The start time of the file in MJD.
+    mjd1 : float
+        The stop time of the file in MJD.
+    quiet : boolean
+        If set to ``False``, information on the file will be printed.
+        Defaults ``True``.
 
-    Returns:
-        odata: complex array
-          the requested visibilities, dimensions (baselines, time, frequency)
-        st: arr(float)
-          the lst of each integration in the visibilities, in radians
-        mjd: arr(float)
-          the midpoint mjd of each integration in the visibilities
-        I0-I1: int
-          the index of the transit
+    Returns
+    -------
+    odata : ndarray
+        The requested visibilities, dimensions (baselines, time, frequency).
+    st : array
+        The lst of each integration in the visibilities, in radians.
+    mjd : array
+        The midpoint mjd of each integration in the visibilities
+    I0-I1 : int
+        The index along the time axis corresponding to the `stmid`.  (I.e 
+        the index corresponding to the meridian transit of the source.)
     """
     dat   = f.data['VIS']
     nt    = f.header['NAXIS2']
@@ -507,12 +529,38 @@ def extract_vis_from_psrfits(f,stmid,seg_len,antenna_order,
                   
     return odata,st,mjd,I0-I1
 
-def get_autobl_indices(nant):
+def get_autobl_indices(nant,casa=False):
+    """Returns a list of the indices containing the autocorrelations.
+    
+    Can return the index for either correlator-ordered visibilities
+    (`casa` set to ``False``) or CASA-ordered visibilities (`casa` 
+    set to ``True``).
+    
+    Parameters
+    ----------
+    nant : int
+        The number of antennas in the visibility set.
+    casa : boolean
+        Whether the visibilities follow CASA ordering standards
+        (`casa` set to ``True``) or DSA-10/DSA-110 correlator 
+        ordering standards (`casa` set to ``False``).  Defaults 
+        to ``False``, or correlator ordering standards.
+    
+    Returns
+    -------
+    auto_bls : list
+        The list of indices in the visibilities corresponding 
+        to autocorrelations.
+    """
     auto_bls = []
     i=-1
     for j in range(1,nant+1):
         i+=j
         auto_bls += [i]
+    if casa:
+        nbls = (nant*(nant+1))//2
+        auto_bls = [(nbls-1)-aidx for aidx in auto_bls]
+        auto_bls = auto_bls[::-1]
     return auto_bls
 
 def get_antpos_itrf(antpos='data/antpos_ITRF.txt'):
@@ -563,34 +611,48 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     then uses the casa ms tool to replace the visibilities with 
     the observed data.
     
-    Args:
-        source: src instance 
-          parameters for the source (or position) used for fringe-stopping
-        vis: complex array
-          the visibilities, shape (baseline,time, channel)
-        obstm: float
-          start time of observation in MJD 
-        ofile: str
-          name for the created ms.  will write to <ofile>.ms
-        bname: list(int)
-          the list of baselines names in the form [[ant1, ant2],...]
-        antenna_order: list()
-        tsamp: float
-          the sampling time of the input visibilities in seconds
-        nint: int
-          the number of time bins to integrate before saving to a 
-          measurement set, default 25
-        antpos: str
-          the full path to the text file containing itrf antenna
-          positions
-        model: complex array
-          same shape as visibilities, the model to write to the 
-          measurement set (and against which gain calibration will be done).
-          If not provided an array of ones will be used at the model.
-
-    Returns:
+    Parameters
+    ----------
+    source : source class instance 
+        The calibrator (or position) used for fringestopping.
+    vis : ndarray
+        The complex visibilities, dimensions 
+        (baseline,time, channel, polarization).
+    obstm : float
+        The start time of the observation in MJD.
+    ofile : str
+        The name for the created ms.  Writes to `ofile`.ms.
+    bname : list
+        The list of baselines names in the form [[ant1, ant2],...].
+    antenna_order: list
+        The list of the antennas, in CASA ordering.
+    tsamp : float
+        The sampling time of the input visibilities in seconds.  Defaults
+        to the value `tsamp`*`nint` as defined in `dsacalib.constants`.
+    nint : int
+        The number of time bins to integrate by before saving to a 
+        measurement set.  Defaults 1.
+    antpos : str
+        The full path to the text file containing ITRF antenna
+        positions or the csv file containing the station positions 
+        in longitude and latitude.  Defaults 'data/antpos_ITRF.txt'.
+    model : ndarray
+        The visibility model to write to the 
+        measurement set (and against which gain calibration will be done).
+        Must have the same shape as the visibilities `vis`.  If given a value
+        of ``None``, an array of ones will be used at the model.  Defaults ``None``.
+    dt : float 
+        The offset between the CASA start time and the data start time in days.  
+        Defaults to the value of `casa_time_offset` in `dsacalib.constants`.
+    dsa10 : boolean
+        Set to ``True`` if the data are from the dsa10 correlator.  Defaults
+        ``True``.
     """
 
+    vis = vis.astype(np.complex128)
+    if model is not None:
+        model = model.astype(np.complex128)
+    
     nant = len(antenna_order)
     
     me = cc.measures()
@@ -725,23 +787,31 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     return
 
 def extract_vis_from_ms(ms_name,nbls):
-    """ Extract visibilities from CASA measurement set.
+    """ Extracts visibilities from a CASA measurement set.
     
-    Args:
-        ms_name: str
-          the name of the measurement set (will open <ms>.ms)
-        nbls: int
-          the number of baselines in the measurement set
+    Parameters
+    ----------
+    ms_name : str
+        The name of the measurement set.  Will open `ms_name`.ms.
+    nbls : int
+        The number of baselines in the measurement set.
     
-    Returns:
-        vis_uncal: complex array
-          the 'observed' data from the measurement set (baselines,time,freq)
-        vis_cal: complex array
-          the 'corrected' data from the measurement set (baselines,time,freq)
-        time: float array
-          the mjd of each time sample
-        freq: float array
-          the frequency of each channel, in GHz
+    Returns
+    -------
+    vis_uncal : ndarray
+        The 'observed' visibilities from the measurement set.  Dimensions
+        (baseline,time,freq,polarization).
+    vis_cal : ndarray
+        The 'corrected' visibilities from the measurement set.  Dimensions 
+        (baseline,time,freq,polarization).
+    time : array
+        The time of each subintegration, in MJD.
+    freq : array
+        The frequency of each channel, in GHz.
+    flags : ndarray
+        The flags for the visibility data, same dimensions as `vis_uncal` and 
+        `vis_cal`.  `flags` is 1 (or ``True``) where the data is flagged (invalid) 
+        and 0 (or ``False``) otherwise.
     """
     error = 0
     ms = cc.ms()
@@ -759,37 +829,42 @@ def extract_vis_from_ms(ms_name,nbls):
     vis_cal   = ms.getdata(["corrected_data"])['corrected_data']
     vis_cal   = vis_cal.reshape(vis_cal.shape[0],vis_cal.shape[1],
                                 -1,nbls).T
+    
+    flags     = ms.getdata(["flag"])['flag']
+    flags     = flags.reshape(flags.shape[0],flags.shape[1],-1,nbls).T
     error += not ms.close()
     if error > 0:
         logger.info('{0} errors occured during calibration'.format(error))
-    return vis_uncal, vis_cal, time, freq
+    return vis_uncal, vis_cal, time, freq, flags
 
 def initialize_hdf5_file(f,fobs,antenna_order,t0,nbls,nchan,npol,nant):
-    """Initialize the hdf5 file.
+    """Initializes the hdf5 file for the fringestopped visibilities.
     
-    Args:
-        f: hdf5 file handler
-            the file
-        fobs: array(float)
-            the center frequency of each channel
-        antenna_order: array(int)
-            the order of the antennas in the correlator
-        t0: float
-            the time of the first sample in mjd seconds
-        nbls: int
-            the number of baselines
-        nchan: int
-            the number of channels
-        npol: int
-            the number of polarizations
-        nant: int
-            the number of antennas
+    Parameters
+    ----------
+    f : hdf5 file handler
+        The file to initialize.
+    fobs : array
+        The center frequency of each channel in GHz.
+    antenna_order : array
+        The order of the antennas in the correlator.
+    t0 : float
+        The time of the first subintegration in MJ seconds.
+    nbls : int
+        The number of baselines in the visibilities.
+    nchan : int
+        The number of channels in the visibilities.
+    npol : int
+        The number of polarizations in the visibilities
+    nant : int
+        The number of antennas in the visibilities.
         
-    Returns:
-        vis_ds: hdf5 dataset
-            the dataset for the visibilities
-        t_ds: hdf5 dataset
-            the dataset for the times
+    Returns
+    -------
+    vis_ds : hdf5 dataset
+        The dataset for the visibilities.
+    t_ds : hdf5 dataset
+        The dataset for the times.
     """
     ds_fobs = f.create_dataset("fobs_GHz",(nchan,),dtype=np.float32,data=fobs)
     ds_ants = f.create_dataset("antenna_order",(nant,),dtype=np.int,data=antenna_order)
@@ -809,9 +884,10 @@ def initialize_hdf5_file(f,fobs,antenna_order,t0,nbls,nchan,npol,nant):
     return vis_ds, t_ds
 
 def mask_bad_bins(vis,axis,thresh=6.0,medfilt=False,nmed=129):
-    """Mask bad channels or time bins in visibility data
+    """Masks bad channels or time bins in visibility data.
     
-    Args:
+    Parameters
+    ----------
       vis: array(complex)
         the visibility array 
         dimensions (nbls,nt,nf,npol)
@@ -832,7 +908,8 @@ def mask_bad_bins(vis,axis,thresh=6.0,medfilt=False,nmed=129):
         only used in medfilt is True
         must be odd
       
-    Returns:
+    Returns
+    -------
       good_bins: array(boolean)
         if axis==2: (nbls,1,nf,npol) 
         if axis==1: (nbls,nt,1,npol)
@@ -865,25 +942,28 @@ def mask_bad_bins(vis,axis,thresh=6.0,medfilt=False,nmed=129):
     return good_bins,fraction_flagged
 
 def mask_bad_pixels(vis,thresh=6.0,mask=None):
-    """Masks bad pixels that are more than thresh*std above the
-    median in each visibility.
+    """Masks pixels with values above a SNR threshold within each visibility.
     
-    Args:
-      vis: array(complex)
-        dims (nbls,nt, nf, npol)
-        the visiblities to flag
-      thresh: float
-        the threshold in stds above which to flag data
-      mask: array(bool)
-        optional, dims (nbls,nt,nf,npol)
-        a mask for data already flagged
+    Parameters
+    ----------
+    vis : ndarray
+        The complex visibilities.  Dimensions (nbls,nt, nf, npol).
+    thresh : float
+        The threshold above which to flag data.  Data above `thresh`\*the standard
+        deviation in each channel of each visiblity is flagged.  Defaults 6.
+    mask : ndarray
+        A mask for data that is already flagged.  Should be 0 where data has
+        been flagged, 1 otherwise.  Same dimensions as `vis`.  Data previously
+        flagged is not used in the calculation of the channel standard deviations.
       
-    Returns:
-      good_pixels: array(bool)  
-        (nbls,nt,nf,npol)
-      fraction_flagged: array(float)
-        (nbls,npol)
-      
+    Returns
+    -------
+    good_pixels : ndarray
+        Whether a given pixel in `vis` is good (1 or ``True``) or bad (i.e. above
+        the threshold - 0 or ``False``).  Same dimensions as ``vis``.
+    fraction_flagged : array
+        The ratio of the flagged data to the total number of pixels for each
+        baseline/polarization.      
     """
     (nbls,nt,nf,npol) = vis.shape
     vis = np.abs(vis.reshape(nbls,-1,npol))
@@ -897,37 +977,39 @@ def mask_bad_pixels(vis,thresh=6.0,mask=None):
     return good_pixels,fraction_flagged
 
 def read_caltable(tablename,nbls,cparam=False):
-    """Reads a casa calibration table and return 
-    the time (or None if not in the table) and the value of the 
-    calibration parameter.
+    """Extracts calibration solution from a CASA calibration table.
     
-    Args:
-      tablename: str
-        the full path to the casa table
-      nbls: int
-        the number of baselines in the casa table 
-        calculate from the number of antennas, nant:
-          for delay calibration, nbls=nant
-          for antenna-based gain/bandpass calibration, nbls=nant 
-          for baseline-based gain/bandpass calibration, nbls=(nant*(nant+1))//2
-      cparam: boolean
-        whether the parameter of interest is complex (cparam=True) or
-        a float (cparam=False)
-          for delay calibration, cparam=False
-          for gain/bandpass calibratino, cparam=True
+    Parameters
+    ----------
+    tablename : str
+        The full path to the CASA calibration table.
+    nbls : int
+        The number of baselines or antennas in the CASA calibration solutions.
+        This can be calculated from the number of antennas, nant:
+        
+            For delay calibration, nbls=nant
+            For antenna-based gain/bandpass calibration, nbls=nant 
+            For baseline-based gain/bandpass calibration, nbls=(nant*(nant+1))//2
+    cparam : boolean
+        Whether the parameter of interest is complex (set to ``True``) or
+        a float (set to ``False``).  For delay calibration, set to ``False``.
+        For gain/bandpass calibration, set to ``True``.  Defaults ``False``.
           
-    Returns:
-      time: array(float) or None
-        shape (nt,nbls)
-        the times at which each solution is calculated, mjd
-        None if no time given in the table
-      vals: array(float) or array(complex)
-        shape may be (npol,nt,nbls) or (npol,1,nbls) (for delay or gain cal)
-          or (npol,nf,nbls) where nf is frequency (for bandpass cal)
-        the values of the calibration parameter
-      flags: array(boolean)
-        same shape as vals
-        1 if the data is flagged, 0 if the data is valid
+    Returns
+    -------
+    time : array
+        The times at which each solution is calculated in MJD.
+        Dimensions (time,baselines).  If no column 'TIME' is in the
+        calibration table, ``None`` is returned.
+    vals : ndarray
+        The calibration solutions. Dimensions may be 
+        (polarization,time,baselines) or (polarization,1,baselines) 
+        (for delay or gain calibration) or (polarization,frequency,baselines) 
+        (for bandpass cal).
+    flags : ndarray
+        Flags corresponding to the calibration solutions.  Same dimensions
+        as `vals`.  A value of 1 or ``True`` if the data is flagged (invalid), 
+        0 or ``False`` otherwise.
     """
     param_type = 'CPARAM' if cparam else 'FPARAM'
     
@@ -949,22 +1031,25 @@ def read_caltable(tablename,nbls,cparam=False):
 
 def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
                     baseline_cal=False,pols=['A','B']):
-    """ Copy calibration values from delay & gain tables to etcd
-    Not tested yet.
+    """ Copies calibration values from delay and gain tables to etcd.
     
-    Args:
-      msname: str
-        the measurement set name, will use solns from <msname>.ms
-      calname: str
-        the calibrator name, will open tables like <msname>_<calname>_kcal
-      antenna_order: list or array of str or int
-        the antenna numbers, in CASA ordering
-      baseline_cal: boolean
-        whether or not the gain calibration soluntions were generated 
-        using baseline-based calibration
-      pols: list of str
-        the names of the polarizations
-
+    Parameters
+    ----------
+    msname : str
+        The measurement set name, will use solutions created from 
+        the measurement set `msname`.ms.
+    calname : str
+        The calibrator name.  Will open the calibration tables
+        `msname`\_`calname`\_kcal and `msname`\_`calname`\_gcal_ant
+    antenna_order : list or array 
+        The antenna numbers, in CASA ordering.
+    baseline_cal : boolean
+        Set to ``True`` if the gain table was calculated using
+        baseline-based calibration, ``False`` if the gain table 
+        was calculated using antenna-based calibration.  Defaults
+        ``False``.
+    pols : list 
+        The names of the polarizations.  Defaults ``['A','B']``.
     """
     nant = len(antenna_order)
     
@@ -984,7 +1069,6 @@ def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
         amps = amps * mask
         if baseline_cal:
             autocorr_idx = get_autobl_indices(nant)
-            autocorr_idx = [(nbls-1)-aidx for aidx in autocorr_idx]
             tamp = tamp[...,autocorr_idx]
             amps = amps[...,autocorr_idx]
             # get the correct indices for the autocorrelations
@@ -1128,3 +1212,45 @@ def caltable_to_etcd(msname,calname,antenna_order,caltime,status,
 #         de.put_dict('/mon/cal/{0}'.format(antnum),dd_gain)
 #         de.put_dict('/mon/cal/{0}'.format(antnum),dd_delay)
 
+def daz_dha(dec,daz=None,dha=None,lat=ct.ovro_lat):
+    """Converts an offset between azimuth and hour angle.
+    
+    Assumes that the offset in azimuth or hour angle from 
+    an azimuth of pi or hour angle of 0 is small.  One of `daz` 
+    or `dha` must be provided, the other is calculated.
+    
+    Parameters
+    ----------
+    dec : float
+        The pointing declination of the antenna in radians.
+    daz : float
+        The azimuth offset in radians. ``None`` may also be 
+        passed, in which case the azimuth offset is calculated 
+        and returned.  Defaults to ``None``.
+    dha : float
+        The hour angle offset in radians.  ``None`` may also 
+        be passed, in which case the hour angle offset is 
+        calculated and returned.  Defaults to ``None``.
+    lat : float
+        The latitude of the antenna in radians.  Defaults
+        to the value of ``ovro_lat`` defined in 
+        ``dsacalib.constants``.
+        
+    Returns
+    -------
+    float
+        The converted offset.  If the value of `daz` passed was 
+        not ``None``, this is the hour angle offset corresponding 
+        to the azimuth offset `daz`.  If the value of `dha` passed
+        was not ``None``, this is the azimuth offset corresonding 
+        to the hour angle offset `dha`.
+    """
+    factor = -1*(np.sin(lat)-np.tan(dec)*np.cos(lat))
+    if daz is not None:
+        assert dha is None, "daz and dha cannot both be defined"
+        ans = daz*factor
+    elif dha is not None:
+        ans = dha/factor
+    else:
+        raise RuntimeError('One of daz or dha must be defined')
+    return ans
