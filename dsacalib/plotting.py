@@ -1,9 +1,9 @@
-"""
-DSA_PLOTTING.PY
+"""Visibility and calibration solution plotting routines.
 
-Dana Simard, dana.simard@astro.caltech.edu, 10/2019
+Plotting routines to visualize the visibilities and
+the calibration solutions for DSA-110.
 
-Visibility plotting routines for DSA-10
+Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 """
 
 import matplotlib.pyplot as plt
@@ -18,26 +18,35 @@ from dsacalib.utils import get_autobl_indices,read_caltable
 
 def plot_dyn_spec(vis,fobs,mjd,bname,normalize=False,
                   outname=None,show=True,nx=None):
-    """Plots the dynamic spectrum of the real part for each visibility
+    """Plots the dynamic spectrum of the real part of the visibility.
     
-    Args:
-        vis: complex arr
-          the visibilities to plot the dynamic spectra of
-        fobs: real arr
-          the midpoint frequency of each channel in GHz
-        mjd: real arr
-          the midpoint mjd of each subintegration
-        bname: list(str)
-          the name for each baseline
-        normalize: boolean
-          whether to normalize the visibilities before plotting
-        outname: str
-          if not None the plot will be saved to a file <outname>_dynspec.png
-        show: boolean
-          if False the plot will be closed.  If using a notebook
-          and show is True, the plot will show in the notebook
-          
-    Returns:
+    Parameters
+    ----------
+    vis : ndarray
+        The visibilities to plot.  Dimensions
+        (baseline,time,freq,polarization).
+    fobs : ndarray
+        The center frequency of each channel in GHz.
+    mjd : ndarray
+        The center of each subintegration in MJD.
+    bname : list
+        The name of each baseline in the visibilities.
+    normalize : boolean
+        If set to ``True``, the visibilities are normalized
+        before plotting.  Defaults to ``False``.
+    outname : str
+        If provided and not set to ``None``, 
+        the plot will be saved to the file
+        `outname`_dynspec.png Defaults to ``None``.
+    show : boolean
+        If set to ``False`` the plot will be closed after
+        rendering.  If set to ``True`` the plot is left open.
+        Defaults to ``True``.
+    nx : int
+        The number of subplots in the horizontal direction 
+        of the figure.  If not provided, or set to ``None``,
+        `nx` is set to the minimum of 5 and the number of
+        baselines in the visibilities.  Defaults to ``None``.
     """
     (nbl, nt, nf, npol) = vis.shape
     if nx is None:
@@ -97,27 +106,37 @@ def plot_dyn_spec(vis,fobs,mjd,bname,normalize=False,
         plt.close()
     return
 
-def plot_vis_freq(vis,fobs,bname,nx=None,outname=None,show=True):
-    """Plots visibility against frequency of observation for 
-    all baselines.  Bins to 125 points for each baseline.
+def plot_vis_freq(vis,fobs,bname,outname=None,show=True,nx=None):
+    """Plots visibilities against frequency.
     
-    Args:
-        vis: complex arr
-          the visibilities, dimensions (pol,baselines, time, frequency)
-        fobs: real arr
-          the midpoint frequency of each channel in GHz
-        bname: list(str)
-          the name of each baseline 
-        outname: str, optional 
-          the base to use for the name of the 
-          png file the plot is saved to.  The plot will 
-          be saved to <outname>_freq.png if an outname is
-          provided, otherwise no plot will be saved.
-        show: boolean, optional
-          if False the plot will be closed.  If using a notebook
-          and show is True, the plot will show in the notebook
-
-    Returns:
+    Creates plots of the amplitude and phase of the 
+    visibilities `vis` as a function of frequency `fobs`.
+    Two separate figures are opened, one for the amplitude 
+    and one for the phases.  If `outname` is passed, these
+    are saved as `outname`\_amp_freq.png and 
+    `outname`\_phase_freq.png
+    
+    vis : ndarray
+        The visibilities to plot.  Dimensions
+        (baseline,time,freq,polarization).
+    fobs : ndarray
+        The center frequency of each channel in GHz.
+    bname : list
+        The name of each baseline in the visibilities.
+    outname : str
+        If provided and not set to ``None``, 
+        the plots will be saved to the files
+        `outname`\_amp_freq.png and `outname`\_phase_freq.png 
+        Defaults to ``None``.
+    show : boolean
+        If set to ``False`` the plot will be closed after
+        rendering.  If set to ``True`` the plot is left open.
+        Defaults to ``True``.
+    nx : int
+        The number of subplots in the horizontal direction 
+        of the figure.  If not provided, or set to ``None``,
+        `nx` is set to the minimum of 5 and the number of
+        baselines in the visibilities.  Defaults to ``None``.
     """
     (nbl,nt,nf,npol) = vis.shape
     if nx is None:
@@ -125,8 +144,8 @@ def plot_vis_freq(vis,fobs,bname,nx=None,outname=None,show=True):
     ny = nbl//nx
     if nbl%nx != 0: ny += 1
     
-    dplot = vis.mean(1) #vis[:,:,:nf//125*125,:].mean(1).reshape(nbl,125,-1,npol).mean(3)
-    x = fobs#[:nf//125*125].reshape(125,-1).mean(-1)
+    dplot = vis.mean(1) 
+    x = fobs
         
     fig,ax = plt.subplots(ny,nx,figsize=(8*nx,8*ny))
     ax = ax.flatten()
@@ -161,27 +180,38 @@ def plot_vis_freq(vis,fobs,bname,nx=None,outname=None,show=True):
         plt.close()
     return
 
-def plot_vis_time(vis,mjd,bname,nx=None,outname=None,show=True):
-    """Plots visibility against time of observation for 
-    all baselines.  
+def plot_vis_time(vis,mjd,bname,outname=None,show=True,nx=None):
+    """Plots visibilities against time of observation.
     
-    Args:
-        vis: complex arr
-          the visibilities, dimensions (pol,baselines, time, frequency)
-        mjd: real arr
-          the midpoint MJD of each subintegration
-        bname: list(str)
-          the name of each baseline 
-        outname: str
-          the base to use for the name of the 
-          png files the plots is saved to.  The plots will 
-          be saved to <outname>_amp_time.png and outname_phase_time.png
-          if an outname is provided; otherwise no plot will be saved.
-        show: boolean
-          if False the plot will be closed.  If using a notebook
-          and show is True, the plot will show in the notebook
-               
-    Returns:
+    Creates plots of the amplitude and phase of the 
+    visibilities `vis` as the time of observation `mjd`.
+    Two separate figures are opened, one for the amplitude 
+    and one for the phases.  If `outname` is passed, these
+    are saved as `outname`\_amp_time.png and 
+    `outname`\_phase_time.png    
+    
+    Parameters
+    ----------
+    vis : ndarray
+        The visibilities to plot.  Dimensions
+        (baseline,time,freq,polarization).
+    mjd : ndarray
+        The center of each subintegration in MJD.
+    bname : list
+        The name of each baseline in the visibilities.
+    outname : str
+        If provided and not set to ``None``, 
+        the plot will be saved to the file
+        `outname`\_dynspec.png Defaults to ``None``.
+    show : boolean
+        If set to ``False`` the plot will be closed after
+        rendering.  If set to ``True`` the plot is left open.
+        Defaults to ``True``.
+    nx : int
+        The number of subplots in the horizontal direction 
+        of the figure.  If not provided, or set to ``None``,
+        `nx` is set to the minimum of 5 and the number of
+        baselines in the visibilities.  Defaults to ``None``.
     """
     (nbl,nt,nf,npol) = vis.shape
     if nx is None:
@@ -204,7 +234,7 @@ def plot_vis_time(vis,mjd,bname,nx=None,outname=None,show=True):
     for i in range((ny-1)*nx,ny):
         ax[i].set_xlabel('time (min)')
     if outname is not None:
-        plt.savefig('{0}_abs_time.png'.format(outname))
+        plt.savefig('{0}_amp_time.png'.format(outname))
     if not show:
         plt.close()
         
@@ -226,25 +256,24 @@ def plot_vis_time(vis,mjd,bname,nx=None,outname=None,show=True):
     return
 
 def plot_uv_track(bu,bv,outname=None,show=True):
-    """Plots the uv track provided
+    """Plots the uv track provided.
     
-    Args:
-        bu: real arr
-          the values of u of the baselines in m,
-          dimensions (baselines,time)
-        bv: real arr
-          the values of v of the baselines in m,
-          dimension (baselines, time)
-        outname: str
-          the base to use for the name of the 
-          png file the plot is saved to.  The plot will 
-          be saved to <outname>_freq.png if an outname is
-          provided, otherwise no plot will be saved.
-        show: boolean
-          If true, the plot will be shown in an inline 
-          notebook.  If not using a notebook, the plot will never be shown.
-
-    Returns:
+    Parameters
+    ----------
+    bu : ndarray
+        The u-coordinates of the baselines in meters.
+        Dimensions (baselines,time).
+    bv : ndarray
+        The v-coordinates of the baselines in meters.
+        Dimensions (baselines, time)
+    outname : str
+        If provided and not set to ``None``, 
+        the plot will be saved to the file
+        `outname`_dynspec.png Defaults to ``None``.
+    show : boolean
+        If set to ``False`` the plot will be closed after
+        rendering.  If set to ``True`` the plot is left open.
+        Defaults to ``True``.
     """
     fig,ax = plt.subplots(1,1,figsize=(8,8))
     for i in range(bu.shape[0]):
@@ -261,20 +290,23 @@ def plot_uv_track(bu,bv,outname=None,show=True):
     return
 
 def rebin_vis(arr,nb1,nb2):
-    """ Rebins a 2-D array for plotting.  Excess bins along either axis
-    are discarded.
+    """Rebins a 2-D array for plotting.  
     
-    Args:
-        arr: arr
-          the two-dimensional array to rebin
-        nb1: int
-          the number of bins to rebin by along the 0th axis
-        nb2: int
-          the number of bins to rebin by along the 1st axis
+    Excess bins along either axis are discarded.
+    
+    Parameters
+    ----------
+    arr : ndarray
+        The two-dimensional array to rebin.
+    nb1 : int
+        The number of bins to rebin by along axis 0.
+    nb2 : int
+        The number of bins to rebin by along the axis 1.
 
-    Returns:
-        arr: arr
-          the rebinned array
+    Returns
+    -------
+    arr: ndarray
+        The rebinned array.
     """
     arr = arr[:arr.shape[0]//nb1*nb1,:arr.shape[1]//nb2*nb2].reshape(
         -1,nb1,arr.shape[1]).mean(1)
@@ -282,31 +314,30 @@ def rebin_vis(arr,nb1,nb2):
     return arr
 
 def plot_calibrated_vis(vis,vis_cal,mjd,fobs,bidx,pol=0,
-                        outname='None',show=True):
-    """Plots two visibilities for comparison for e.g. a calibrated
-    and uncalibrated visibility
+                        outname=None,show=True):
+    """Plots the calibrated and uncalibrated visibilities for comparison.
     
-    Args:
-        vis: complex arr
-          dimensions (time, freq), the uncalibrated visibility to plot
-        vis_cal: complex arr
-          dimensions (time, freq), the calibrated visibility to plot
-        mjd: real arr
-          the midpoint MJD of each subintegration
-        fobs: real arr
-          the midpoint frequency of each channel in GHz
-        pol: int
-          the polarization index to plot
-        outname: str
-          the base to use for the name of the 
-          png file the plot is saved to.  The plot will 
-          be saved to <outname>_cal_vis.png if an outname is
-          provided, otherwise no plot will be saved.
-        show: boolean
-          if False the plot will be closed.  If using a notebook
-          and show is True, the plot will show in the notebook
-
-    Returns:
+    
+    Parameters
+    ----------
+    vis : ndarray
+        The complex, uncalibrated visibilities, with dimensions (time, freq).  
+    vis_cal : ndarray
+        The complex calibrated visibilities, with dimensions (time, freq).
+    mjd : ndarray
+        The midpoint time of each subintegration in MJD.
+    fobs : ndarray
+        The center frequency of each channel in GHz.
+    pol : int
+        The index along the polarization index to plot.  Defaults to ``0``.
+    outname : str
+        The base to use for the name of the 
+        png file the plot is saved to.  The plot will 
+        be saved to `outname`_cal_vis.png if `outname` is
+        provided, otherwise no plot will be saved.  Defaults ``None``.
+    show : boolean
+        If `show` is passed ``False``, the plot will be closed after 
+        being generated.  Otherwise, it is left open.  Defaults ``True``.
     """
     x = mjd[:mjd.shape[0]//128*128].reshape(-1,128).mean(-1)
     x = ((x-x[0])*u.d).to_value(u.min)
@@ -353,28 +384,44 @@ def plot_calibrated_vis(vis,vis_cal,mjd,fobs,bidx,pol=0,
 
 
 def plot_delays(vis_ft,labels,delay_arr,bname,nx=None,outname=None,show=True):
-    """Make amp vs delay plots for each visibility
+    """Plots the visibility amplitude against delay.
 
-    Args:
-        vis_ft: complex arr
-          the visibilities, dimensions (vis, baselines, delay)
-        labels: list(str)
-          the labels for the visibilities passed
-        delay_arr: real array
-          the delay bins in nanoseconds
-        bname: list(str)
-          the baseline labels
-        outname: str
-          the base to use for the name of the 
-          png file the plot is saved to.  The plot will 
-          be saved to <outname>_delays.png if an outname is
-          provided, otherwise no plot will be saved.
-        show: boolean
-          if False the plot will be closed.  If using a notebook
-          and show is True, the plot will show in the notebook
+    For a given visibility Fourier transformed along the frequency axis, 
+    plots the amplitude against delay and calculates the location of the 
+    fringe peak in delay.  Returns the peak delay for each visibility, 
+    which can be used to calculate the antenna delays. 
 
-    Returns:
-        delays: the delays in ns calculated from the peak of the fringe
+    Parameters
+    ----------
+    vis_ft : ndarray
+        The complex visibilities, dimensions (visibility type, baselines, delay).
+        Note that the visibilities must have been Fourier transformed along the
+        frequency axis and scrunched along the time axis before being passed
+        to `plot_delays`.
+    labels : list
+        The labels of the types of visibilities passed.  For example, 
+        ``['uncalibrated','calibrated']``.
+    delay_arr : ndarray
+        The center of the delay bins in nanoseconds.
+    bname : list
+        The baseline labels.
+    nx : int
+        The number of plots to tile along the horizontal axis. If `nx` is 
+        given a value of ``None``, this is set to the number of baselines or 5, 
+        if there are more than 5 baselines.
+    outname : str
+        The base to use for the name of the png file the plot is saved to.  
+        The plot will be saved to `outname`_delays.png if an outname is
+        provided.  If `outname` is given a value of ``None``, 
+        no plot will be saved.  Defaults ``None``.
+    show : boolean
+        If `show` is given a value of ``False`` the plot will be closed.  
+        Otherwise, the plot will be left open. Defaults ``True``.
+
+    Returns
+    -------
+    delays : ndarray
+        The peak delay for each visibility, in nanoseconds.
     """
     nvis = vis_ft.shape[0]
     nbl  = vis_ft.shape[1]
@@ -414,30 +461,33 @@ def plot_delays(vis_ft,labels,delay_arr,bname,nx=None,outname=None,show=True):
 
 def plot_image(msname,imtype,sr0,verbose=False,outname=None,
                show=True,npix=256):
-    """Uses CASA to grid an image and the plot the image.
+    """Uses CASA to grid and image visibilities.
     
-    Args:
-        msname: str
-          the prefix of the measurement set 
-        imtype: str
-          the type of image to produce.  Can be 'observed', 
-          'corrected', or 'model'
-        sr0: src class
-          the source to use as the phase center in the image
-        verbose: boolean
-          whether to print information about the produced image
-        outname: str
-          the base to use for the name of the 
-          png file the plot is saved to.  The plot will 
-          be saved to <outname>_<imtype>.png if an outname is
-          provided, otherwise no plot will be saved.
-        show: boolean
-          if False the plot will be closed.  If using a notebook
-          and show is True, the plot will show in the notebook
-        npix: int
-          the number of pixels per side to plot
-
-    Returns:
+    Parameters
+    ----------
+    msname : str
+        The prefix of the measurement set name.  Opens 
+        `msname`.ms.
+    imtype : str
+        The visibilities to image.  Can be 'observed', 
+        'corrected', or 'model'.
+    sr0 : src instance
+        The source to use as the phase center in the image.
+    verbose : boolean
+        If ``True``, information about the image, including the
+        location and SNR of the peak, are printed.  Default ``False``.
+    outname : str
+        The base to use for the name of the 
+        png file the plot is saved to.  The plot will 
+        be saved to `outname`_`imtype`.png if an outname is
+        provided.  If `outname` is ``None``, the image is not 
+        saved.  Defaults ``None``.
+    show : boolean
+        If `show` is ``False``, the plot will be closed after 
+        being generated.  Defaults ``True``.
+    npix : int
+        The number of pixels per side to plot in the image. 
+        Defaults 256.
     """
     error = 0
     im = cc.imager()
@@ -488,31 +538,46 @@ def plot_image(msname,imtype,sr0,verbose=False,outname=None,
     return
 
 def plot_antenna_delays(msname,calname,antenna_order,outname=None,show=True):
-    """Plots the antenna delays on a 59s timescale relative to the antenna
-    delays used in the calibration solution
+    """Plots antenna delay variations between two delay calibrations.
     
-    Args:
-        prefix: str
-          the prefix of the kcal measurement set
-        antenna_order: int array or list(int)
-          the order of the antennas 
-        outname: str
-          the base to use for the name of the 
-          png file the plot is saved to.  The plot will 
-          be saved to <outname>_antdelays.png if an outname is
-          provided, otherwise no plot will be saved.
-        show: boolean
-          if False the plot will be closed.  If using a notebook
-          and show is True, the plot will show in the notebook
+    Compares the antenna delays used in the calibration solution on the timescale 
+    of the entire calibrator pass (assumed to be in a CASA table ending in 'kcal') 
+    to those calculated on a shorter (e.g. 60s) timescale (assumed ot be in a CASA
+    table ending in '2kcal').
+    
+    Parameters
+    ----------
+    msname : str
+        The prefix of the measurement set (`msname`.ms), used to identify 
+        the correct delay calibration tables.
+    calname : str
+        The calibrator source name, used to identify the correct delay calibration 
+        tables.  The tables `msname`\_`calname`\_kcal (for a single delay 
+        calculated using the entire calibrator pass) and 
+        `msname`\_`calname`\_2kcal (for delays
+        calculated on a shorter timescale) will be opened.
+    antenna_order : ndarray
+        The antenna names in order.
+    outname : str
+        The base to use for the name of the 
+        png file the plot is saved to.  The plot will 
+        be saved to `outname`\_antdelays.png.  If `outname` is set to ``None``,
+        the plot is not saved.  Defaults ``None``.
+    show : boolean
+        If set to ``False`` the plot will be closed after it is generated.
+        Defaults ``True``.
 
-    Returns:
-        times: arr, real
-          the times at which the antenna delays are calculated in mjd
-        antenna_delays: arr, real
-          the delays of the antennas solved every 59s in nanoseconds
-        kcorr: arr, real
-          the applied delay correction calculated using the entire time
-          in nanoseconds
+    Returns
+    -------
+    times : ndarray
+        The times at which the antenna delays (on short timescales) were calculated, 
+        in MJD.
+    antenna_delays : ndarray
+        The delays of the antennas on short timescales, in nanoseconds.  
+        Dimensions (polarization,time,antenna).
+    kcorr : ndarray
+        The delay correction calculated using the entire observation time,
+        in nanoseconds.  Dimensions (polarization,1,antenna).
     """
     nant = len(antenna_order)
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
@@ -553,28 +618,37 @@ def plot_gain_calibration(msname,calname,antenna_order,
                           bname=None, blbased=False,
                           plabels=['A','B'],
                           outname=None,show=True):
-    """Plot the gain calibration solution
+    """Plots the gain calibration solutions.
     
-    Args:
-        source: src class
-          the calibrator
-        antenna_order: arr(int) or list(int)
-          the order of the antennas 
-        blbased: boolean
-          whether or not the gain solutions are baseline 
-          based.  True = baseline based; False = antenna based
-        plabels: list
-          the labels for the polarizations
-        outname: str
-          the base to use for the name of the 
-          png file the plot is saved to.  The plot will 
-          be saved to <outname>_gaincal.png if an outname is
-          provided, otherwise no plot will be saved.
-        show: boolean
-          if False the plot will be closed.  If using a notebook
-          and show is True, the plot will show in the notebook
-    
-    Returns:
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set.  Used to identify the 
+        gain calibration tables.
+    calname : str
+        The calibrator used in gain calibration.  Used to identify
+        the gain calibration tables.  The tables 
+        `msname`\_`calname`\_gacal (assumed to contain the gain amplitude
+        soutions) and `msname`\_`calname`\_gpcal (assumed to contain
+        the phase amplitude solutions) will be opened.
+    antenna_order : ndarray or list
+        The antennas in their order in the measurement set.
+    bname : list
+        The names of the baselines in the calibration solutions.
+    blbased : boolean
+        Set to ``True`` if the gain solutions are baseline-based,
+        ``False`` if they are antenna-based.  Used to properly parse 
+        the gain table.
+    plabels : list
+        The names of the polarizations in the calibration solutions.  
+        Defaults ``['A','B']``.
+    outname : str
+        The base to use for the name of the 
+        png file the plot is saved to.  The plot is saved to 
+        `outname`\_gaincal.png if `outname` is not ``None``.  if `outname` is
+        set to ``None, the plot is not saved.  Defaults ``None``.
+    show : boolean
+        If set to ``False`` the plot is closed after being generated.
     """
     nant = len(antenna_order)
     if blbased:
@@ -657,30 +731,36 @@ def plot_gain_calibration(msname,calname,antenna_order,
 def plot_bandpass(msname,calname,antenna_order,fobs,
                   blbased=False,plabels=['A','B'],
                  outname=None,show=True):
-    """Plot the bandpass calibration solution
+    """Plots the bandpass calibration solutions.
     
-    Args:
-        source: src class
-          the calibrator
-        antenna_order: arr(int) or list(int)
-          the order of the antennas 
-        blbased: boolean
-          whether or not the gain solutions are baseline 
-          based.  True = baseline based; False = antenna based
-        fobs: arr(float)
-          the observing frequencies in GHz
-        plabels: list
-          the labels for the polarizations
-        outname: str
-          the base to use for the name of the 
-          png file the plot is saved to.  The plot will 
-          be saved to <outname>_gaincal.png if an outname is
-          provided, otherwise no plot will be saved.
-        show: boolean
-          if False the plot will be closed.  If using a notebook
-          and show is True, the plot will show in the notebook
-    
-    Returns:
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set.  Used to identify
+        the calibration table to plot.
+    calname : str
+        The name of the calibrator used in calibration.  The 
+        calibration table `msname`\_`calname`\_bcal is opened.
+    antenna_order : array
+        The antenna names in the order they appear in the 
+        calibration table.
+    fobs : array
+        The frequency of each channel in GHz.
+    blbased : boolean
+        Set to ``True`` if baseline-based routines were used 
+        to calculate the bandpass solutions, ``False`` if 
+        antenna-based routines were used. 
+        Defaults ``False``.
+    plabels : list
+        The labels for the polarizations.  Defaults ``['A','B']``.
+    outname : str
+        The base to use for the name of the 
+        png file the plot is saved to.  The plot is saved to 
+        `outname`\_bandpass.png if an `outname` is not set to ``None``.
+        If `outname` is set to ``None``, the plot is not saved.  
+        Defaults ``None``.
+    show : boolean
+        If set to ``False``, the plot is closed after it is generated.
     """    
     nant = len(antenna_order)
     if blbased:

@@ -425,28 +425,33 @@ def pb_resp_uniform_ill(ant_ra,ant_dec,src_ra,src_dec,freq,dish_dia=4.65):
 
 
 def pb_resp(ant_ra,ant_dec,src_ra,src_dec,freq,dish_dia=4.65):
-    """ Compute the primary beam response assuming tapered illumination
-    Args::
-      ant_ra: float
-        antenna right ascension pointing in radians
-      ant_dec: float
-        antenna declination pointing in radiants
-      src_ra: float
-        source right ascension in radians
-      src_dec: float
-        source declination in radians
-      freq: array(float)
-        the frequency of each channel in GHz
-      dish_dia: float
-        the dish diameter in m 
+    """Computes the primary beam response towards a direction on the sky.
+    
+    Assumes tapered illumination of the disk. 
+    Returns a value between 0 and 1 for each value passed in `ant_ra`. 
+
+    Parameters
+    ----------
+    ant_ra : float or ndarray
+        The antenna right ascension pointing in radians.  If an array, must be 
+        one-dimensional.
+    ant_dec : float 
+        The antenna declination pointing in radians.  
+    src_ra : float
+        The source right ascension in radians.
+    src_dec : float
+        The source declination in radians.
+    freq : ndarray
+        The frequency of each channel in GHz.
+    dish_dia : float
+        The dish diameter in meters.  Defaults to ``4.65``.
       
-    Returns:
-      pb: array(float)
-        if ant_ra is an array: 
-            dimensions distance, freq
-        if ant_ra is not an array:
-            dimensions freq
-        the primary beam response
+    Returns
+    -------
+    pb : ndarray
+        The primary beam response, dimensions
+        (`ant_ra`, `freq`) if an array is passed to `ant_ra`,
+        or (`freq`) if a float is passed to `ant_ra`.
     """
     dis = np.array(angular_separation(ant_ra,ant_dec,src_ra,src_dec))
     if dis.ndim > 0 and dis.shape[0] > 1:
