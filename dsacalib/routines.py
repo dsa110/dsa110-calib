@@ -29,56 +29,8 @@ def check_path(fname):
     assert os.path.exists(fname), \
       'File {0} does not exist'.format(fname)
     
-def triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=True):
-    """Performs delay and complex gain calibration for a triplet of antennas. 
-    
-    Uses CASA to perform baseline-based calibration of visibilties recorded using 
-    the 6-input DSA-110 correlator.  Calculates the antenna gains from these
-    baseline-based solutions.
-    
-    Parameters
-    ----------
-    obs_params : dictionary
-        The observation parameters.  The following keys must be defined:
-        
-        obs_params['fname'] : str
-            The full path to the fits or hdf5 file containing the visibilities.
-        obs_params['msname'] : str
-            The name to use for the ms containing the fringestopped 
-            visibilities.
-        obs_params['cal'] : src class instance
-            The calibrator source.
-        obs_params['utc_start'] : astropy Time instance
-            The start time of the correlator run.
-    ant_params : dictionary
-        The antenna parameters during the observation. The following keys must 
-        be defined:
-        
-        ant_params['antenna_order'] : list
-            The names of the antennas, in the order used in the correlator.
-        ant_params['refant'] : str
-            The name of the referance antenna. Note that if an integer is 
-            passed instead of a string, it will be treated as the index of 
-            the reference antenna in the CASA MS
-        ant_params['antpos'] : str
-            The full path to the antenna positions file.
-    show_plots : boolean
-        If set to ``True``, shows plots generated during calibration 
-        (e.g. if working in a notebook or interactive python environment).
-        Defaults ``False``.
-    throw_exceptions : boolean
-        If set to ``True``, throws exceptions. If set to ``False``, handles 
-        them quietly.  In both cases, exception information is written to the 
-        system logs.  Defaults ``True``.
-        
-    Returns
-    -------
-    status : int 
-        The status code.  A non-zero status means at least one error has occured.
-        Decode status codes using dsa110-pytools (`dsatools.calstatus`).
-    caltime : float
-        The time of the meridian crossing of the calibrator in MJD.
-    """
+def triple_antenna_cal(obs_params,ant_params,show_plots=False,
+                       throw_exceptions=True,sefd=False):
     status = 0
     
     fname         = obs_params['fname']
@@ -89,8 +41,6 @@ def triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=T
     antenna_order = ant_params['antenna_order']
     refant        = ant_params['refant']
     antpos        = ant_params['antpos']
-    daz           = ant_params['azimuth_offsets']
-    dha           = daz_dha(dec=pt_dec,daz=daz)
 
     
     # Remove files that we will create so that things will fail
@@ -108,10 +58,11 @@ def triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=T
     
     # READ IN DATA 
     try:
+        caldur = 60*u.min if sefd else 10*u.min
         fobs, blen, bname, tstart, tstop, tsamp, vis, mjd, lst, \
             transit_idx, antenna_order = \
             read_psrfits_file(fname,cal,antenna_order = antenna_order,
-                              autocorrs=False,dur=10*u.min,
+                              autocorrs=False,dur=caldur,
                               utc_start = utc_start,dsa10=False,
                               antpos='{0}/data/antpos_ITRF.txt'.format(
                                   dsacalib.__path__[0]))
@@ -152,6 +103,8 @@ def triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=T
         exception_logger('read and verification of visibility file',e,throw_exceptions)
         return status,caltime
     
+    # Flag data
+    # Ideal thresholds?
     try: 
         maskf,fraction_flagged =  mask_bad_bins(vis,axis=2,thresh=2.0,medfilt=True,
                                       nmed=129)
@@ -178,30 +131,17 @@ def triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=T
     
     # CONVERT DATA TO MS
     try:
-        antenna_amp_models = [
-            amplitude_sky_model(cal,lst+dha[0],pt_dec,fobs),
-            amplitude_sky_model(cal,lst+dha[1],pt_dec,fobs),
-            amplitude_sky_model(cal,lst+dha[2],pt_dec,fobs)]
-        amp_model = np.zeros((6,lst.shape[0],fobs.shape[0]))
-        k=0
-        for i in range(3):
-            for j in range(i,3):
-                amp_model[k] = np.sqrt(
-                    antenna_amp_models[i]*antenna_amp_models[j])
-                k+=1
-                
-        #amp_model = amplitude_sky_model(cal,lst,pt_dec,fobs)
-        amp_model = np.tile(amp_model[:,:,:,np.newaxis],
-                            (1,1,1,vis.shape[-1]))
-
+        amp_model = amplitude_sky_model(cal,lst,pt_dec,fobs)
+        amp_model = np.tile(amp_model[np.newaxis,:,:,np.newaxis],
+                            (vis.shape[0],1,1,vis.shape[-1]))
         convert_to_ms(cal,vis,mjd[0],'{0}'.format(msname),
                        bname,antenna_order,tsamp,nint=25,
                        antpos='/home/dsa/data/antpos_ITRF.txt',dsa10=False,
-                       model=amp_model)
+                       model=None if sefd else amp_model)
         check_path('{0}.ms'.format(msname))
     except Exception as e:
         status = cs.update(status,
-                    ['ms_write_err','inv_gainamp_p1','inv_gainamp_p2',
+                    ['write_ms_err','inv_gainamp_p1','inv_gainamp_p2',
                      'inv_gainphase_p1','inv_gainphase_p2','inv_delay_p1',
                      'inv_delay_p2','inv_gaincaltime','inv_delaycaltime'])
         exception_logger("write to ms",e,throw_exceptions)
@@ -209,9 +149,15 @@ def triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=T
 
     # FLAG DATA
     try:
-        flag_zeros(msname)
+        error = flag_zeros(msname)
+        if error > 0:
+            status = cs.update(status,['flagging_err'])
+            logger.info("Non-fatal error in zero flagging")
         if 8 in antenna_order:
-            flag_antenna(msname,'8',pol='A')
+            error = flag_antenna(msname,'8',pol='A')
+            if error > 0:
+                status = cs.update(status,['flagging_err'])
+                logger.info("Non-fatal error in antenna 8 flagging")
     except Exception as e:
         status = cs.update(status,
                           ['flagging_err'])
@@ -239,7 +185,6 @@ def triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=T
         if error > 0:
             status = cs.update(status,['flagging_err'])
             logger.info('Non-fatal error occured in calculation of delays on short timescales.')
-
         times, a_delays, kcorr = plot_antenna_delays(
                 msname,cal.name,antenna_order,
                 outname="./figures/{0}_{1}".format(msname,cal.name),
@@ -250,16 +195,18 @@ def triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=T
             logger.info('Non-fatal error occured in flagging of bad timebins')
         check_path('{0}_{1}_2kcal'.format(msname,cal.name))
     except Exception as e:
-        status = cs.update(status,['flagging_err'])
+        status = cs.update(status,'flagging_err')
         exception_logger("flagging of ms data",e,throw_exceptions)
-    
+
     # GAIN CALIBRATION - BASELINE BASED
     try:
+        print(os.path.exists('J1042+1203_1_J1042+1203_gacal'))
         error = gain_calibration_blbased(msname,cal.name,refant=refant,
-                                 tga='30s',tgp='inf')
+                                 tga='30s',tgp='30s')
         if error > 0:
             status = cs.update(status,['gain_bp_cal_err'])
             logger.info('Non-fatal error occured in gain/bandpass calibration.')
+        print(os.path.exists('J1042+1203_1_J1042+1203_gacal'))
         for fname in ['{0}_{1}_bcal'.format(msname,cal.name),
                       '{0}_{1}_gpcal'.format(msname,cal.name),
                       '{0}_{1}_gacal'.format(msname,cal.name)]:
@@ -289,32 +236,52 @@ def triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=T
     try:
         tamp,gamp,famp = read_caltable('{0}_{1}_gacal'.format(msname,cal.name),
                                       nbls,cparam=True)
+        print(gamp.shape,type(gamp),gamp.dtype)
         tphase,gphase,fphase = read_caltable('{0}_{1}_gpcal'.format(msname,cal.name),
                                             nbls,cparam=True)
         gains = gamp.T*gphase.T
         flags = famp.T*fphase.T
         gains,flags = fill_antenna_gains(gains,flags)
-        mask = np.ones(flags.shape)
-        mask[flags==1]=np.nan
-        gains = np.nanmedian(gains*mask,axis=1,keepdims=True)
-        flags = np.min(flags,axis=1,keepdims=True)
-
-        if 8 in antenna_order:
-            flags[...,0]=1
-
-        shutil.copytree('{0}/data/template_gcal_ant'.format(
-            dsacalib.__path__[0]),
-            '{0}_{1}_gcal_ant'.format(msname,cal.name))
-
-        # Write out a new gains table
+        
+        gx = np.abs(gains).T.astype(np.complex128)
+        gx = gx.reshape(gx.shape[0],-1)
+        print(gx.shape,type(gx),gx.dtype)
         tb = cc.table()
-        tb.open('{0}_{1}_gcal_ant'.format(msname,cal.name),nomodify=False)
-        tb.putcol('TIME',
-                  np.ones(6)*np.median(mjd)*ct.seconds_per_day)
-        tb.putcol('FLAG',flags.T)
-        tb.putcol('CPARAM',gains.T)
+        tb.open('{0}_{1}_gacal'.format(msname,cal.name),
+                     nomodify=False)
+        tb.putcol('CPARAM',gx)
         tb.close()
-        check_path('{0}_{1}_gcal_ant'.format(msname,cal.name))
+        
+        gx = np.exp(1.j*np.angle(gains).T)
+        gx = gx.reshape(gx.shape[0],-1)
+        tb.open('{0}_{1}_gpcal'.format(msname,cal.name),
+                     nomodify=False)
+        tb.putcol('CPARAM',gx)
+        tb.close()
+        
+        if not sefd:
+            # reduce to a single value to use 
+            mask = np.ones(flags.shape)
+            mask[flags==1]=np.nan
+            gains = np.nanmedian(gains*mask,axis=1,keepdims=True)
+            flags = np.min(flags,axis=1,keepdims=True)
+
+            if 8 in antenna_order:
+                flags[...,0]=1
+
+            shutil.copytree('{0}/data/template_gcal_ant'.format(
+                dsacalib.__path__[0]),
+                '{0}_{1}_gcal_ant'.format(msname,cal.name))
+
+            # Write out a new gains table
+            tb = cc.table()
+            tb.open('{0}_{1}_gcal_ant'.format(msname,cal.name),nomodify=False)
+            tb.putcol('TIME',
+                      np.ones(6)*np.median(mjd)*ct.seconds_per_day)
+            tb.putcol('FLAG',flags.T)
+            tb.putcol('CPARAM',gains.T)
+            tb.close()
+            check_path('{0}_{1}_gcal_ant'.format(msname,cal.name))
     except Exception as e:
         status = cs.update(status,
                     ['gain_bp_cal_err','inv_gainamp_p1','inv_gainamp_p2',
@@ -325,69 +292,169 @@ def triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=T
 
     return status,caltime
 
-
 def calibration_master(obs_params,ant_params,show_plots=False,write_to_etcd=False,
-                      throw_exceptions=True):
-    """Calibrates data and writes the solutions to etcd.
-    
-    Parameters
-    ----------
-    obs_params : dictionary
-        The observation parameters.  The following keys must be defined:
-        
-        obs_params['fname'] : str
-            The full path to the fits or hdf5 file containing the visibilities.
-        obs_params['msname'] : str
-            The name to use for the ms containing the fringestopped 
-            visibilities.
-        obs_params['cal'] : src class instance
-            The calibrator source.
-        obs_params['utc_start'] : astropy Time instance
-            The start time of the correlator run.
-    ant_params : dictionary
-        The antenna parameters during the observation. The following keys must 
-        be defined:
-        
-        ant_params['antenna_order'] : list
-            The names of the antennas, in the order used in the correlator.
-        ant_params['refant'] : str
-            The name of the referance antenna. Note that if an integer is 
-            passed instead of a string, it will be treated as the index of 
-            the reference antenna in the CASA MS
-        ant_params['antpos'] : str
-            The full path to the antenna positions file.
-    show_plots : boolean
-        If set to ``True``, shows plots generated during calibration 
-        (e.g. if working in a notebook or interactive python environment).
-        Defaults ``False``.
-    write_to_etcd : boolean
-        If set to ``True``, the calibration tables are read in and written 
-        to etcd after calibrating is complete.  Defaults ``False``.
-    throw_exceptions : boolean
-        If set to ``True``, throws exceptions. If set to ``False``, handles 
-        them quietly.  In both cases, exception information is written to the 
-        system logs.  Defaults ``True``.
-    
-    Returns
-    -------
-    status : int 
-        The status code.  A non-zero status means at least one error has occured.
-        Decode statuses using dsa110-pytools (`dsatools.calstatus`).
-    """
+                      throw_exceptions=None,sefd=False):
     if throw_exceptions is None:
         throw_exceptions = not write_to_etcd
     logger.info('Beginning calibration of ms {0}.ms (start time {1}) using source {2}'.
                 format(obs_params['msname'],obs_params['utc_start'].isot,
                        obs_params['cal'].name))
-    status,caltime = triple_antenna_cal(obs_params,ant_params,show_plots,throw_exceptions)
+    status,caltime = triple_antenna_cal(obs_params,ant_params,show_plots,throw_exceptions,sefd)
     logger.info('Ending calibration of ms {0}.ms (start time {1}) using source {2} with status {3}'.
                format(obs_params['msname'],obs_params['utc_start'].isot,
                        obs_params['cal'].name,status))
     print('Status: {0}'.format(cs.decode(status)))
+    print('')
     if write_to_etcd:
         caltable_to_etcd(obs_params['msname'],obs_params['cal'].name,
                      ant_params['antenna_order'],caltime, status,baseline_cal=True)
     return status
 
+from scipy.optimize import curve_fit
+from dsacalib.utils import daz_dha
 
+def gauss(x, a, x0, sigma,c):
+    return a*np.exp(-(x-x0)**2/(2*sigma**2))+c
 
+def get_delay_bp_cal_vis(msname,calname,nbls):
+    error = 0
+    cb = cc.calibrater()
+    error += not cb.open('{0}.ms'.format(msname))
+    error += not cb.setapply(type='K',table='{0}_{1}_kcal'.
+                             format(msname,calname))
+    error += not cb.setapply(type='MF',table='{0}_{1}_bcal'.
+                            format(msname,calname))
+    error += not cb.correct()
+    error += not cb.close()
+    if error > 0:
+        print('{0} errors occured during calibration'.format(error))
+    vis_uncal,vis_cal,time,freq,flag=extract_vis_from_ms(msname,nbls)
+    mask = (1-flag).astype(float)
+    mask[mask<0.5] = np.nan
+    vis_cal = vis_cal*mask
+    return vis_cal,time,freq
+
+def calculate_sefd(obs_params,ant_params,
+                   fmin=1.35,fmax=1.45,baseline_cal=True,
+                  showplots=False):
+    # Change so figures saved if showplots is False
+    status = 0
+    
+    fname         = obs_params['fname']
+    msname        = obs_params['msname']
+    cal           = obs_params['cal']
+    utc_start     = obs_params['utc_start']
+    pt_dec        = ant_params['pt_dec']
+    antenna_order = ant_params['antenna_order']
+    refant        = ant_params['refant']
+    antpos        = ant_params['antpos']
+    nant = len(antenna_order)
+    nbls = (nant*(nant+1))//2
+    npol = 2
+    
+    # Get the visibilities (for autocorrs)
+    vis,tvis,fvis = get_delay_bp_cal_vis(msname,cal.name,nbls)
+
+    #vis = np.mean(vis,axis=2)
+    
+    
+    # Open the gain files and read in the gains
+    time,gain,flag = read_caltable('{0}_{1}_gacal'.format(
+                       msname,cal.name),nbls,cparam=True)
+    gain = np.abs(gain) # Should already be purely real
+    autocorr_idx = get_autobl_indices(nant,casa=True)
+    #autocorr_idx = [(nbls-1)-aidx for aidx in autocorr_idx]
+    if baseline_cal:
+        time = time[...,autocorr_idx[0]]
+        gain = gain[...,autocorr_idx]     
+        flag = flag[...,autocorr_idx]
+    vis = vis[autocorr_idx,...]
+    idxl = np.searchsorted(fvis,fmin)
+    idxr = np.searchsorted(fvis,fmax)
+    vis = vis[...,idxl:idxr,:]
+    vis = np.abs(vis)
+    
+    # assert np.all(vis.imag/vis.real < 1e-3)
+
+    # Complex gain includes an extra relative delay term
+    # in the phase, but we really only want the amplitude
+    # We will ignore the phase for now
+    
+    ant_gains_on        = np.zeros((nant,npol))
+    eant_gains_on       = np.zeros((nant,npol))
+    ant_gains_off_meas  = np.zeros((nant,npol))
+    eant_gains_off_meas = np.zeros((nant,npol))
+    ant_transit_time    = np.zeros((nant,npol))
+    eant_transit_time   = np.zeros((nant,npol))
+    ant_transit_width   = np.zeros((nant,npol))
+    eant_transit_width  = np.zeros((nant,npol))
+    offbins_before      = np.zeros((nant,npol),dtype=int)
+    offbins_after       = np.zeros((nant,npol),dtype=int)
+    autocorr_gains_off  = np.zeros((nant,npol))
+    
+    if showplots:
+        fig,ax = plt.subplots(1,3,figsize=(8*3,8*1))
+        ccyc=plt.rcParams['axes.prop_cycle'].by_key()['color']
+    
+    # Fit a Gaussian to the gains 
+    for i in range(nant):
+        for j in range(npol):
+            if showplots:
+                ax[i].plot(time-time[0],gain[j,:,i],
+                           '.',color=ccyc[j])
+            initial_params = [np.max(gain[j,:,i]),
+                             (time[-1]-time[0])/2,
+                             0.0035, #all should be similar
+                             0]
+            params, cov = curve_fit(gauss,time-time[0],
+                                    gain[j,:,i],
+                                    p0=initial_params)
+
+            ant_gains_on[i,j] = params[0]+params[3]
+            eant_gains_on[i,j] = np.sqrt(cov[0,0])+np.sqrt(cov[3,3]) 
+            
+            ant_transit_time[i,j] = time[0]+params[1]
+            eant_transit_time[i,j] = np.sqrt(cov[1,1])
+            ant_transit_width[i,j] = params[2]
+            eant_transit_width[i,j] = np.sqrt(cov[2,2])
+            
+            offbins_before[i,j] = np.searchsorted(time,
+                                    ant_transit_time[i,j]-ant_transit_width[i,j]*3)
+            offbins_after[i,j]  = len(time) - np.searchsorted(time,
+                                    ant_transit_time[i,j]+ant_transit_width[i,j]*3)
+            #Need an automatic way to fit toffidx
+            #ant_gains_off_meas[i,j] = np.mean(np.concatenate(
+            #    (gain[j,:offbins_before[i,j],i],gain[j,offbins_after[i,j]:,i]),
+            #    axis=0))
+            #eant_gains_off_meas[i,j] = np.std(np.concatenate(
+            #    (gain[j,:offbins_before[i,j],i],gain[j,offbins_after[i,j]:,i]),
+            #    axis=0),ddof=1)
+            
+            # The array of time is going to be different - can I get that
+            idxl = np.searchsorted(tvis, ant_transit_time[i,j]-ant_transit_width[i,j]*3)
+            idxr = np.searchsorted(tvis, ant_transit_time[i,j]-ant_transit_width[i,j]*3)
+            autocorr_gains_off[i,j] = np.nanmean(np.concatenate((vis[i,:idxl,:,j],vis[i,idxr:,:,j]),
+                                                     axis=0))
+            print(params[3],autocorr_gains_off[i,j])
+            print('{0} {1}: on {2:.2f}'.format(
+                antenna_order[i],'A' if j==0 else 'B',
+                ant_gains_on[i,j]))#,ant_gains_off_meas[i,j]))
+            if showplots:
+                ax[i].plot(time-time[0],gauss(time-time[0],*params),'-',color=ccyc[j],
+                      label='{0} {1}: {2:.4f}/Jy'.format(
+                          antenna_order[i],'A' if j==0 else 'B',
+                    (ant_gains_on[i,j]#-ant_gains_off_meas[i,j]
+                    )/cal.I))
+
+                ax[i].legend()
+                ax[i].set_xlabel("Time (d)")
+                ax[i].set_ylabel("Unnormalized power")
+    # Change to meas
+    ant_gains = (ant_gains_on# - ant_gains_off_meas
+                )/cal.I
+    
+    # How do we get the autocorr_gains_off here??
+    # Do we have to read in the casa ms and calculate this?
+    # Does casa give the autocorr gains at all? 
+    sefds     = autocorr_gains_off/ant_gains
+    return sefds, ant_gains, ant_transit_time
