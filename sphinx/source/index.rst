@@ -17,8 +17,6 @@ Contents
    :maxdepth: 2
 
    GettingStarted
-   ErrorCodes
-   Integration
    modules
 
 Indices

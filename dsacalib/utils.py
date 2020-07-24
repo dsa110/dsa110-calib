@@ -291,8 +291,8 @@ def read_psrfits_file(fl, source, dur=50*u.min, antenna_order=None,
         to ``False``.  Defaults ``None``.
     antpos : str
         The full path of the text file containing the antenna ITRF positions.
-        If ``None`` set to `dsacalib.__path__[0]`_/data_/antpos_ITRF.txt. Defaults
-        ``None`.
+        If ``None`` set to ``dsacalib.__path__[0]/data/antpos_ITRF.txt``.
+        Defaults ``None``.
     utc_start : astropy time object
         The start time of the observation in UTC.  Only used if dsa10 is set to
         ``False``. Defaults ``None``.
@@ -996,32 +996,32 @@ def mask_bad_bins(vis, axis, thresh=6.0, medfilt=False, nmed=129):
 
     Parameters
     ----------
-      vis: array(complex)
+    vis : ndarray
         The visibility array, with dimensions (baselines, time, frequency,
         polarization)
-      axis: int
-        The axis to flag along. `axis`=1 will flag bad time bins. `axis`=2 will
-        flag bad frequency bins.
-      thresh: float
+    axis : int
+        The axis to flag along. `axis` set to 1 will flag bad time bins. `axis`
+        set to 2 will flag bad frequency bins.
+    thresh : float
         The threshold above which to flag data. Anything that deviates from the
         median by more than `thresh` multiplied by the standard deviation is
         flagged.
-      medfilt: Boolean
+    medfilt : Boolean
         Whether to median filter to remove an average trend. If ``True``, will
         median filter. If ``False``, will subtract the median for the
         baseline/pol pair.
-      nmed: int
+    nmed : int
         The size of the median filter to use. Only used in medfilt is ``True``.
         Must be an odd integer.
 
     Returns
     -------
-      good_bins : array(boolean)
+    good_bins : ndarray
           Has a value of 1 where the bin is good, and 0 where the bin should be
-          flagged. If `axis`==2, the dimensions are (baselines, 1, frequency,
-          polarization). If `axis`==1, the dimensions are (baselines, time, 1,
+          flagged. If `axis` is 2, the dimensions are (baselines, 1, frequency,
+          polarization). If `axis` is 1, the dimensions are (baselines, time, 1,
           polarization).
-      fraction_flagged: array(float)
+    fraction_flagged : ndarray
           The fraction of data flagged for each baseline/polarization pair.
           Dimensions (baselines, polarization).
     """
@@ -1100,7 +1100,8 @@ def read_caltable(tablename, nbls, cparam=False):
             For delay calibration, nbls=nant
             For antenna-based gain/bandpass calibration, nbls=nant
             For baseline-based gain/bandpass calibration,
-                nbls=(nant*(nant+1))//2
+            nbls=(nant*(nant+1))//2
+
     cparam : boolean
         Whether the parameter of interest is complex (set to ``True``) or a
         float (set to ``False``).  For delay calibration, set to ``False``. For
