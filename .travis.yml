@@ -11,6 +11,9 @@ branches:
     - development
     - etcd-dana
 
+before_install:
+  - sudo apt-get install gfortran
+
 install:
     - sudo apt-get update
     - wget https://repo.continuum.io/miniconda/Miniconda3-latest-Linux-x86_64.sh -O miniconda.sh
@@ -30,7 +33,6 @@ install:
 before_script:
   - git config --global user.email "dana.simard@gmail.com"
   - git config --global user.name "Travis-CI"
-  - sudo apt-get install gfortran
 
 script:
   - coverage run -m pytest
