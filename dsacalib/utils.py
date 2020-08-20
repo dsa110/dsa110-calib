@@ -1,5 +1,5 @@
 """
-DSA_UTILS.PY
+DSACALIB/UTILS.PY
 
 Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 
@@ -291,8 +291,7 @@ def read_psrfits_file(fl, source, dur=50*u.min, antenna_order=None,
         to ``False``.  Defaults ``None``.
     antpos : str
         The full path of the text file containing the antenna ITRF positions.
-        If ``None`` set to ``dsacalib.__path__[0]/data/antpos_ITRF.txt``.
-        Defaults ``None``.
+        Defaults `dsacalib.constants.PKG_DATA_PATH`/antpos_ITRF.txt.
     utc_start : astropy time object
         The start time of the observation in UTC.  Only used if dsa10 is set to
         ``False``. Defaults ``None``.
@@ -332,8 +331,7 @@ def read_psrfits_file(fl, source, dur=50*u.min, antenna_order=None,
         The index of the meridian passing in the time axis of the visibilities.
     """
     if antpos is None:
-        antpos = '{0}/data/antpos_ITRF.txt'.format(dsacalib.__path__[0])
-
+        antpos = '{0}/antpos_ITRF.txt'.format(ct.PKG_DATA_PATH)
     fo = pf.open(fl, ignore_missing_end=True)
     f = fo[1]
     if dsa10:
@@ -414,9 +412,8 @@ def get_header_info(f, antpos=None, verbose=False, antenna_order=None,
     f : pyfits table handle
         The visibility data from the correlator.
     antpos : str
-        The path to the text file containing the antenna positions. If set to
-        ``None``, will be set to `dsacalib.__path__[0]`/data/antpos_ITRF.txt.
-        Defaults ``None``.
+        The path to the text file containing the antenna positions. Defaults
+        `dsacalib.constants.PKG_DATA_PATH`.
     verbose : boolean
         If ``True``, information on the fits file is printed to stdout.
     antenna_order : list
@@ -449,7 +446,7 @@ def get_header_info(f, antpos=None, verbose=False, antenna_order=None,
         seconds past the utc start time of the correlator run.
     """
     if antpos is None:
-        antpos = '{0}/data/antpos_ITRF.txt'.format(dsacalib.__path__[0])
+        antpos = '{0}/antpos_ITRF.txt'.format(ct.PKG_DATA_PATH)
     if dsa10:
         aname = f.header['ANTENNAS'].split('-')
         aname = [int(an) for an in aname]
@@ -748,7 +745,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     antpos : str
         The full path to the text file containing ITRF antenna positions or the
         csv file containing the station positions in longitude and latitude.
-        Defaults `dsacalib.__path__[0]`/data/antpos_ITRF.txt.
+        Defaults `dsacalib.constants.PKG_DATA_PATH`/antpos_ITRF.txt.
     model : ndarray
         The visibility model to write to the measurement set (and against which
         gain calibration will be done). Must have the same shape as the
@@ -762,7 +759,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         ``True``.
     """
     if antpos is None:
-        antpos = '{0}/data/antpos_ITRF.txt'.format(dsacalib.__path__[0])
+        antpos = '{0}/antpos_ITRF.txt'.format(ct.PKG_DATA_PATH)
     vis = vis.astype(np.complex128)
     if model is not None:
         model = model.astype(np.complex128)
