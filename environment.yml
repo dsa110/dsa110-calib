@@ -19,5 +19,4 @@ dependencies:
   - scipy=1.4.1
   - click=7.0
   - pyyaml=5.1.2
-  - libgfortran-ng=7.3.0
   
