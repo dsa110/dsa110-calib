@@ -12,7 +12,8 @@ branches:
     - etcd-dana
 
 before_install:
-  - sudo apt-get install gfortran-5.4
+  - sudo apt-get install gfortran
+  - sudo apt-get install gcc
 
 install:
     - sudo apt-get update
