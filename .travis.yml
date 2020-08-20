@@ -30,6 +30,7 @@ install:
 before_script:
   - git config --global user.email "dana.simard@gmail.com"
   - git config --global user.name "Travis-CI"
+  - sudo apt-get install gfortran
 
 script:
   - coverage run -m pytest
