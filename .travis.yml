@@ -9,7 +9,7 @@ branches:
   only:
     - master
     - development
-    - casa6
+    - etcd-dana
 
 install:
     - sudo apt-get update
