@@ -291,8 +291,8 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
             if 8 in antenna_order:
                 flags[..., 0] = 1
 
-            shutil.copytree('{0}/data/template_gcal_ant'.format(
-                dsacalib.__path__[0]), '{0}_{1}_gcal_ant'.format(msname,
+            shutil.copytree('{0}/template_gcal_ant'.format(
+                ct.PKG_DATA_PATH), '{0}_{1}_gcal_ant'.format(msname,
                                                                  cal.name))
 
             # Write out a new gains that is a single value.
