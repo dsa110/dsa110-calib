@@ -29,6 +29,6 @@ setup(name='dsa110-calib',
       ],
       dependency_links = [
           "https://github.com/dsa110/dsa110-antpos/tarball/master#egg=dsa110-antpos-0",
-          "https://github.com/dsa110/dsa110-pyutils/tarball/master#egg=dsa110-pyutils-0",
+          "https://github.com/dsa110/dsa110-pyutils/tarball/ds/dev#egg=dsa110-pyutils-0",
           ]
 )
