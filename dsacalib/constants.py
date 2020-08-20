@@ -31,9 +31,6 @@ OVRO_LAT = (37.233386*u.deg).to_value(u.rad)
 # c expressed in units relevant to us
 C_GHZ_M = c.c.to_value(u.GHz*u.m)
 
-# pointing declination of the array in radians
-PT_DEC = '+73d40m0s'
-
 # Amount to integrate data by when fringestopping
 # Currently integrating for 10-s
 # When commissioning DSA-110, want 1-s integrations
