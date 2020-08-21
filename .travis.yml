@@ -11,6 +11,13 @@ branches:
     - development
     - etcd-dana
 
+addons:
+  apt:
+    packages:
+      - git
+      - gfortran
+      - libgfortran3
+
 install:
     - sudo apt-get update
     - pip install -r requirements.txt
