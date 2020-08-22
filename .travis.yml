@@ -17,6 +17,7 @@ addons:
       - git
       - gfortran
       - libgfortran3
+      - gcc
 
 install:
     - sudo apt-get update
