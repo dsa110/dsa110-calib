@@ -6,7 +6,14 @@ setup(name='dsa110-calib',
       author='Dana Simard',
       author_email='dana.simard@astro.caltech.edu',
       packages=['dsacalib'],
-      package_data={'dsacalib':['data/*']},
+      package_data={'dsacalib':['data/*',
+                                'data/template_gcal_ant/*',
+                                'data/template_gcal_ant/ANTENNA/*',
+                                'data/template_gcal_ant/FIELD/*',
+                                'data/template_gcal_ant/HISTORY/*',
+                                'data/template_gcal_ant/OBSERVATION/*',
+                                'data/template_gcal_ant/SPECTRAL_WINDOW/*'
+      ]},
       install_requires=['astropy',
                         'casatools',
                         'casatasks',
@@ -28,7 +35,7 @@ setup(name='dsa110-calib',
                         'dsa110-pyutils'
       ],
       dependency_links = [
-          "https://github.com/dsa110/dsa110-antpos/tarball/master#egg=dsa110-antpos-0",
-          "https://github.com/dsa110/dsa110-pyutils/tarball/ds/dev#egg=dsa110-pyutils-0",
+          "https://github.com/dsa110/dsa110-antpos/tarball/master#egg=dsa110-antpos",
+          "https://github.com/dsa110/dsa110-pyutils/tarball/ds/dev#egg=dsa110-pyutils",
           ]
 )
