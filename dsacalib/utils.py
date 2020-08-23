@@ -20,7 +20,6 @@ import numpy as np
 import h5py
 import casatools as cc
 from dsacalib import constants as ct
-import dsacalib
 from antpos.utils import get_itrf, get_baselines
 from dsautils import dsa_store
 from dsautils import calstatus as cs
@@ -30,7 +29,7 @@ import astropy.io.fits as pf
 import astropy.units as u
 from astropy.utils import iers
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
-iers.conf.auto_max_age configuration = None
+iers.conf.auto_max_age_configuration = None
 from astropy.time import Time # pylint: disable=wrong-import-position
 
 de = dsa_store.DsaStore()
@@ -652,7 +651,7 @@ def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
                 freq, deltafreq, freqresolution, nchannels, integrationtime,
                 obstm, dt, source, stoptime, autocorr):
     """Simulates a measurement set with cross-correlations only.
-    
+
     WARNING: Not simulating autocorrelations correctly regardless of inclusion
     of autocorr parameter.
 
