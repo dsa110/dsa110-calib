@@ -30,6 +30,7 @@ import astropy.io.fits as pf
 import astropy.units as u
 from astropy.utils import iers
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
+iers.conf.auto_max_age configuration = None
 from astropy.time import Time # pylint: disable=wrong-import-position
 
 de = dsa_store.DsaStore()
