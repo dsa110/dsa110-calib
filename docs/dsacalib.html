@@ -1,0 +1,1823 @@
+
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>dsacalib package &#8212; dsacalib 0.1 documentation</title>
+    <link rel="stylesheet" href="static/alabaster.css" type="text/css" />
+    <link rel="stylesheet" href="static/pygments.css" type="text/css" />
+    <script id="documentation_options" data-url_root="./" src="static/documentation_options.js"></script>
+    <script src="static/jquery.js"></script>
+    <script src="static/underscore.js"></script>
+    <script src="static/doctools.js"></script>
+    <script src="static/language_data.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="prev" title="dsacalib" href="modules.html" />
+   
+  <link rel="stylesheet" href="static/custom.css" type="text/css" />
+  
+  
+  <meta name="viewport" content="width=device-width, initial-scale=0.9, maximum-scale=0.9" />
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <div class="section" id="dsacalib-package">
+<h1>dsacalib package<a class="headerlink" href="#dsacalib-package" title="Permalink to this headline">¶</a></h1>
+<div class="section" id="submodules">
+<h2>Submodules<a class="headerlink" href="#submodules" title="Permalink to this headline">¶</a></h2>
+</div>
+<div class="section" id="module-dsacalib.calib">
+<span id="dsacalib-calib-module"></span><h2>dsacalib.calib module<a class="headerlink" href="#module-dsacalib.calib" title="Permalink to this headline">¶</a></h2>
+<p>Functions for calibration of DSA-110 visibilities.</p>
+<p>These functions use the CASA package casatools to calibrate
+visibilities stored as measurement sets.</p>
+<p>Author: Dana Simard, <a class="reference external" href="mailto:dana&#46;simard&#37;&#52;&#48;astro&#46;caltech&#46;edu">dana<span>&#46;</span>simard<span>&#64;</span>astro<span>&#46;</span>caltech<span>&#46;</span>edu</a>, 10/2019</p>
+<dl class="py function">
+<dt id="dsacalib.calib.apply_calibration">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">apply_calibration</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">calname</span></em>, <em class="sig-param"><span class="n">msnamecal</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.apply_calibration" title="Permalink to this definition">¶</a></dt>
+<dd><p>Applies the calibration solution.</p>
+<p>Applies delay, bandpass and complex gain tables to a measurement set.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set to apply calibration solutions to.
+Opens <cite>msname</cite>.ms</p></li>
+<li><p><strong>calname</strong> (<em>str</em>) – The name of the calibrator. Tables that start with
+<cite>msnamecal</cite>_`calname` will be applied to the measurement set.</p></li>
+<li><p><strong>msnamecal</strong> (<em>str</em>) – The name of the measurement set used to model the calibration solutions
+Calibration tables prefixed with <cite>msnamecal</cite>_`calname` will be opened
+and applied. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, <cite>msnamecal</cite> is set to <cite>msname</cite>. Defaults to
+<code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.calc_delays">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">calc_delays</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis</span></em>, <em class="sig-param"><span class="n">df</span></em>, <em class="sig-param"><span class="n">nfavg</span><span class="o">=</span><span class="default_value">5</span></em>, <em class="sig-param"><span class="n">tavg</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.calc_delays" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculates power as a function of delay from the visibilities.</p>
+<p>This uses scipy fftpack to fourier transform the visibilities along the
+frequency axis.  The power as a function of delay can then be used in
+fringe-fitting.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The complex visibilities. 4 dimensions, (baseline, time, frequency,
+polarization).</p></li>
+<li><p><strong>df</strong> (<em>float</em>) – The width of the frequency channels in GHz.</p></li>
+<li><p><strong>nfavg</strong> (<em>int</em>) – The number of frequency channels to average by after the Fourier
+transform.  Defaults to 5.</p></li>
+<li><p><strong>tavg</strong> (<em>boolean</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, the visibilities are averaged in time before the Fourier
+transform. Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>vis_ft</strong> (<em>ndarray</em>) – The complex visibilities, Fourier-transformed along the time axis. 3
+(or 4, if <cite>tavg</cite> is set to False) dimensions, (baseline, delay,
+polarization) (or (baseline, time, delay, polarization) if <cite>tavg</cite> is
+set to False).</p></li>
+<li><p><strong>delay_arr</strong> (<em>ndarray</em>) – Float, the values of the delay pixels in nanoseconds.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.delay_calibration">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">delay_calibration</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">sourcename</span></em>, <em class="sig-param"><span class="n">refant</span></em>, <em class="sig-param"><span class="n">t</span><span class="o">=</span><span class="default_value">'inf'</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.delay_calibration" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calibrates delays using CASA.</p>
+<p>Uses CASA to calibrate delays and write the calibrated visibilities to the
+corrected_data column of the measurement set.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.  The measurement set <cite>msname</cite>.ms will
+be opened.</p></li>
+<li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source. The calibration table will be
+written to <cite>msname</cite>_`sourcename`_kcal.</p></li>
+<li><p><strong>refant</strong> (<em>str</em>) – The reference antenna to use in calibration. If  type <em>str</em>, this is
+the name of the antenna.  If type <em>int</em>, it is the index of the antenna
+in the measurement set.</p></li>
+<li><p><strong>t</strong> (<em>str</em>) – The integration time to use before calibrating, e.g. <code class="docutils literal notranslate"><span class="pre">'inf'</span></code> or
+<code class="docutils literal notranslate"><span class="pre">'60s'</span></code>.  See the CASA documentation for more examples. Defaults to
+<code class="docutils literal notranslate"><span class="pre">'inf'</span></code> (averaging over the entire observation time).</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.fill_antenna_gains">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">fill_antenna_gains</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">gains</span></em>, <em class="sig-param"><span class="n">flags</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.fill_antenna_gains" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fills in the antenna gains for triple-antenna calibration.</p>
+<p>Takes the gains from baseline-based calibration for a trio of antennas and
+calculates the corresponding antenna gains using products of the baseline
+gains. Also propagates flag information for the input baseline gains to
+the antenna gains.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>gains</strong> (<em>narray</em>) – The complex gains matrix, first dimension is baseline. Indices 1, 2 and
+4 contain the gains for the cross-correlations. Information in indices
+0, 3 and 5 is ignored and overwritten.</p></li>
+<li><p><strong>flags</strong> (<em>ndarray</em>) – A boolean array, containing flag information for the <cite>gains</cite> array. 1
+if the data is flagged, 0 otherwise. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, assumes no flag
+information available.  The first dimension is baseline.  Indices 1, 2
+and 4 contain the flags for the cross-correlations.  Information in
+indices 0, 3 and 5 is ignored and overwritten.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>gains</strong> (<em>ndarray</em>) – The complex gains matrix, first dimension is baseline. Indices 1, 2 and
+4 contain the gains for the cross-correlations. Indices 0, 3 and 5
+contain the calculated values for the antennas.</p></li>
+<li><p><strong>flags</strong> (<em>ndarray</em>) – A boolean array, containing flag information for the <cite>gains</cite> array. 1
+if the data is flagged, 0 otherwise. If None, assumes no flag
+information available. The first dimension is baseline.  Indices 1, 2
+and 4 contain the flags for the cross-correlations.  Indices 0,3 and 5
+contain the calculated values for the antennas.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.flag_antenna">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">flag_antenna</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">antenna</span></em>, <em class="sig-param"><span class="n">datacolumn</span><span class="o">=</span><span class="default_value">'data'</span></em>, <em class="sig-param"><span class="n">pol</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.flag_antenna" title="Permalink to this definition">¶</a></dt>
+<dd><p>Flags an antenna in a measurement set using CASA.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.  The MS <cite>msname</cite>.ms will be opened.</p></li>
+<li><p><strong>antenna</strong> (<em>str</em>) – The antenna to flag. If type <em>str</em>, this is the name of the antenna. If
+type <em>int</em>, the index of the antenna in the measurement set.</p></li>
+<li><p><strong>datacolumn</strong> (<em>str</em>) – The column of the measurement set to flag. Options are <code class="docutils literal notranslate"><span class="pre">'data'</span></code>,
+<code class="docutils literal notranslate"><span class="pre">'model'</span></code>, <code class="docutils literal notranslate"><span class="pre">'corrected'</span></code> for the uncalibrated visibilities, the
+visibility model (used by CASA to calculate calibration solutions), the
+calibrated visibilities.  Defaults to <code class="docutils literal notranslate"><span class="pre">'data'</span></code>.</p></li>
+<li><p><strong>pol</strong> (<em>str</em>) – The polarization to flag. Must be <cite>‘A’</cite> (which is mapped to
+polarization ‘XX’ of the CASA measurement set) or <cite>‘B’</cite> (mapped to
+polarization ‘YY’).  Can also be <cite>None</cite>, for which both polarizations
+are flagged.  Defaults to <cite>None</cite>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.flag_badtimes">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">flag_badtimes</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">times</span></em>, <em class="sig-param"><span class="n">bad</span></em>, <em class="sig-param"><span class="n">nant</span></em>, <em class="sig-param"><span class="n">datacolumn</span><span class="o">=</span><span class="default_value">'data'</span></em>, <em class="sig-param"><span class="n">verbose</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.flag_badtimes" title="Permalink to this definition">¶</a></dt>
+<dd><p>Flags bad time bins for each antenna in a measurement set using CASA.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set. The MS <cite>msname</cite>.ms will be opened.</p></li>
+<li><p><strong>times</strong> (<em>ndarray</em>) – A 1-D array of times, type float, seconds since MJD=0. Times should be
+equally spaced and cover the entire time range of the measurement set,
+but can be coarser than the resolution of the measurement set.</p></li>
+<li><p><strong>bad</strong> (<em>ndarray</em>) – A 1-D boolean array with dimensions (len(<cite>times</cite>), <cite>nant</cite>). Should have
+a value of <code class="docutils literal notranslate"><span class="pre">True</span></code> if the corresponding timebins should be flagged.</p></li>
+<li><p><strong>nant</strong> (<em>int</em>) – The number of antennas in the measurement set.</p></li>
+<li><p><strong>datacolumn</strong> (<em>str</em>) – The column of the measurement set to flag. Options are <code class="docutils literal notranslate"><span class="pre">'data'</span></code>,
+<code class="docutils literal notranslate"><span class="pre">'model'</span></code>, <code class="docutils literal notranslate"><span class="pre">'corrected'</span></code> for the uncalibrated visibilities, the
+visibility model (used by CASA to calculate calibration solutions), the
+calibrated visibilities.  Defaults to <code class="docutils literal notranslate"><span class="pre">'data'</span></code>.</p></li>
+<li><p><strong>verbose</strong> (<em>boolean</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, will print information about the antenna/time pairs being
+flagged.  Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.flag_zeros">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">flag_zeros</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">datacolumn</span><span class="o">=</span><span class="default_value">'data'</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.flag_zeros" title="Permalink to this definition">¶</a></dt>
+<dd><p>Flags all zeros in a measurement set.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set. The MS <cite>msname</cite>.ms will be opened.</p></li>
+<li><p><strong>datacolumn</strong> (<em>str</em>) – The column of the measurement set to flag. Options are <code class="docutils literal notranslate"><span class="pre">'data'</span></code>,
+<code class="docutils literal notranslate"><span class="pre">'model'</span></code>, <code class="docutils literal notranslate"><span class="pre">'corrected'</span></code> for the uncalibrated visibilities, the
+visibility model (used by CASA to calculate calibration solutions), the
+calibrated visibilities.  Defaults to <code class="docutils literal notranslate"><span class="pre">'data'</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.gain_calibration">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">gain_calibration</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">sourcename</span></em>, <em class="sig-param"><span class="n">tga</span></em>, <em class="sig-param"><span class="n">tgp</span></em>, <em class="sig-param"><span class="n">refant</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.gain_calibration" title="Permalink to this definition">¶</a></dt>
+<dd><p>Use CASA to calculate bandpass and complex gain solutions.</p>
+<p>Saves solutions to calibration tables and calibrates the measurement set by
+applying delay, bandpass, and complex gain solutions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set. The MS <cite>msname</cite>.ms will be opened.</p></li>
+<li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source. The calibration table will be
+written to <cite>msname</cite>_`sourcename`_kcal.</p></li>
+<li><p><strong>tga</strong> (<em>str</em>) – The integration time to use before calibrating the amplitudes of the
+complex gain, e.g. <code class="docutils literal notranslate"><span class="pre">'inf'</span></code> or <code class="docutils literal notranslate"><span class="pre">'60s'</span></code>. See the CASA documentation
+for more examples.</p></li>
+<li><p><strong>tgp</strong> (<em>str</em>) – The integration time to use before calibrating the amplitudes of the
+complex gain, e.g. <code class="docutils literal notranslate"><span class="pre">'inf'</span></code> or <code class="docutils literal notranslate"><span class="pre">'60s'</span></code>. See the CASA documentation
+for more examples.</p></li>
+<li><p><strong>refant</strong> (<em>str</em>) – The reference antenna to use in calibration. If type <em>str</em>, this is the
+name of the antenna.  If type <em>int</em>, it is the index of the antenna in
+the measurement set.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.gain_calibration_blbased">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">gain_calibration_blbased</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">sourcename</span></em>, <em class="sig-param"><span class="n">tga</span></em>, <em class="sig-param"><span class="n">tgp</span></em>, <em class="sig-param"><span class="n">refant</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.gain_calibration_blbased" title="Permalink to this definition">¶</a></dt>
+<dd><p>Use CASA to calculate bandpass and complex gain solutions.</p>
+<p>Saves solutions to calibration tables and calibrates the measurement set by
+applying delay, bandpass, and complex gain solutions.  Uses baseline-based
+calibration routines within CASA.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.  The MS <cite>msname</cite>.ms will be opened.</p></li>
+<li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source.  The calibration table will be
+written to <cite>msname</cite>_`sourcename`_kcal.</p></li>
+<li><p><strong>tga</strong> (<em>str</em>) – The integration time to use before calibrating the amplitudes of the
+complex gain, e.g. <code class="docutils literal notranslate"><span class="pre">'inf'</span></code> or <code class="docutils literal notranslate"><span class="pre">'60s'</span></code>.  See the CASA
+documentation for more examples.</p></li>
+<li><p><strong>tgp</strong> (<em>str</em>) – The integration time to use before calibrating the amplitudes of the
+complex gain, e.g. <code class="docutils literal notranslate"><span class="pre">'inf'</span></code> or <code class="docutils literal notranslate"><span class="pre">'60s'</span></code>.  See the CASA documentation
+for more examples.</p></li>
+<li><p><strong>refant</strong> (<em>str</em>) – The reference antenna to use in calibration.  If type <em>str</em>, this is
+the name of the antenna.  If type <em>int</em>, it is the index of the antenna
+in the measurement set.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.get_bad_times">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">get_bad_times</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">sourcename</span></em>, <em class="sig-param"><span class="n">nant</span></em>, <em class="sig-param"><span class="n">refant</span></em>, <em class="sig-param"><span class="n">tint</span><span class="o">=</span><span class="default_value">'59s'</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.get_bad_times" title="Permalink to this definition">¶</a></dt>
+<dd><p>Flags bad times in the calibrator data.</p>
+<p>Calculates delays on short time periods and compares them to the delay
+calibration solution. Can only be run after delay calibration.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set. The MS <cite>msname</cite>.ms will be opened.</p></li>
+<li><p><strong>sourcename</strong> (<em>str</em>) – The name of the calibrator source.  The calibration table will be
+written to <cite>msname</cite>_`sourcename`_kcal.</p></li>
+<li><p><strong>nant</strong> (<em>int</em>) – The number of antennas in the array.</p></li>
+<li><p><strong>refant</strong> (<em>str</em>) – The reference antenna to use in calibration. If type <em>str</em>, the name of
+the reference antenna, if type <em>int</em>, the index of the antenna in the
+CASA measurement set. This must be the same as the reference antenna
+used in the delay calibration, or unexpected errors may occur.</p></li>
+<li><p><strong>tint</strong> (<em>str</em>) – The timescale on which to calculate the delay solutions (and evaluate
+the data quality). Must be a CASA-interpreted string, e.g. <code class="docutils literal notranslate"><span class="pre">'inf'</span></code>
+(average all of the data) or <code class="docutils literal notranslate"><span class="pre">'60s'</span></code> (average data to 60-second bins
+before delay calibration).  Defaults to <code class="docutils literal notranslate"><span class="pre">'59s'</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>bad_times</strong> (<em>ndarray</em>) – Booleans, <code class="docutils literal notranslate"><span class="pre">True</span></code> if the data quality is poor and the time-bin should
+be flagged, <code class="docutils literal notranslate"><span class="pre">False</span></code> otherwise.  Dimensions (time, antenna).</p></li>
+<li><p><strong>times</strong> (<em>ndarray</em>) – Floats, the time (mjd) for each delay solution.</p></li>
+<li><p><strong>error</strong> (<em>int</em>) – The number of errors that occured during calibration.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.calib.reset_flags">
+<code class="sig-prename descclassname">dsacalib.calib.</code><code class="sig-name descname">reset_flags</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">datacolumn</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.calib.reset_flags" title="Permalink to this definition">¶</a></dt>
+<dd><p>Resets all flags in a measurement set, so that all data is unflagged.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set. The MS <cite>msname</cite>.ms will be opened.</p></li>
+<li><p><strong>datacolumn</strong> (<em>str</em>) – The column of the measurement set to flag. Options are <code class="docutils literal notranslate"><span class="pre">'data'</span></code>,
+<code class="docutils literal notranslate"><span class="pre">'model'</span></code>, <code class="docutils literal notranslate"><span class="pre">'corrected'</span></code> for the uncalibrated visibilities, the
+visibility model (used by CASA to calculate calibration solutions), the
+calibrated visibilities.  Defaults to <code class="docutils literal notranslate"><span class="pre">'data'</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>error</strong> – The number of errors that occured during calibration.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="section" id="module-dsacalib.calib_quality">
+<span id="dsacalib-calib-quality-module"></span><h2>dsacalib.calib_quality module<a class="headerlink" href="#module-dsacalib.calib_quality" title="Permalink to this headline">¶</a></h2>
+<p>“Routines to automate quality verification of CASA calibration solutions.</p>
+</div>
+<div class="section" id="module-dsacalib.constants">
+<span id="dsacalib-constants-module"></span><h2>dsacalib.constants module<a class="headerlink" href="#module-dsacalib.constants" title="Permalink to this headline">¶</a></h2>
+<p>Constants used in the calibration of DSA-110 visibilities.</p>
+<p>Author: Dana Simard, <a class="reference external" href="mailto:dana&#46;simard&#37;&#52;&#48;astro&#46;caltech&#46;edu">dana<span>&#46;</span>simard<span>&#64;</span>astro<span>&#46;</span>caltech<span>&#46;</span>edu</a>, 10/2019</p>
+</div>
+<div class="section" id="module-dsacalib.fringestopping">
+<span id="dsacalib-fringestopping-module"></span><h2>dsacalib.fringestopping module<a class="headerlink" href="#module-dsacalib.fringestopping" title="Permalink to this headline">¶</a></h2>
+<p>Functions used in fringestopping of DSA-110 visibilities.</p>
+<p>Author: Dana Simard, <a class="reference external" href="mailto:dana&#46;simard&#37;&#52;&#48;astro&#46;caltech&#46;edu">dana<span>&#46;</span>simard<span>&#64;</span>astro<span>&#46;</span>caltech<span>&#46;</span>edu</a> 11/2019</p>
+<p>These functions use casatools to build sky models, divide visibilities by sky
+models, and fringestop visibilities.</p>
+<dl class="py function">
+<dt id="dsacalib.fringestopping.amplitude_sky_model">
+<code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">amplitude_sky_model</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">source</span></em>, <em class="sig-param"><span class="n">ant_ra</span></em>, <em class="sig-param"><span class="n">pt_dec</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">dish_dia</span><span class="o">=</span><span class="default_value">4.65</span></em>, <em class="sig-param"><span class="n">spind</span><span class="o">=</span><span class="default_value">0.7</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.amplitude_sky_model" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes the amplitude sky model due to the primary beam.</p>
+<p>Computes the amplitude sky model for a single source due to the primary
+beam response of an antenna.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source</strong> (<em>src class instance</em>) – The source to model.  The source flux (<cite>src.I</cite>), right ascension
+(<cite>src.ra</cite>) and declination (<cite>src.dec</cite>) must be specified.</p></li>
+<li><p><strong>ant_ra</strong> (<em>ndarray</em>) – The right ascension pointing of the antenna in each time bin of the
+observation, in radians.  If az=0 deg or az=180 deg, this is the lst of
+each time bin in the observation in radians.</p></li>
+<li><p><strong>pt_dec</strong> (<em>float</em>) – The pointing declination of the observation in radians.</p></li>
+<li><p><strong>fobs</strong> (<em>array</em>) – The observing frequency of the center of each channel in GHz.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The calculated amplitude sky model.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.fringestopping.calc_uvw">
+<code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">calc_uvw</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">blen</span></em>, <em class="sig-param"><span class="n">tobs</span></em>, <em class="sig-param"><span class="n">src_epoch</span></em>, <em class="sig-param"><span class="n">src_lon</span></em>, <em class="sig-param"><span class="n">src_lat</span></em>, <em class="sig-param"><span class="n">obs</span><span class="o">=</span><span class="default_value">'OVRO_MMA'</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.calc_uvw" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculates uvw coordinates.</p>
+<p>Uses CASA to calculate the u,v,w coordinates of the baselines <cite>b</cite> towards a
+source or phase center (specified by <cite>src_epoch</cite>, <cite>src_lon</cite> and <cite>src_lat</cite>)
+at the specified time and observatory.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>blen</strong> (<em>ndarray</em>) – The ITRF coordinates of the baselines.  Type float, shape (nbaselines,
+3), units of meters.</p></li>
+<li><p><strong>tobs</strong> (<em>ndarray</em>) – An array of floats, the times in MJD for which to calculate the uvw
+coordinates.</p></li>
+<li><p><strong>src_epoch</strong> (<em>str</em>) – The epoch of the source or phase-center, as a CASA-recognized string
+e.g. <code class="docutils literal notranslate"><span class="pre">'J2000'</span></code> or <code class="docutils literal notranslate"><span class="pre">'HADEC'</span></code></p></li>
+<li><p><strong>src_lon</strong> (<em>astropy quantity</em>) – The longitude of the source or phase-center, in degrees or an
+equivalent unit.</p></li>
+<li><p><strong>src_lat</strong> (<em>astropy quantity</em>) – The latitude of the source or phase-center, in degrees or an equivalent
+unit.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>bu</strong> (<em>ndarray</em>) – The u-value for each time and baseline, in meters. Shape is
+<code class="docutils literal notranslate"><span class="pre">(len(b),</span> <span class="pre">len(tobs))</span></code>.</p></li>
+<li><p><strong>bv</strong> (<em>ndarray</em>) – The v-value for each time and baseline, in meters. Shape is
+<code class="docutils literal notranslate"><span class="pre">(len(b),</span> <span class="pre">len(tobs))</span></code>.</p></li>
+<li><p><strong>bw</strong> (<em>ndarray</em>) – The w-value for each time and baseline, in meters. Shape is
+<code class="docutils literal notranslate"><span class="pre">(len(b),</span> <span class="pre">len(tobs))</span></code>.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.fringestopping.complex_sky_model">
+<code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">complex_sky_model</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">source</span></em>, <em class="sig-param"><span class="n">ant_ra</span></em>, <em class="sig-param"><span class="n">pt_dec</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">tobs</span></em>, <em class="sig-param"><span class="n">blen</span></em>, <em class="sig-param"><span class="n">dish_dia</span><span class="o">=</span><span class="default_value">4.65</span></em>, <em class="sig-param"><span class="n">spind</span><span class="o">=</span><span class="default_value">0.7</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.complex_sky_model" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes the complex sky model, taking into account pointing errors.</p>
+<p>Use when the pointing error is large enough to introduce a phase error in
+the visibilities if not properly accounted for.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source</strong> (<em>src class instance</em>) – The source to model.  The source flux (<cite>src.I</cite>), right ascension
+(<cite>src.ra</cite>) and declination (<cite>src.dec</cite>) must be specified.</p></li>
+<li><p><strong>ant_ra</strong> (<em>ndarray</em>) – The right ascension pointing of the antenna in each time bin of the
+observation, in radians.  If az=0 deg or az=180 deg, this is the lst of
+each time bin in the observation in radians.</p></li>
+<li><p><strong>pt_dec</strong> (<em>float</em>) – The pointing declination of the observation in radians.</p></li>
+<li><p><strong>pt_ra</strong> (<em>float</em>) – The pointing (either physically or through fringestopping) right
+ascension in radians.</p></li>
+<li><p><strong>fobs</strong> (<em>array</em>) – The observing frequency of the center of each channel in GHz.</p></li>
+<li><p><strong>tobs</strong> (<em>array</em>) – The observing time of the center of each timebin in MJD.</p></li>
+<li><p><strong>blen</strong> (<em>ndarray</em>) – The ITRF dimensions of each baseline, in m.</p></li>
+<li><p><strong>dish_dia</strong> (<em>float</em>) – The dish diameter in m.  Defaults 4.65.</p></li>
+<li><p><strong>spind</strong> (<em>float</em>) – The spectral index of the source.  Defaults 0.7.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The calculated complex sky model.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.fringestopping.divide_visibility_sky_model">
+<code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">divide_visibility_sky_model</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis</span></em>, <em class="sig-param"><span class="n">blen</span></em>, <em class="sig-param"><span class="n">sources</span></em>, <em class="sig-param"><span class="n">tobs</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">lst</span></em>, <em class="sig-param"><span class="n">pt_dec</span></em>, <em class="sig-param"><span class="n">return_model</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.divide_visibility_sky_model" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculates and applies the sky model visibilities.</p>
+<p>Calculates the sky model visibilities on the baselines <cite>blen</cite> and at times
+<cite>tobs</cite>.  Divides the input visibilities, <cite>vis</cite>, by the sky model. <cite>vis</cite> is
+modified in-place.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The observed complex visibilities, with dimensions (baselines, time,
+frequency, polarization).  <cite>vis</cite> will be updated in place to the
+fringe-stopped visibilities</p></li>
+<li><p><strong>blen</strong> (<em>ndarray</em>) – The baselines for which to calculate visibilities, shape (nbaselines,
+3), units of meters in ITRF coords.</p></li>
+<li><p><strong>sources</strong> (<em>list</em><em>(</em><em>src class objects</em><em>)</em>) – The list of sources to include in the sky model.</p></li>
+<li><p><strong>tobs</strong> (<em>float</em><em> or </em><em>ndarray</em>) – The times for which to calculate the visibility model in MJD.</p></li>
+<li><p><strong>fobs</strong> (<em>float</em><em> or </em><em>arr</em><em>(</em><em>float</em><em>)</em>) – The frequency for which to calculate the model in GHz.</p></li>
+<li><p><strong>return_model</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, the visibility model will be returned. Defaults to
+<code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>vis_model</strong> – The modelled visibilities, dimensions (baselines, time, frequency,
+polarization). Returned only if <cite>return_model</cite> is set to True.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.fringestopping.fringestop">
+<code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">fringestop</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis</span></em>, <em class="sig-param"><span class="n">blen</span></em>, <em class="sig-param"><span class="n">source</span></em>, <em class="sig-param"><span class="n">tobs</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">pt_dec</span></em>, <em class="sig-param"><span class="n">return_model</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.fringestop" title="Permalink to this definition">¶</a></dt>
+<dd><p>Fringestops on a source.</p>
+<p>Fringestops on a source (or sky position) by dividing the input
+visibilities by a phase only model.  The input visibilities, vis, are
+modified in place.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The visibilities t be fringestopped, with dimensions (baselines, time,
+freq, pol). <cite>vis</cite> is modified in place.</p></li>
+<li><p><strong>blen</strong> (<em>ndarray</em>) – The ITRF coordinates of the baselines in meters, with dimensions (3,
+baselines).</p></li>
+<li><p><strong>source</strong> (<em>src class instance</em>) – The source to fringestop on.</p></li>
+<li><p><strong>tobs</strong> (<em>ndarray</em>) – The observation time (the center of each bin) in MJD.</p></li>
+<li><p><strong>fobs</strong> (<em>ndarray</em>) – The observing frequency (the center of each bin) in GHz.</p></li>
+<li><p><strong>pt_dec</strong> (<em>float</em>) – The pointing declination of the array, in radians.</p></li>
+<li><p><strong>return_model</strong> (<em>boolean</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, the fringestopping model is returned.  Defaults <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>vis_model</strong> – The phase-only visibility model by which the visiblities were divided.
+Returned only if <cite>return_model</cite> is set to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.fringestopping.pb_resp">
+<code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">pb_resp</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">ant_ra</span></em>, <em class="sig-param"><span class="n">ant_dec</span></em>, <em class="sig-param"><span class="n">src_ra</span></em>, <em class="sig-param"><span class="n">src_dec</span></em>, <em class="sig-param"><span class="n">freq</span></em>, <em class="sig-param"><span class="n">dish_dia</span><span class="o">=</span><span class="default_value">4.65</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.pb_resp" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes the primary beam response towards a direction on the sky.</p>
+<p>Assumes tapered illumination of the disk. Returns a value between 0 and 1
+for each value passed in <cite>ant_ra</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ant_ra</strong> (<em>float</em><em> or </em><em>ndarray</em>) – The antenna right ascension pointing in radians.  If an array, must be
+one-dimensional.</p></li>
+<li><p><strong>ant_dec</strong> (<em>float</em>) – The antenna declination pointing in radians.</p></li>
+<li><p><strong>src_ra</strong> (<em>float</em>) – The source right ascension in radians.</p></li>
+<li><p><strong>src_dec</strong> (<em>float</em>) – The source declination in radians.</p></li>
+<li><p><strong>freq</strong> (<em>ndarray</em>) – The frequency of each channel in GHz.</p></li>
+<li><p><strong>dish_dia</strong> (<em>float</em>) – The dish diameter in meters.  Defaults to <code class="docutils literal notranslate"><span class="pre">4.65</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>pb</strong> – The primary beam response, dimensions (<cite>ant_ra</cite>, <cite>freq</cite>) if an array is
+passed to <cite>ant_ra</cite>, or (<cite>freq</cite>) if a float is passed to <cite>ant_ra</cite>.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.fringestopping.pb_resp_uniform_ill">
+<code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">pb_resp_uniform_ill</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">ant_ra</span></em>, <em class="sig-param"><span class="n">ant_dec</span></em>, <em class="sig-param"><span class="n">src_ra</span></em>, <em class="sig-param"><span class="n">src_dec</span></em>, <em class="sig-param"><span class="n">freq</span></em>, <em class="sig-param"><span class="n">dish_dia</span><span class="o">=</span><span class="default_value">4.65</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.pb_resp_uniform_ill" title="Permalink to this definition">¶</a></dt>
+<dd><p>Computes the primary beam response towards a direction on the sky.</p>
+<p>Assumes uniform illumination of the disk. Returns a value between 0 and 1
+for each value passed in <cite>ant_ra</cite>.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ant_ra</strong> (<em>float</em><em> or </em><em>ndarray</em>) – The antenna right ascension pointing in radians.  If an array, must be
+one-dimensional.</p></li>
+<li><p><strong>ant_dec</strong> (<em>float</em>) – The antenna declination pointing in radians.</p></li>
+<li><p><strong>src_ra</strong> (<em>float</em>) – The source right ascension in radians.</p></li>
+<li><p><strong>src_dec</strong> (<em>float</em>) – The source declination in radians.</p></li>
+<li><p><strong>freq</strong> (<em>ndarray</em>) – The frequency of each channel in GHz.</p></li>
+<li><p><strong>dish_dia</strong> (<em>float</em>) – The dish diameter in meters.  Defaults to <code class="docutils literal notranslate"><span class="pre">4.65</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>pb</strong> – The primary beam response, dimensions (<cite>ant_ra</cite>, <cite>freq</cite>).</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.fringestopping.set_dimensions">
+<code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">set_dimensions</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">fobs</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">tobs</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">blen</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.set_dimensions" title="Permalink to this definition">¶</a></dt>
+<dd><p>Sets the dimensions of arrays for fringestopping.</p>
+<p>Ensures that <cite>fobs</cite>, <cite>tobs</cite> and <cite>blen</cite> are ndarrays with the correct
+dimensions for fringestopping using jit.  Any combination of these arrays
+may be passed.  If no arrays are passed, an empty list is returned</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fobs</strong> (<em>float</em><em> or </em><em>ndarray</em>) – The central frequency of each channel in GHz.  Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>tobs</strong> (<em>float</em><em> or </em><em>ndarray</em>) – The central time of each subintegration in MJD.  Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>blen</strong> (<em>ndarray</em>) – The baselines in ITRF coordinates with dimensions (nbaselines, 3) or
+(3) if a single baseline.  Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><p>A list of the arrays passed, altered to contain the correct dimensions
+for fringestopping.  The list may contain:</p>
+<dl class="simple">
+<dt>fobs<span class="classifier">ndarray</span></dt><dd><p>The central frequency of each channel in GHz with dimensions
+(channels, 1). Included if <cite>fobs</cite> is not set to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+<dt>tobs<span class="classifier">ndarray</span></dt><dd><p>The central time of each subintegration in MJD with dimensions
+(time). Included if <cite>tobs</cite> is not set to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+<dt>b<span class="classifier">ndarray</span></dt><dd><p>The baselines in ITRF coordaintes with dimensions (baselines, 3) or
+(1, 3) if a single baseline.  Included if <code class="docutils literal notranslate"><span class="pre">b</span></code> is not set to None.</p>
+</dd>
+</dl>
+</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.fringestopping.visibility_sky_model">
+<code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">visibility_sky_model</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis_shape</span></em>, <em class="sig-param"><span class="n">vis_dtype</span></em>, <em class="sig-param"><span class="n">blen</span></em>, <em class="sig-param"><span class="n">sources</span></em>, <em class="sig-param"><span class="n">tobs</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">lst</span></em>, <em class="sig-param"><span class="n">pt_dec</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.visibility_sky_model" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculates the sky model visibilities.</p>
+<p>Calculates the sky model visibilities on the baselines <cite>b</cite> and at times
+<cite>tobs</cite>.  Ensures that the returned sky model is the same datatype and the
+same shape as specified by <cite>vis_shape</cite> and <cite>vis_dtype</cite> to ensure
+compatability with jit.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vis_shape</strong> (<em>tuple</em>) – The shape of the visibilities: (baselines, time, frequency,
+polarization).</p></li>
+<li><p><strong>vis_dtype</strong> (<em>numpy datatype</em>) – The datatype of the visibilities.</p></li>
+<li><p><strong>blen</strong> (<em>real array</em>) – The baselines to calculate visibilities for, shape (nbaselines, 3),
+units of meters in ITRF coords.</p></li>
+<li><p><strong>sources</strong> (<em>list</em><em>(</em><em>src class instances</em><em>)</em>) – The sources to include in the sky model.</p></li>
+<li><p><strong>tobs</strong> (<em>float</em><em> or </em><em>ndarray</em>) – The times at which to calculate the visibility model, in MJD.</p></li>
+<li><p><strong>fobs</strong> (<em>float</em><em> or </em><em>ndarray</em>) – The frequencies at which to calculate the visibility model, in GHz.</p></li>
+<li><p><strong>lst</strong> (<em>ndarray</em>) – The local sidereal time in radians for each time in tobs.</p></li>
+<li><p><strong>pt_dec</strong> (<em>float</em>) – The antenna pointing declination in radians.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>vis_model</strong> – The modelled complex visibilities, dimensions (directions, baselines,
+time, frequency, polarization).</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.fringestopping.visibility_sky_model_worker">
+<code class="sig-prename descclassname">dsacalib.fringestopping.</code><code class="sig-name descname">visibility_sky_model_worker</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis_model</span></em>, <em class="sig-param"><span class="n">bws</span></em>, <em class="sig-param"><span class="n">famps</span></em>, <em class="sig-param"><span class="n">f0</span></em>, <em class="sig-param"><span class="n">spec_idx</span></em>, <em class="sig-param"><span class="n">fobs</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.fringestopping.visibility_sky_model_worker" title="Permalink to this definition">¶</a></dt>
+<dd><p>Builds complex sky models.</p>
+<p>This is a worker to contain the for loop in the visibility model
+calculation using jit. Modifies the input array <cite>vis_model</cite> in place.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vis_model</strong> (<em>ndarray</em>) – A placeholder for the output.  A complex array initialized to zeros,
+with the same shape as the array of visibilities you wish to model.
+Dimensions (baseline, time, freq, polarization).</p></li>
+<li><p><strong>bws</strong> (<em>ndarray</em>) – The w component of the baselines towards the phase-center or towards
+each source in the sky model.  Dimensions (sources,baselines).</p></li>
+<li><p><strong>famps</strong> (<em>ndarray</em>) – The flux of each source at the reference frequency, in Jy.</p></li>
+<li><p><strong>f0</strong> (<em>float</em>) – The reference frequency, in GHz.</p></li>
+<li><p><strong>spec_idx</strong> (<em>float</em>) – The spectral index for the frequency dependence of the source flux.</p></li>
+<li><p><strong>fobs</strong> (<em>ndarray</em>) – The central frequency of each channel of the visibilities, in GHz.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="section" id="module-dsacalib.plotting">
+<span id="dsacalib-plotting-module"></span><h2>dsacalib.plotting module<a class="headerlink" href="#module-dsacalib.plotting" title="Permalink to this headline">¶</a></h2>
+<p>Visibility and calibration solution plotting routines.</p>
+<p>Plotting routines to visualize the visibilities and
+the calibration solutions for DSA-110.</p>
+<p>Author: Dana Simard, <a class="reference external" href="mailto:dana&#46;simard&#37;&#52;&#48;astro&#46;caltech&#46;edu">dana<span>&#46;</span>simard<span>&#64;</span>astro<span>&#46;</span>caltech<span>&#46;</span>edu</a>, 10/2019</p>
+<dl class="py function">
+<dt id="dsacalib.plotting.plot_antenna_delays">
+<code class="sig-prename descclassname">dsacalib.plotting.</code><code class="sig-name descname">plot_antenna_delays</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">calname</span></em>, <em class="sig-param"><span class="n">antenna_order</span></em>, <em class="sig-param"><span class="n">outname</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">show</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.plotting.plot_antenna_delays" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots antenna delay variations between two delay calibrations.</p>
+<p>Compares the antenna delays used in the calibration solution on the
+timescale of the entire calibrator pass (assumed to be in a CASA table
+ending in ‘kcal’) to those calculated on a shorter (e.g. 60s) timescale
+(assumed to be in a CASA table ending in ‘2kcal’).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The prefix of the measurement set (<cite>msname</cite>.ms), used to identify the
+correct delay calibration tables.</p></li>
+<li><p><strong>calname</strong> (<em>str</em>) – The calibrator source name, used to identify the correct delay
+calibration tables.  The tables <cite>msname</cite>_`calname`_kcal (for a single
+delay calculated using the entire calibrator pass) and
+<cite>msname</cite>_`calname`_2kcal (for delays calculated on a shorter
+timescale) will be opened.</p></li>
+<li><p><strong>antenna_order</strong> (<em>ndarray</em>) – The antenna names in order.</p></li>
+<li><p><strong>outname</strong> (<em>str</em>) – The base to use for the name of the png file the plot is saved to.  The
+plot will be saved to <cite>outname</cite>_antdelays.png.  If <cite>outname</cite> is set to
+<code class="docutils literal notranslate"><span class="pre">None</span></code>, the plot is not saved.  Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>show</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">False</span></code> the plot will be closed after it is generated.
+Defaults <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>times</strong> (<em>ndarray</em>) – The times at which the antenna delays (on short timescales) were
+calculated, in MJD.</p></li>
+<li><p><strong>antenna_delays</strong> (<em>ndarray</em>) – The delays of the antennas on short timescales, in nanoseconds.
+Dimensions (polarization, time, antenna).</p></li>
+<li><p><strong>kcorr</strong> (<em>ndarray</em>) – The delay correction calculated using the entire observation time, in
+nanoseconds.  Dimensions (polarization, 1, antenna).</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.plotting.plot_bandpass">
+<code class="sig-prename descclassname">dsacalib.plotting.</code><code class="sig-name descname">plot_bandpass</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">calname</span></em>, <em class="sig-param"><span class="n">antenna_order</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">blbased</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">plabels</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">outname</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">show</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.plotting.plot_bandpass" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots the bandpass calibration solutions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set. Used to identify the calibration table
+to plot.</p></li>
+<li><p><strong>calname</strong> (<em>str</em>) – The name of the calibrator used in calibration. The calibration table
+<cite>msname</cite>_`calname`_bcal is opened.</p></li>
+<li><p><strong>antenna_order</strong> (<em>array</em>) – The antenna names in the order they appear in the calibration table.</p></li>
+<li><p><strong>fobs</strong> (<em>array</em>) – The frequency of each channel in GHz.</p></li>
+<li><p><strong>blbased</strong> (<em>boolean</em>) – Set to <code class="docutils literal notranslate"><span class="pre">True</span></code> if baseline-based routines were used to calculate the
+bandpass solutions, <code class="docutils literal notranslate"><span class="pre">False</span></code> if antenna-based routines were used.
+Defaults <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+<li><p><strong>plabels</strong> (<em>list</em>) – The labels for the polarizations.  Defaults <code class="docutils literal notranslate"><span class="pre">['A',</span> <span class="pre">'B']</span></code>.</p></li>
+<li><p><strong>outname</strong> (<em>str</em>) – The base to use for the name of the png file the plot is saved to. The
+plot is saved to <cite>outname</cite>_bandpass.png if an <cite>outname</cite> is not set to
+<code class="docutils literal notranslate"><span class="pre">None</span></code>. If <cite>outname</cite> is set to <code class="docutils literal notranslate"><span class="pre">None</span></code>, the plot is not saved.
+Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>show</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">False</span></code>, the plot is closed after it is generated.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.plotting.plot_calibrated_vis">
+<code class="sig-prename descclassname">dsacalib.plotting.</code><code class="sig-name descname">plot_calibrated_vis</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis</span></em>, <em class="sig-param"><span class="n">vis_cal</span></em>, <em class="sig-param"><span class="n">mjd</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">bidx</span></em>, <em class="sig-param"><span class="n">pol</span><span class="o">=</span><span class="default_value">0</span></em>, <em class="sig-param"><span class="n">outname</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">show</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.plotting.plot_calibrated_vis" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots the calibrated and uncalibrated visibilities for comparison.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The complex, uncalibrated visibilities, with dimensions (time, freq).</p></li>
+<li><p><strong>vis_cal</strong> (<em>ndarray</em>) – The complex calibrated visibilities, with dimensions (time, freq).</p></li>
+<li><p><strong>mjd</strong> (<em>ndarray</em>) – The midpoint time of each subintegration in MJD.</p></li>
+<li><p><strong>fobs</strong> (<em>ndarray</em>) – The center frequency of each channel in GHz.</p></li>
+<li><p><strong>pol</strong> (<em>int</em>) – The index along the polarization index to plot.  Defaults to <code class="docutils literal notranslate"><span class="pre">0</span></code>.</p></li>
+<li><p><strong>outname</strong> (<em>str</em>) – The base to use for the name of the png file the plot is saved to.  The
+plot will be saved to <cite>outname`_cal_vis.png if `outname</cite> is provided,
+otherwise no plot will be saved.  Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>show</strong> (<em>boolean</em>) – If <cite>show</cite> is passed <code class="docutils literal notranslate"><span class="pre">False</span></code>, the plot will be closed after being
+generated.  Otherwise, it is left open.  Defaults <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.plotting.plot_delays">
+<code class="sig-prename descclassname">dsacalib.plotting.</code><code class="sig-name descname">plot_delays</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis_ft</span></em>, <em class="sig-param"><span class="n">labels</span></em>, <em class="sig-param"><span class="n">delay_arr</span></em>, <em class="sig-param"><span class="n">bname</span></em>, <em class="sig-param"><span class="n">nx</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">outname</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">show</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.plotting.plot_delays" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots the visibility amplitude against delay.</p>
+<p>For a given visibility Fourier transformed along the frequency axis,
+plots the amplitude against delay and calculates the location of the
+fringe peak in delay.  Returns the peak delay for each visibility,
+which can be used to calculate the antenna delays.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vis_ft</strong> (<em>ndarray</em>) – The complex visibilities, dimensions (visibility type, baselines,
+delay). Note that the visibilities must have been Fourier transformed
+along the frequency axis and scrunched along the time axis before being
+passed to <cite>plot_delays</cite>.</p></li>
+<li><p><strong>labels</strong> (<em>list</em>) – The labels of the types of visibilities passed.  For example,
+<code class="docutils literal notranslate"><span class="pre">['uncalibrated',</span> <span class="pre">'calibrated']</span></code>.</p></li>
+<li><p><strong>delay_arr</strong> (<em>ndarray</em>) – The center of the delay bins in nanoseconds.</p></li>
+<li><p><strong>bname</strong> (<em>list</em>) – The baseline labels.</p></li>
+<li><p><strong>nx</strong> (<em>int</em>) – The number of plots to tile along the horizontal axis. If <cite>nx</cite> is
+given a value of <code class="docutils literal notranslate"><span class="pre">None</span></code>, this is set to the number of baselines or 5,
+if there are more than 5 baselines.</p></li>
+<li><p><strong>outname</strong> (<em>str</em>) – The base to use for the name of the png file the plot is saved to. The
+plot will be saved to <cite>outname`_delays.png if an outname is provided.
+If `outname</cite> is given a value of <code class="docutils literal notranslate"><span class="pre">None</span></code>, no plot will be saved.
+Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>show</strong> (<em>boolean</em>) – If <cite>show</cite> is given a value of <code class="docutils literal notranslate"><span class="pre">False</span></code> the plot will be closed.
+Otherwise, the plot will be left open. Defaults <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>delays</strong> – The peak delay for each visibility, in nanoseconds.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.plotting.plot_dyn_spec">
+<code class="sig-prename descclassname">dsacalib.plotting.</code><code class="sig-name descname">plot_dyn_spec</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">mjd</span></em>, <em class="sig-param"><span class="n">bname</span></em>, <em class="sig-param"><span class="n">normalize</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">outname</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">show</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">nx</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.plotting.plot_dyn_spec" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots the dynamic spectrum of the real part of the visibility.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The visibilities to plot.  Dimensions (baseline, time, freq,
+polarization).</p></li>
+<li><p><strong>fobs</strong> (<em>ndarray</em>) – The center frequency of each channel in GHz.</p></li>
+<li><p><strong>mjd</strong> (<em>ndarray</em>) – The center of each subintegration in MJD.</p></li>
+<li><p><strong>bname</strong> (<em>list</em>) – The name of each baseline in the visibilities.</p></li>
+<li><p><strong>normalize</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, the visibilities are normalized before plotting.
+Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+<li><p><strong>outname</strong> (<em>str</em>) – If provided and not set to <code class="docutils literal notranslate"><span class="pre">None</span></code>, the plot will be saved to the file
+<cite>outname`_dynspec.png Defaults to ``None`</cite>.</p></li>
+<li><p><strong>show</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">False</span></code> the plot will be closed after rendering. If set to
+<code class="docutils literal notranslate"><span class="pre">True</span></code> the plot is left open. Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+<li><p><strong>nx</strong> (<em>int</em>) – The number of subplots in the horizontal direction of the figure. If
+not provided, or set to <code class="docutils literal notranslate"><span class="pre">None</span></code>, <cite>nx</cite> is set to the minimum of 5 and
+the number of baselines in the visibilities.  Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.plotting.plot_gain_calibration">
+<code class="sig-prename descclassname">dsacalib.plotting.</code><code class="sig-name descname">plot_gain_calibration</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">calname</span></em>, <em class="sig-param"><span class="n">antenna_order</span></em>, <em class="sig-param"><span class="n">blbased</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">plabels</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">outname</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">show</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.plotting.plot_gain_calibration" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots the gain calibration solutions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set.  Used to identify the gain calibration
+tables.</p></li>
+<li><p><strong>calname</strong> (<em>str</em>) – The calibrator used in gain calibration.  Used to identify the gain
+calibration tables.  The tables <cite>msname</cite>_`calname`_gacal (assumed to
+contain the gain amplitude soutions) and <cite>msname</cite>_`calname`_gpcal
+(assumed to contain the phase amplitude solutions) will be opened.</p></li>
+<li><p><strong>antenna_order</strong> (<em>ndarray</em><em> or </em><em>list</em>) – The antennas in their order in the measurement set.</p></li>
+<li><p><strong>bname</strong> (<em>list</em>) – The names of the baselines in the calibration solutions.</p></li>
+<li><p><strong>blbased</strong> (<em>boolean</em>) – Set to <code class="docutils literal notranslate"><span class="pre">True</span></code> if the gain solutions are baseline-based, <code class="docutils literal notranslate"><span class="pre">False</span></code> if
+they are antenna-based.  Used to properly parse the gain table.</p></li>
+<li><p><strong>plabels</strong> (<em>list</em>) – The names of the polarizations in the calibration solutions. Defaults
+<code class="docutils literal notranslate"><span class="pre">['A',</span> <span class="pre">'B']</span></code>.</p></li>
+<li><p><strong>outname</strong> (<em>str</em>) – The base to use for the name of the png file the plot is saved to. The
+plot is saved to <cite>outname</cite>_gaincal.png if <cite>outname</cite> is not <code class="docutils literal notranslate"><span class="pre">None</span></code>.
+If <cite>outname</cite> is set to <code class="docutils literal notranslate"><span class="pre">None,</span> <span class="pre">the</span> <span class="pre">plot</span> <span class="pre">is</span> <span class="pre">not</span> <span class="pre">saved.</span>&#160; <span class="pre">Defaults</span>
+<span class="pre">``None</span></code>.</p></li>
+<li><p><strong>show</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">False</span></code> the plot is closed after being generated.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.plotting.plot_image">
+<code class="sig-prename descclassname">dsacalib.plotting.</code><code class="sig-name descname">plot_image</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">imtype</span></em>, <em class="sig-param"><span class="n">sr0</span></em>, <em class="sig-param"><span class="n">verbose</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">outname</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">show</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">npix</span><span class="o">=</span><span class="default_value">256</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.plotting.plot_image" title="Permalink to this definition">¶</a></dt>
+<dd><p>Uses CASA to grid and image visibilities.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The prefix of the measurement set name.  Opens <cite>msname</cite>.ms.</p></li>
+<li><p><strong>imtype</strong> (<em>str</em>) – The visibilities to image.  Can be ‘observed’, ‘corrected’, or ‘model’.</p></li>
+<li><p><strong>sr0</strong> (<em>src instance</em>) – The source to use as the phase center in the image.</p></li>
+<li><p><strong>verbose</strong> (<em>boolean</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, information about the image, including the location and
+SNR of the peak, are printed.  Default <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+<li><p><strong>outname</strong> (<em>str</em>) – The base to use for the name of the png file the plot is saved to. The
+plot will be saved to <cite>outname`_`imtype</cite>.png if an outname is provided.
+If <cite>outname</cite> is <code class="docutils literal notranslate"><span class="pre">None</span></code>, the image is not saved.  Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>show</strong> (<em>boolean</em>) – If <cite>show</cite> is <code class="docutils literal notranslate"><span class="pre">False</span></code>, the plot will be closed after being generated.
+Defaults <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+<li><p><strong>npix</strong> (<em>int</em>) – The number of pixels per side to plot in the image. Defaults 256.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.plotting.plot_uv_track">
+<code class="sig-prename descclassname">dsacalib.plotting.</code><code class="sig-name descname">plot_uv_track</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">bu</span></em>, <em class="sig-param"><span class="n">bv</span></em>, <em class="sig-param"><span class="n">outname</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">show</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.plotting.plot_uv_track" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots the uv track provided.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>bu</strong> (<em>ndarray</em>) – The u-coordinates of the baselines in meters. Dimensions (baselines,
+time).</p></li>
+<li><p><strong>bv</strong> (<em>ndarray</em>) – The v-coordinates of the baselines in meters. Dimensions (baselines,
+time).</p></li>
+<li><p><strong>outname</strong> (<em>str</em>) – If provided and not set to <code class="docutils literal notranslate"><span class="pre">None</span></code>, the plot will be saved to the file
+<cite>outname`_dynspec.png Defaults to ``None`</cite>.</p></li>
+<li><p><strong>show</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">False</span></code> the plot will be closed after rendering.  If set to
+<code class="docutils literal notranslate"><span class="pre">True</span></code> the plot is left open. Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.plotting.plot_vis_freq">
+<code class="sig-prename descclassname">dsacalib.plotting.</code><code class="sig-name descname">plot_vis_freq</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">bname</span></em>, <em class="sig-param"><span class="n">outname</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">show</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">nx</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.plotting.plot_vis_freq" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots visibilities against frequency.</p>
+<p>Creates plots of the amplitude and phase of the visibilities <cite>vis</cite> as a
+function of frequency <cite>fobs</cite>. Two separate figures are opened, one for the
+amplitude and one for the phases.  If <cite>outname</cite> is passed, these are saved
+as <cite>outname</cite>_amp_freq.png and <cite>outname</cite>_phase_freq.png</p>
+<dl class="simple">
+<dt>vis<span class="classifier">ndarray</span></dt><dd><p>The visibilities to plot.  Dimensions (baseline, time, freq,
+polarization).</p>
+</dd>
+<dt>fobs<span class="classifier">ndarray</span></dt><dd><p>The center frequency of each channel in GHz.</p>
+</dd>
+<dt>bname<span class="classifier">list</span></dt><dd><p>The name of each baseline in the visibilities.</p>
+</dd>
+<dt>outname<span class="classifier">str</span></dt><dd><p>If provided and not set to <code class="docutils literal notranslate"><span class="pre">None</span></code>, the plots will be saved to the
+files <cite>outname</cite>_amp_freq.png and <cite>outname</cite>_phase_freq.png Defaults to
+<code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+<dt>show<span class="classifier">boolean</span></dt><dd><p>If set to <code class="docutils literal notranslate"><span class="pre">False</span></code> the plot will be closed after rendering.  If set to
+<code class="docutils literal notranslate"><span class="pre">True</span></code> the plot is left open. Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p>
+</dd>
+<dt>nx<span class="classifier">int</span></dt><dd><p>The number of subplots in the horizontal direction of the figure.  If
+not provided, or set to <code class="docutils literal notranslate"><span class="pre">None</span></code>, <cite>nx</cite> is set to the minimum of 5 and
+the number of baselines in the visibilities.  Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.plotting.plot_vis_time">
+<code class="sig-prename descclassname">dsacalib.plotting.</code><code class="sig-name descname">plot_vis_time</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis</span></em>, <em class="sig-param"><span class="n">mjd</span></em>, <em class="sig-param"><span class="n">bname</span></em>, <em class="sig-param"><span class="n">outname</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">show</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">nx</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.plotting.plot_vis_time" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots visibilities against time of observation.</p>
+<p>Creates plots of the amplitude and phase of the visibilities <cite>vis</cite> as the
+time of observation <cite>mjd</cite>. Two separate figures are opened, one for the
+amplitude and one for the phases.  If <cite>outname</cite> is passed, these are saved
+as <cite>outname</cite>_amp_time.png and <cite>outname</cite>_phase_time.png</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The visibilities to plot.  Dimensions (baseline, time, freq,
+polarization).</p></li>
+<li><p><strong>mjd</strong> (<em>ndarray</em>) – The center of each subintegration in MJD.</p></li>
+<li><p><strong>bname</strong> (<em>list</em>) – The name of each baseline in the visibilities.</p></li>
+<li><p><strong>outname</strong> (<em>str</em>) – If provided and not set to <code class="docutils literal notranslate"><span class="pre">None</span></code>, the plot will be saved to the file
+<cite>outname</cite>_dynspec.png Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>show</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">False</span></code> the plot will be closed after rendering.  If set to
+<code class="docutils literal notranslate"><span class="pre">True</span></code> the plot is left open. Defaults to <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+<li><p><strong>nx</strong> (<em>int</em>) – The number of subplots in the horizontal direction of the figure.  If
+not provided, or set to <code class="docutils literal notranslate"><span class="pre">None</span></code>, <cite>nx</cite> is set to the minimum of 5 and
+the number of baselines in the visibilities.  Defaults to <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.plotting.rebin_vis">
+<code class="sig-prename descclassname">dsacalib.plotting.</code><code class="sig-name descname">rebin_vis</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">arr</span></em>, <em class="sig-param"><span class="n">nb1</span></em>, <em class="sig-param"><span class="n">nb2</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.plotting.rebin_vis" title="Permalink to this definition">¶</a></dt>
+<dd><p>Rebins a 2-D array for plotting.</p>
+<p>Excess bins along either axis are discarded.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>arr</strong> (<em>ndarray</em>) – The two-dimensional array to rebin.</p></li>
+<li><p><strong>nb1</strong> (<em>int</em>) – The number of bins to rebin by along axis 0.</p></li>
+<li><p><strong>nb2</strong> (<em>int</em>) – The number of bins to rebin by along the axis 1.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>arr</strong> – The rebinned array.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>ndarray</p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="section" id="module-dsacalib.routines">
+<span id="dsacalib-routines-module"></span><h2>dsacalib.routines module<a class="headerlink" href="#module-dsacalib.routines" title="Permalink to this headline">¶</a></h2>
+<p>Calibration routine for DSA-110 calibration with CASA.</p>
+<p>Author: Dana Simard, <a class="reference external" href="mailto:dana&#46;simard&#37;&#52;&#48;astro&#46;caltech&#46;edu">dana<span>&#46;</span>simard<span>&#64;</span>astro<span>&#46;</span>caltech<span>&#46;</span>edu</a>, 2020/06</p>
+<dl class="py function">
+<dt id="dsacalib.routines.calculate_sefd">
+<code class="sig-prename descclassname">dsacalib.routines.</code><code class="sig-name descname">calculate_sefd</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">obs_params</span></em>, <em class="sig-param"><span class="n">ant_params</span></em>, <em class="sig-param"><span class="n">fmin</span><span class="o">=</span><span class="default_value">1.35</span></em>, <em class="sig-param"><span class="n">fmax</span><span class="o">=</span><span class="default_value">1.45</span></em>, <em class="sig-param"><span class="n">baseline_cal</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">showplots</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.routines.calculate_sefd" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calculates the SEFD from a measurement set.</p>
+<p>The measurement set must have been calibrated against a model of ones and
+must include autocorrelations.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>obs_params</strong> (<em>dictionary</em>) – <p>Parameters of the observing run.  The following must be defined:</p>
+<blockquote>
+<div><dl class="simple">
+<dt>msname<span class="classifier">str</span></dt><dd><p>The measurement set name.  The measurement set <cite>msname</cite>.ms will
+be opened.</p>
+</dd>
+<dt>cal<span class="classifier">src class instance</span></dt><dd><p>The calibrator source.  Will be used to identify the correct
+calibration tables.  The table <cite>msname</cite>_`cal.name`_gacal will
+be opened.</p>
+</dd>
+</dl>
+</div></blockquote>
+</p></li>
+<li><p><strong>ant_params</strong> (<em>dictionary</em>) – <p>Antenna parameters from the observation.  The following must be
+defined:</p>
+<blockquote>
+<div><dl class="simple">
+<dt>antenna_order<span class="classifier">list</span></dt><dd><p>The names of the antennas in the order they appear in the
+measurement set.</p>
+</dd>
+</dl>
+</div></blockquote>
+</p></li>
+<li><p><strong>fmin</strong> (<em>float</em>) – The lowest frequency to consider when calculating the off-source power
+to use in the SEFD calculation, in GHz. Channels below this frequency
+will be flagged. Defaults 1.35.</p></li>
+<li><p><strong>fmax</strong> (<em>float</em>) – The greatest frequency to consider when calculating the off-source
+power to use in the SEFD calculation, in GHz.  Channels above this
+frequency will be flagged.  Defaults 1.45.</p></li>
+<li><p><strong>baseline_cal</strong> (<em>Boolean</em>) – Set to <code class="docutils literal notranslate"><span class="pre">True</span></code> if the gain tables were derived using baseline-based
+calibration. Set to <code class="docutils literal notranslate"><span class="pre">False</span></code> if the gain tables were derived using
+antenna-based calibration. Defaults <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+<li><p><strong>showplots</strong> (<em>Boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, plots will be generated that show the Gaussian fits
+to the gains. Defaults <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>sefds</strong> (<em>ndarray</em>) – The SEFD of each antenna/polarization pair, in Jy. Dimensions (antenna,
+polarization).</p></li>
+<li><p><strong>ant_gains</strong> (<em>ndarray</em>) – The antenna gains in 1/Jy. Dimensions (antenna, polarization).</p></li>
+<li><p><strong>ant_transit_time</strong> (<em>ndarray</em>) – The meridian transit time of the source as seen by each antenna/
+polarization pair, in MJD. Dimensions (antenna, polarization).</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.routines.calibration_head">
+<code class="sig-prename descclassname">dsacalib.routines.</code><code class="sig-name descname">calibration_head</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">obs_params</span></em>, <em class="sig-param"><span class="n">ant_params</span></em>, <em class="sig-param"><span class="n">write_to_etcd</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">throw_exceptions</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">sefd</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.routines.calibration_head" title="Permalink to this definition">¶</a></dt>
+<dd><p>Controls calibraiton of a dataset and writing the results to etcd.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>obs_params</strong> (<em>list</em>) – The observing parameters.</p></li>
+<li><p><strong>ant_params</strong> (<em>list</em>) – The antenna configuration.</p></li>
+<li><p><strong>write_to_etcd</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, the results of the calibration are pushed to etcd.
+Defaults <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+<li><p><strong>throw_exceptions</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">False</span></code>, exceptions are not raised after being logged to
+syslog. Instead, <cite>calibration_head</cite> and <cite>triple_antenna_cal</cite> return the
+status value. If set to <code class="docutils literal notranslate"><span class="pre">None</span></code>, <cite>throw_exceptions</cite> will be set to
+<code class="docutils literal notranslate"><span class="pre">not</span> <span class="pre">write_to_etcd</span></code>.</p></li>
+<li><p><strong>sefd</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, the solutions will be solved against a model of
+ones in order to allow fitting of the source pass to the antenna gains
+and 60 minutes will be saved to the measurement set.  If set to
+<code class="docutils literal notranslate"><span class="pre">False</span></code>, a sky model will be used in calibration and only 10 minutes
+of data is saved to the measurement set.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The status code. Decode with dsautils.calstatus.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>int</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.routines.dsa10_cal">
+<code class="sig-prename descclassname">dsacalib.routines.</code><code class="sig-name descname">dsa10_cal</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">fname</span></em>, <em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">cal</span></em>, <em class="sig-param"><span class="n">pt_dec</span></em>, <em class="sig-param"><span class="n">antpos</span></em>, <em class="sig-param"><span class="n">refant</span></em>, <em class="sig-param"><span class="n">badants</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.routines.dsa10_cal" title="Permalink to this definition">¶</a></dt>
+<dd></dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.routines.get_delay_bp_cal_vis">
+<code class="sig-prename descclassname">dsacalib.routines.</code><code class="sig-name descname">get_delay_bp_cal_vis</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">calname</span></em>, <em class="sig-param"><span class="n">nbls</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.routines.get_delay_bp_cal_vis" title="Permalink to this definition">¶</a></dt>
+<dd><p>Extracts visibilities from measurement set with partial calibration.</p>
+<p>Applies delay and bandpass calibration before extracting the visibilities.
+TODO: Currently assuming baseline-based calibration but could be
+generalized to antenna-based calibration!</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set containing the visibilities. The
+measurement set <cite>msname</cite>.ms will be opened.</p></li>
+<li><p><strong>calname</strong> (<em>str</em>) – The name of the calibrator source used in calibration of the
+measurement set. The tables <cite>msname</cite>_`calname`_kcal and
+<cite>msname</cite>_`calname`_bcal will be applied to the measurement set.</p></li>
+<li><p><strong>nbls</strong> (<em>int</em>) – The number of baselines in the measurement set.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>vis_cal</strong> (<em>ndarray</em>) – The visibilities with delay and bandpass calibration applied.
+Dimensions (baselines, time, frequency, polarization).</p></li>
+<li><p><strong>time</strong> (<em>array</em>) – The time of each subintegration in the visibilities, in MJD.</p></li>
+<li><p><strong>freq</strong> (<em>array</em>) – The central frequency of each channel in the visibilities, in GHz.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.routines.plot_solutions">
+<code class="sig-prename descclassname">dsacalib.routines.</code><code class="sig-name descname">plot_solutions</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">calname</span></em>, <em class="sig-param"><span class="n">antenna_order</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">blbased</span></em>, <em class="sig-param"><span class="n">figure_dir</span><span class="o">=</span><span class="default_value">'./figures/'</span></em>, <em class="sig-param"><span class="n">show_plots</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.routines.plot_solutions" title="Permalink to this definition">¶</a></dt>
+<dd><p>Plots the antenna delay, gain and bandpass calibration solutions.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The name of the measurement set. Used to identify the calibration
+tables.</p></li>
+<li><p><strong>calname</strong> (<em>str</em>) – The name of the calibrator. Used to identify the calibration tables.</p></li>
+<li><p><strong>antenna_order</strong> (<em>list</em>) – The antenna names, in order.</p></li>
+<li><p><strong>fobs</strong> (<em>array</em>) – The central frequency of each channel, in GHz.</p></li>
+<li><p><strong>blbased</strong> (<em>boolean</em>) – True of the calibration was baseline-based.</p></li>
+<li><p><strong>figure_dir</strong> (<em>str</em>) – The location to save the figures.  Defaults <code class="docutils literal notranslate"><span class="pre">./figures</span></code>.</p></li>
+<li><p><strong>show_plots</strong> (<em>boolean</em>) – If False, plots are closed after being saved. Defaults False.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.routines.triple_antenna_cal">
+<code class="sig-prename descclassname">dsacalib.routines.</code><code class="sig-name descname">triple_antenna_cal</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">obs_params</span></em>, <em class="sig-param"><span class="n">ant_params</span></em>, <em class="sig-param"><span class="n">throw_exceptions</span><span class="o">=</span><span class="default_value">True</span></em>, <em class="sig-param"><span class="n">sefd</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.routines.triple_antenna_cal" title="Permalink to this definition">¶</a></dt>
+<dd><p>Calibrate visibilities from 3 antennas.</p>
+<p>TODO: Only keep one of the gain tables in the end, on a fine timescale.
+The caltable_to_etcd function should be able to handle this, but I haven’t
+tested that yet.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>obs_params</strong> (<em>dict</em>) – </p></li>
+<li><p><strong>ant_params</strong> (<em>dict</em>) – </p></li>
+<li><p><strong>show_plots</strong> (<em>Boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, plots of the delay and gain calibration solutions
+will be shown. Defaults <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+<li><p><strong>throw_exception</strong> (<em>Boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, exceptions will be thrown after being logged in
+syslog. If set to <code class="docutils literal notranslate"><span class="pre">False</span></code>, the exceptions will not be thrown, but
+will still be logged in syslog. Defaults <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+<li><p><strong>sefd</strong> (<em>Boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, enough data (60 minutes) will be included in the
+measurement set to calculate the off-source power (60 minutes) and the
+calibration solutions will be solved against a model of ones. If set to
+<code class="docutils literal notranslate"><span class="pre">False</span></code>, only 10 minutes will be included in the measurement set and
+the calibration solutison will be solved against a sky model.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>status</strong> (<em>int</em>) – The status code of the pipeline. Decode with dsautils.calstatus.</p></li>
+<li><p><strong>caltime</strong> (<em>float</em>) – The meridian crossing time of the source in MJD. If the input file
+could not be opened, <code class="docutils literal notranslate"><span class="pre">None</span></code> will be returned.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="section" id="module-dsacalib.utils">
+<span id="dsacalib-utils-module"></span><h2>dsacalib.utils module<a class="headerlink" href="#module-dsacalib.utils" title="Permalink to this headline">¶</a></h2>
+<p>DSA_UTILS.PY</p>
+<p>Dana Simard, <a class="reference external" href="mailto:dana&#46;simard&#37;&#52;&#48;astro&#46;caltech&#46;edu">dana<span>&#46;</span>simard<span>&#64;</span>astro<span>&#46;</span>caltech<span>&#46;</span>edu</a>, 10/2019</p>
+<p>Modified for python3 from DSA-10 routines written by Vikram Ravi, Harish
+Vendantham.</p>
+<p>Routines to interact w/ fits visibilities recorded by DSA-10, hdf5 visibilities
+recorded by DSA-110, and visibility in CASA measurement sets.</p>
+<dl class="py function">
+<dt id="dsacalib.utils.caltable_to_etcd">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">caltable_to_etcd</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">msname</span></em>, <em class="sig-param"><span class="n">calname</span></em>, <em class="sig-param"><span class="n">antenna_order</span></em>, <em class="sig-param"><span class="n">caltime</span></em>, <em class="sig-param"><span class="n">status</span></em>, <em class="sig-param"><span class="n">baseline_cal</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">pols</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.caltable_to_etcd" title="Permalink to this definition">¶</a></dt>
+<dd><p>Copies calibration values from delay and gain tables to etcd.</p>
+<p>The dictionary passed to etcd should look like: {“ant_num”: &lt;i&gt;,
+“time”: &lt;d&gt;, “pol”, [&lt;s&gt;, &lt;s&gt;], “gainamp”: [&lt;d&gt;, &lt;d&gt;],
+“gainphase”: [&lt;d&gt;, &lt;d&gt;], “delay”: [&lt;i&gt;, &lt;i&gt;], “calsource”: &lt;s&gt;,
+“gaincaltime_offset”: &lt;d&gt;, “delaycaltime_offset”: &lt;d&gt;, ‘sim’: &lt;b&gt;,
+‘status’: &lt;i&gt;}</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>msname</strong> (<em>str</em>) – The measurement set name, will use solutions created from the
+measurement set <cite>msname</cite>.ms.</p></li>
+<li><p><strong>calname</strong> (<em>str</em>) – The calibrator name.  Will open the calibration tables
+<cite>msname</cite>_`calname`_kcal and <cite>msname</cite>_`calname`_gcal_ant.</p></li>
+<li><p><strong>antenna_order</strong> (<em>list</em><em> or </em><em>array</em>) – The antenna numbers, in CASA ordering.</p></li>
+<li><p><strong>baseline_cal</strong> (<em>boolean</em>) – Set to <code class="docutils literal notranslate"><span class="pre">True</span></code> if the gain table was calculated using baseline-based
+calibration, <code class="docutils literal notranslate"><span class="pre">False</span></code> if the gain table was calculated using
+antenna-based calibration. Defaults <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+<li><p><strong>pols</strong> (<em>list</em>) – The names of the polarizations. If <code class="docutils literal notranslate"><span class="pre">None</span></code>, will be set to
+<code class="docutils literal notranslate"><span class="pre">['A',</span> <span class="pre">'B']</span></code>. Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.convert_to_ms">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">convert_to_ms</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">source</span></em>, <em class="sig-param"><span class="n">vis</span></em>, <em class="sig-param"><span class="n">obstm</span></em>, <em class="sig-param"><span class="n">ofile</span></em>, <em class="sig-param"><span class="n">bname</span></em>, <em class="sig-param"><span class="n">antenna_order</span></em>, <em class="sig-param"><span class="n">tsamp</span><span class="o">=</span><span class="default_value">9.663676416000001</span></em>, <em class="sig-param"><span class="n">nint</span><span class="o">=</span><span class="default_value">1</span></em>, <em class="sig-param"><span class="n">antpos</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">model</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">dt</span><span class="o">=</span><span class="default_value">0.00042824074625968933</span></em>, <em class="sig-param"><span class="n">dsa10</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.convert_to_ms" title="Permalink to this definition">¶</a></dt>
+<dd><p>Writes visibilities to an ms.</p>
+<p>Uses the casa simulator tool to write the metadata to an ms, then uses the
+casa ms tool to replace the visibilities with the observed data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>source</strong> (<em>source class instance</em>) – The calibrator (or position) used for fringestopping.</p></li>
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The complex visibilities, dimensions (baseline, time, channel,
+polarization).</p></li>
+<li><p><strong>obstm</strong> (<em>float</em>) – The start time of the observation in MJD.</p></li>
+<li><p><strong>ofile</strong> (<em>str</em>) – The name for the created ms.  Writes to <cite>ofile</cite>.ms.</p></li>
+<li><p><strong>bname</strong> (<em>list</em>) – The list of baselines names in the form [[ant1, ant2],…].</p></li>
+<li><p><strong>antenna_order</strong> (<em>list</em>) – The list of the antennas, in CASA ordering.</p></li>
+<li><p><strong>tsamp</strong> (<em>float</em>) – The sampling time of the input visibilities in seconds.  Defaults to
+the value <cite>tsamp`*`nint</cite> as defined in <cite>dsacalib.constants</cite>.</p></li>
+<li><p><strong>nint</strong> (<em>int</em>) – The number of time bins to integrate by before saving to a measurement
+set.  Defaults 1.</p></li>
+<li><p><strong>antpos</strong> (<em>str</em>) – The full path to the text file containing ITRF antenna positions or the
+csv file containing the station positions in longitude and latitude.
+Defaults <cite>dsacalib.__path__[0]</cite>/data/antpos_ITRF.txt.</p></li>
+<li><p><strong>model</strong> (<em>ndarray</em>) – The visibility model to write to the measurement set (and against which
+gain calibration will be done). Must have the same shape as the
+visibilities <cite>vis</cite>. If given a value of <code class="docutils literal notranslate"><span class="pre">None</span></code>, an array of ones will
+be used as the model.  Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>dt</strong> (<em>float</em>) – The offset between the CASA start time and the data start time in days.
+Defaults to the value of <cite>casa_time_offset</cite> in <cite>dsacalib.constants</cite>.</p></li>
+<li><p><strong>dsa10</strong> (<em>boolean</em>) – Set to <code class="docutils literal notranslate"><span class="pre">True</span></code> if the data are from the dsa10 correlator.  Defaults
+<code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.daz_dha">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">daz_dha</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">dec</span></em>, <em class="sig-param"><span class="n">daz</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">dha</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">lat</span><span class="o">=</span><span class="default_value">0.6498451773659615</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.daz_dha" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts an offset between azimuth and hour angle.</p>
+<p>Assumes that the offset in azimuth or hour angle from an azimuth of pi or
+hour angle of 0 is small.  One of <cite>daz</cite> or <cite>dha</cite> must be provided, the
+other is calculated.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>dec</strong> (<em>float</em>) – The pointing declination of the antenna in radians.</p></li>
+<li><p><strong>daz</strong> (<em>float</em>) – The azimuth offset in radians. <code class="docutils literal notranslate"><span class="pre">None</span></code> may also be passed, in which
+case the azimuth offset is calculated and returned. Defaults to
+<code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>dha</strong> (<em>float</em>) – The hour angle offset in radians. <code class="docutils literal notranslate"><span class="pre">None</span></code> may also be passed, in which
+case the hour angle offset is calculated and returned. Defaults to
+<code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>lat</strong> (<em>float</em>) – The latitude of the antenna in radians.  Defaults to the value of
+<code class="docutils literal notranslate"><span class="pre">ovro_lat</span></code> defined in <code class="docutils literal notranslate"><span class="pre">dsacalib.constants</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p>The converted offset. If the value of <cite>daz</cite> passed was not <code class="docutils literal notranslate"><span class="pre">None</span></code>,
+this is the hour angle offset corresponding to the azimuth offset
+<cite>daz</cite>. If the value of <cite>dha</cite> passed was not <code class="docutils literal notranslate"><span class="pre">None</span></code>, this is the
+azimuth offset corresonding to the hour angle offset <cite>dha</cite>.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>float</p>
+</dd>
+<dt class="field-even">Raises</dt>
+<dd class="field-even"><p><strong>RuntimeError</strong> – If neither <cite>daz or `dha</cite> is defined.</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.exception_logger">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">exception_logger</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">logger</span></em>, <em class="sig-param"><span class="n">task</span></em>, <em class="sig-param"><span class="n">exception</span></em>, <em class="sig-param"><span class="n">throw</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.exception_logger" title="Permalink to this definition">¶</a></dt>
+<dd><p>Logs exception traceback to syslog using the dsa_syslog module.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>logger</strong> (<em>dsa_syslog.DsaSyslogger</em><em>(</em><em>) </em><em>instance</em>) – The logger used for within the reduction pipeline.</p></li>
+<li><p><strong>task</strong> (<em>str</em>) – A short description of where in the pipeline the error occured.</p></li>
+<li><p><strong>e</strong> (<em>Exception</em>) – The exception that occured.</p></li>
+<li><p><strong>throw</strong> (<em>boolean</em>) – If set to True, the exception is raised after the traceback is written
+to syslogs.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.extract_vis_from_ms">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">extract_vis_from_ms</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">ms_name</span></em>, <em class="sig-param"><span class="n">nbls</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.extract_vis_from_ms" title="Permalink to this definition">¶</a></dt>
+<dd><p>Extracts visibilities from a CASA measurement set.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ms_name</strong> (<em>str</em>) – The name of the measurement set.  Will open <cite>ms_name</cite>.ms.</p></li>
+<li><p><strong>nbls</strong> (<em>int</em>) – The number of baselines in the measurement set.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>vis_uncal</strong> (<em>ndarray</em>) – The ‘observed’ visibilities from the measurement set.  Dimensions
+(baseline, time, freq, polarization).</p></li>
+<li><p><strong>vis_cal</strong> (<em>ndarray</em>) – The ‘corrected’ visibilities from the measurement set.  Dimensions
+(baseline, time, freq, polarization).</p></li>
+<li><p><strong>time</strong> (<em>array</em>) – The time of each subintegration, in MJD.</p></li>
+<li><p><strong>freq</strong> (<em>array</em>) – The frequency of each channel, in GHz.</p></li>
+<li><p><strong>flags</strong> (<em>ndarray</em>) – The flags for the visibility data, same dimensions as <cite>vis_uncal</cite> and
+<cite>vis_cal</cite>. <cite>flags</cite> is 1 (or <code class="docutils literal notranslate"><span class="pre">True</span></code>) where the data is flagged
+(invalid) and 0 (or <code class="docutils literal notranslate"><span class="pre">False</span></code>) otherwise.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.extract_vis_from_psrfits">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">extract_vis_from_psrfits</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">f</span></em>, <em class="sig-param"><span class="n">lstmid</span></em>, <em class="sig-param"><span class="n">seg_len</span></em>, <em class="sig-param"><span class="n">antenna_order</span></em>, <em class="sig-param"><span class="n">mjd0</span></em>, <em class="sig-param"><span class="n">mjd1</span></em>, <em class="sig-param"><span class="n">quiet</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.extract_vis_from_psrfits" title="Permalink to this definition">¶</a></dt>
+<dd><p>Extracts visibilities from a fits file.</p>
+<p>Based on clip.extract_segment from DSA-10 routines.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>f</strong> (<em>pyfits table handle</em>) – The fits file containing the visibilities.</p></li>
+<li><p><strong>lstmid</strong> (<em>float</em>) – The LST around which to extract visibilities, in radians.</p></li>
+<li><p><strong>seg_len</strong> (<em>float</em>) – The duration (in LST) of visibilities to extract, in radians.</p></li>
+<li><p><strong>antenna_order</strong> (<em>list</em>) – The order of the antennas in the correlator.</p></li>
+<li><p><strong>mjd0</strong> (<em>float</em>) – The start time of the file in MJD.</p></li>
+<li><p><strong>mjd1</strong> (<em>float</em>) – The stop time of the file in MJD.</p></li>
+<li><p><strong>quiet</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">False</span></code>, information on the file will be printed. Defaults
+<code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The requested visibilities, dimensions (baselines, time, frequency).</p></li>
+<li><p><strong>lst</strong> (<em>array</em>) – The lst of each integration in the visibilities, in radians.</p></li>
+<li><p><strong>mjd</strong> (<em>array</em>) – The midpoint mjd of each integration in the visibilities.</p></li>
+<li><p><strong>idxmid</strong> (<em>int</em>) – The index along the time axis corresponding to the <cite>lstmid</cite>. (i.e the
+index corresponding to the meridian transit of the source.)</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.get_antpos_itrf">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">get_antpos_itrf</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">antpos</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.get_antpos_itrf" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reads and orders antenna positions from a text or csv file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>antpos</strong> (<em>str</em>) – The path to the text or csv file containing the antenna positions.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>anum</strong> (<em>list(int)</em>) – The antenna numbers, in numerical order.</p></li>
+<li><p><strong>xx, yy, zz</strong> (<em>list(float)</em>) – The ITRF coordinates of the antennas, in meters.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.get_autobl_indices">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">get_autobl_indices</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">nant</span></em>, <em class="sig-param"><span class="n">casa</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.get_autobl_indices" title="Permalink to this definition">¶</a></dt>
+<dd><p>Returns a list of the indices containing the autocorrelations.</p>
+<p>Can return the index for either correlator-ordered visibilities (<cite>casa</cite> set
+to <code class="docutils literal notranslate"><span class="pre">False</span></code>) or CASA-ordered visibilities (<cite>casa</cite> set to <code class="docutils literal notranslate"><span class="pre">True</span></code>).</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>nant</strong> (<em>int</em>) – The number of antennas in the visibility set.</p></li>
+<li><p><strong>casa</strong> (<em>boolean</em>) – Whether the visibilities follow CASA ordering standards (<cite>casa</cite> set to
+<code class="docutils literal notranslate"><span class="pre">True</span></code>) or DSA-10/DSA-110 correlator ordering standards (<cite>casa</cite> set
+to <code class="docutils literal notranslate"><span class="pre">False</span></code>). Defaults to <code class="docutils literal notranslate"><span class="pre">False</span></code>, or correlator ordering standards.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>auto_bls</strong> – The list of indices in the visibilities corresponding to
+autocorrelations.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>list</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.get_header_info">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">get_header_info</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">f</span></em>, <em class="sig-param"><span class="n">antpos</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">verbose</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">antenna_order</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">dsa10</span><span class="o">=</span><span class="default_value">True</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.get_header_info" title="Permalink to this definition">¶</a></dt>
+<dd><p>Extracts important header info from a visibility fits file.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>f</strong> (<em>pyfits table handle</em>) – The visibility data from the correlator.</p></li>
+<li><p><strong>antpos</strong> (<em>str</em>) – The path to the text file containing the antenna positions. If set to
+<code class="docutils literal notranslate"><span class="pre">None</span></code>, will be set to <cite>dsacalib.__path__[0]</cite>/data/antpos_ITRF.txt.
+Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>verbose</strong> (<em>boolean</em>) – If <code class="docutils literal notranslate"><span class="pre">True</span></code>, information on the fits file is printed to stdout.</p></li>
+<li><p><strong>antenna_order</strong> (<em>list</em>) – The order of the antennas in the correlator.  Required if <cite>dsa10</cite> is
+set to <code class="docutils literal notranslate"><span class="pre">False</span></code>. Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>dsa10</strong> (<em>Boolean</em>) – Set to <code class="docutils literal notranslate"><span class="pre">True</span></code> if the fits file is in dsa10 correlator format,
+<code class="docutils literal notranslate"><span class="pre">False</span></code> if the file is in 6-input correlator format.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>nchan</strong> (<em>int</em>) – The number of frequency channels.</p></li>
+<li><p><strong>fobs</strong> (<em>array</em>) – The midpoint frequency of each channel in GHz.</p></li>
+<li><p><strong>nt</strong> (<em>int</em>) – The number of time subintegrations.</p></li>
+<li><p><strong>blen</strong> (<em>ndarray</em>) – The ITRF coordinates of the baselines, shape (nbaselines, 3).</p></li>
+<li><p><strong>bname</strong> (<em>list</em>) – The station pairs for each baseline (in the same order as blen), shape
+(nbaselines, 2).</p></li>
+<li><p><strong>tstart</strong> (<em>float</em>) – The start time. If <cite>dsa10</cite> is set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, <cite>tstart</cite> is the start
+time in MJD. If <cite>dsa10</cite> is set to <code class="docutils literal notranslate"><span class="pre">False</span></code>, <cite>tstart</cite> is the start time
+in seconds past the utc start time of the correlator run.</p></li>
+<li><p><strong>tstop</strong> (<em>float</em>) – The stop time. If <cite>dsa10</cite> is set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, <cite>tstart</cite> is the stop time
+in MJD. If <cite>dsa10</cite> is set to <code class="docutils literal notranslate"><span class="pre">False</span></code>, <cite>tstart</cite> is the stop time in
+seconds past the utc start time of the correlator run.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.initialize_hdf5_file">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">initialize_hdf5_file</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">fhdf</span></em>, <em class="sig-param"><span class="n">fobs</span></em>, <em class="sig-param"><span class="n">antenna_order</span></em>, <em class="sig-param"><span class="n">t0</span></em>, <em class="sig-param"><span class="n">nbls</span></em>, <em class="sig-param"><span class="n">nchan</span></em>, <em class="sig-param"><span class="n">npol</span></em>, <em class="sig-param"><span class="n">nant</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.initialize_hdf5_file" title="Permalink to this definition">¶</a></dt>
+<dd><p>Initializes the hdf5 file for the fringestopped visibilities.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fhdf</strong> (<em>hdf5 file handler</em>) – The file to initialize.</p></li>
+<li><p><strong>fobs</strong> (<em>array</em>) – The center frequency of each channel in GHz.</p></li>
+<li><p><strong>antenna_order</strong> (<em>array</em>) – The order of the antennas in the correlator.</p></li>
+<li><p><strong>t0</strong> (<em>float</em>) – The time of the first subintegration in MJ seconds.</p></li>
+<li><p><strong>nbls</strong> (<em>int</em>) – The number of baselines in the visibilities.</p></li>
+<li><p><strong>nchan</strong> (<em>int</em>) – The number of channels in the visibilities.</p></li>
+<li><p><strong>npol</strong> (<em>int</em>) – The number of polarizations in the visibilities.</p></li>
+<li><p><strong>nant</strong> (<em>int</em>) – The number of antennas in the visibilities.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>vis_ds</strong> (<em>hdf5 dataset</em>) – The dataset for the visibilities.</p></li>
+<li><p><strong>t_ds</strong> (<em>hdf5 dataset</em>) – The dataset for the times.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.mask_bad_bins">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">mask_bad_bins</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis</span></em>, <em class="sig-param"><span class="n">axis</span></em>, <em class="sig-param"><span class="n">thresh</span><span class="o">=</span><span class="default_value">6.0</span></em>, <em class="sig-param"><span class="n">medfilt</span><span class="o">=</span><span class="default_value">False</span></em>, <em class="sig-param"><span class="n">nmed</span><span class="o">=</span><span class="default_value">129</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.mask_bad_bins" title="Permalink to this definition">¶</a></dt>
+<dd><p>Masks bad channels or time bins in visibility data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The visibility array, with dimensions (baselines, time, frequency,
+polarization)</p></li>
+<li><p><strong>axis</strong> (<em>int</em>) – The axis to flag along. <cite>axis</cite> set to 1 will flag bad time bins. <cite>axis</cite>
+set to 2 will flag bad frequency bins.</p></li>
+<li><p><strong>thresh</strong> (<em>float</em>) – The threshold above which to flag data. Anything that deviates from the
+median by more than <cite>thresh</cite> multiplied by the standard deviation is
+flagged.</p></li>
+<li><p><strong>medfilt</strong> (<em>Boolean</em>) – Whether to median filter to remove an average trend. If <code class="docutils literal notranslate"><span class="pre">True</span></code>, will
+median filter. If <code class="docutils literal notranslate"><span class="pre">False</span></code>, will subtract the median for the
+baseline/pol pair.</p></li>
+<li><p><strong>nmed</strong> (<em>int</em>) – The size of the median filter to use. Only used in medfilt is <code class="docutils literal notranslate"><span class="pre">True</span></code>.
+Must be an odd integer.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>good_bins</strong> (<em>ndarray</em>) – Has a value of 1 where the bin is good, and 0 where the bin should be
+flagged. If <cite>axis</cite> is 2, the dimensions are (baselines, 1, frequency,
+polarization). If <cite>axis</cite> is 1, the dimensions are (baselines, time, 1,
+polarization).</p></li>
+<li><p><strong>fraction_flagged</strong> (<em>ndarray</em>) – The fraction of data flagged for each baseline/polarization pair.
+Dimensions (baselines, polarization).</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.mask_bad_pixels">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">mask_bad_pixels</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">vis</span></em>, <em class="sig-param"><span class="n">thresh</span><span class="o">=</span><span class="default_value">6.0</span></em>, <em class="sig-param"><span class="n">mask</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.mask_bad_pixels" title="Permalink to this definition">¶</a></dt>
+<dd><p>Masks pixels with values above a SNR threshold within each visibility.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The complex visibilities. Dimensions (baseline, time, frequency,
+polarization).</p></li>
+<li><p><strong>thresh</strong> (<em>float</em>) – The threshold above which to flag data. Data above <cite>thresh</cite>*the
+standard deviation in each channel of each visiblity is flagged.
+Defaults 6.</p></li>
+<li><p><strong>mask</strong> (<em>ndarray</em>) – A mask for data that is already flagged. Should be 0 where data has
+been flagged, 1 otherwise. Same dimensions as <cite>vis</cite>.  Data previously
+flagged is not used in the calculation of the channel standard
+deviations.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>good_pixels</strong> (<em>ndarray</em>) – Whether a given pixel in <cite>vis</cite> is good (1 or <code class="docutils literal notranslate"><span class="pre">True</span></code>) or bad (i.e.
+above the threshold: 0 or <code class="docutils literal notranslate"><span class="pre">False</span></code>). Same dimensions as <code class="docutils literal notranslate"><span class="pre">vis</span></code>.</p></li>
+<li><p><strong>fraction_flagged</strong> (<em>array</em>) – The ratio of the flagged data to the total number of pixels for each
+baseline/polarization.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.read_caltable">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">read_caltable</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">tablename</span></em>, <em class="sig-param"><span class="n">nbls</span></em>, <em class="sig-param"><span class="n">cparam</span><span class="o">=</span><span class="default_value">False</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.read_caltable" title="Permalink to this definition">¶</a></dt>
+<dd><p>Extracts calibration solution from a CASA calibration table.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>tablename</strong> (<em>str</em>) – The full path to the CASA calibration table.</p></li>
+<li><p><strong>nbls</strong> (<em>int</em>) – <p>The number of baselines or antennas in the CASA calibration solutions.
+This can be calculated from the number of antennas, nant:</p>
+<blockquote>
+<div><p>For delay calibration, nbls=nant
+For antenna-based gain/bandpass calibration, nbls=nant
+For baseline-based gain/bandpass calibration,
+nbls=(nant*(nant+1))//2</p>
+</div></blockquote>
+</p></li>
+<li><p><strong>cparam</strong> (<em>boolean</em>) – Whether the parameter of interest is complex (set to <code class="docutils literal notranslate"><span class="pre">True</span></code>) or a
+float (set to <code class="docutils literal notranslate"><span class="pre">False</span></code>).  For delay calibration, set to <code class="docutils literal notranslate"><span class="pre">False</span></code>. For
+gain/bandpass calibration, set to <code class="docutils literal notranslate"><span class="pre">True</span></code>.  Defaults <code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>time</strong> (<em>array</em>) – The times at which each solution is calculated in MJD. Dimensions
+(time, baselines). If no column ‘TIME’ is in the calibration table,
+<code class="docutils literal notranslate"><span class="pre">None</span></code> is returned.</p></li>
+<li><p><strong>vals</strong> (<em>ndarray</em>) – The calibration solutions. Dimensions may be (polarization, time,
+baselines) or (polarization, 1, baselines) (for delay or gain
+calibration) or (polarization,frequency,baselines) (for bandpass cal).</p></li>
+<li><p><strong>flags</strong> (<em>ndarray</em>) – Flags corresponding to the calibration solutions.  Same dimensions as
+<cite>vals</cite>. A value of 1 or <code class="docutils literal notranslate"><span class="pre">True</span></code> if the data is flagged (invalid), 0 or
+<code class="docutils literal notranslate"><span class="pre">False</span></code> otherwise.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.read_hdf5_file">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">read_hdf5_file</code><span class="sig-paren">(</span><em class="sig-param">fl</em>, <em class="sig-param">source=None</em>, <em class="sig-param">dur=&lt;Quantity 50. min&gt;</em>, <em class="sig-param">autocorrs=True</em>, <em class="sig-param">badants=None</em>, <em class="sig-param">quiet=True</em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.read_hdf5_file" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reads visibilities from a hdf5 file written by dsa110-fringestopping.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fl</strong> (<em>str</em>) – Full path to the hdf5 file.</p></li>
+<li><p><strong>source</strong> (<em>source instance</em>) – The source to extract from the hdf5 file. If set to <code class="docutils literal notranslate"><span class="pre">None</span></code>, the
+entire file is extracted. Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>dur</strong> (<em>astropy quantity</em>) – The duration of the observation to extract, in minutes or an equivalent
+unit. Only used if <cite>source</cite> is not set to <code class="docutils literal notranslate"><span class="pre">None</span></code>.  Defaults
+<code class="docutils literal notranslate"><span class="pre">50*u.min</span></code>.</p></li>
+<li><p><strong>autocorrs</strong> (<em>Boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, both the autocorrelations and the crosscorrelations
+are extracted from the hdf5 file.  If set to <code class="docutils literal notranslate"><span class="pre">False</span></code>, only the
+crosscorrelations are extracted.  Defaults <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+<li><p><strong>badants</strong> (<em>list</em>) – Antennas that have been flagged as bad or offline.  If provied,
+baselines that include these antennas will not be extracted.  If set to
+<code class="docutils literal notranslate"><span class="pre">None</span></code>, all baselines in the hdf5 file are extracted.  Defaults
+<code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>quiet</strong> (<em>Boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">False</span></code>, information about the file will be printed to
+stdout. Defaults <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>fobs</strong> (<em>array</em>) – The observing frequency of the center of each channel in the
+visibilities, in GHz.</p></li>
+<li><p><strong>blen</strong> (<em>ndarray</em>) – The ITRF baseline lengths, dimensions (nbaselines, 3).</p></li>
+<li><p><strong>bname</strong> (<em>list(str)</em>) – The name of each baseline.</p></li>
+<li><p><strong>tstart</strong> (<em>float</em>) – The start time of the extracted visibilities in MJD. If the data does
+not contain the specified <code class="docutils literal notranslate"><span class="pre">source</span></code>, a value of <code class="docutils literal notranslate"><span class="pre">None</span></code> is returned.</p></li>
+<li><p><strong>tstop</strong> (<em>float</em>) – The stop time of the extracted visibilities in MJD. If the data does
+not contain the specified <code class="docutils literal notranslate"><span class="pre">source</span></code>, a value of <code class="docutils literal notranslate"><span class="pre">None</span></code> is returned.</p></li>
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The extracted visibilities, dimensions (baselines, time, frequency,
+polarization).</p></li>
+<li><p><strong>mjd</strong> (<em>array</em>) – The time of the center of each timebin in the visibilities, in MJD.</p></li>
+<li><p><strong>transit_idx</strong> (<em>int</em>) – The index along the time axis corresponding to the meridian crossing of
+the source given by <cite>source</cite>.  If <cite>source</cite> is set to <code class="docutils literal notranslate"><span class="pre">None</span></code>, a value
+of <code class="docutils literal notranslate"><span class="pre">None</span></code> is returned.</p></li>
+<li><p><strong>antenna_order</strong> (<em>list</em>) – The antenna names, in the order they are in in the hdf5 visibilities.</p></li>
+<li><p><strong>tsamp</strong> (<em>float</em>) – The sampling time in seconds.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.read_psrfits_file">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">read_psrfits_file</code><span class="sig-paren">(</span><em class="sig-param">fl</em>, <em class="sig-param">source</em>, <em class="sig-param">dur=&lt;Quantity 50. min&gt;</em>, <em class="sig-param">antenna_order=None</em>, <em class="sig-param">antpos=None</em>, <em class="sig-param">utc_start=None</em>, <em class="sig-param">autocorrs=False</em>, <em class="sig-param">badants=None</em>, <em class="sig-param">quiet=True</em>, <em class="sig-param">dsa10=True</em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.read_psrfits_file" title="Permalink to this definition">¶</a></dt>
+<dd><p>Reads in the psrfits header and data.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>fl</strong> (<em>str</em>) – The full path to the psrfits file.</p></li>
+<li><p><strong>source</strong> (<em>src class instance</em>) – The source to retrieve data for.</p></li>
+<li><p><strong>dur</strong> (<em>astropy quantity in minutes</em><em> or </em><em>equivalent</em>) – The amount of time to extract around the source meridian passing.
+Defaults <code class="docutils literal notranslate"><span class="pre">50*u.min</span></code>.</p></li>
+<li><p><strong>antenna_order</strong> (<em>list</em>) – The order of the antennas in the correlator.  Only used if dsa10 is set
+to <code class="docutils literal notranslate"><span class="pre">False</span></code>.  Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>antpos</strong> (<em>str</em>) – The full path of the text file containing the antenna ITRF positions.
+If <code class="docutils literal notranslate"><span class="pre">None</span></code> set to <code class="docutils literal notranslate"><span class="pre">dsacalib.__path__[0]/data/antpos_ITRF.txt</span></code>.
+Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>utc_start</strong> (<em>astropy time object</em>) – The start time of the observation in UTC.  Only used if dsa10 is set to
+<code class="docutils literal notranslate"><span class="pre">False</span></code>. Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>autocorrs</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, both auto and cross correlations will be returned.
+If set to False, only the cross correlations will be returned. Defaults
+<code class="docutils literal notranslate"><span class="pre">False</span></code>.</p></li>
+<li><p><strong>badants</strong> (<em>list</em><em>(</em><em>int</em><em>)</em>) – The antennas for which you do not want data to be returned. If set to
+<code class="docutils literal notranslate"><span class="pre">None</span></code>, all antennas are returned.  Defaults <code class="docutils literal notranslate"><span class="pre">None</span></code>.</p></li>
+<li><p><strong>quiet</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, infromation on the file printed to stdout.</p></li>
+<li><p><strong>dsa10</strong> (<em>boolean</em>) – If set to <code class="docutils literal notranslate"><span class="pre">True</span></code>, assumes fits file is in dsa10 format, otherwise
+assumes fits file is in the 3-antenna correlator output format.
+Defaults <code class="docutils literal notranslate"><span class="pre">True</span></code>.</p></li>
+</ul>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><ul class="simple">
+<li><p><strong>fobs</strong> (<em>array</em>) – The frequency of the channels in GHz.</p></li>
+<li><p><strong>blen</strong> (<em>array</em>) – The itrf coordinates of the baselines, shape (nbaselines, 3).</p></li>
+<li><p><strong>bname</strong> (<em>list</em>) – The station pairs for each baseline (in the same order as blen). Shape
+(nbaselines, 2).</p></li>
+<li><p><strong>tstart</strong> (<em>float</em>) – The start time of the extracted data in MJD.</p></li>
+<li><p><strong>tstop</strong> (<em>float</em>) – The stop time of the extracted data in MJD.</p></li>
+<li><p><strong>vis</strong> (<em>ndarray</em>) – The requested visibilities, dimensions (baseline, time, frequency,
+polarization).</p></li>
+<li><p><strong>mjd</strong> (<em>array</em>) – The midpoint MJD of each subintegration in the visibilities.</p></li>
+<li><p><strong>transit_idx</strong> (<em>int</em>) – The index of the meridian passing in the time axis of the visibilities.</p></li>
+</ul>
+</p>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.simulate_ms">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">simulate_ms</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">ofile</span></em>, <em class="sig-param"><span class="n">tname</span></em>, <em class="sig-param"><span class="n">anum</span></em>, <em class="sig-param"><span class="n">xx</span></em>, <em class="sig-param"><span class="n">yy</span></em>, <em class="sig-param"><span class="n">zz</span></em>, <em class="sig-param"><span class="n">diam</span></em>, <em class="sig-param"><span class="n">mount</span></em>, <em class="sig-param"><span class="n">pos_obs</span></em>, <em class="sig-param"><span class="n">spwname</span></em>, <em class="sig-param"><span class="n">freq</span></em>, <em class="sig-param"><span class="n">deltafreq</span></em>, <em class="sig-param"><span class="n">freqresolution</span></em>, <em class="sig-param"><span class="n">nchannels</span></em>, <em class="sig-param"><span class="n">integrationtime</span></em>, <em class="sig-param"><span class="n">obstm</span></em>, <em class="sig-param"><span class="n">dt</span></em>, <em class="sig-param"><span class="n">source</span></em>, <em class="sig-param"><span class="n">stoptime</span></em>, <em class="sig-param"><span class="n">autocorr</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.simulate_ms" title="Permalink to this definition">¶</a></dt>
+<dd><p>Simulates a measurement set with cross-correlations only.</p>
+<p>WARNING: Not simulating autocorrelations correctly regardless of inclusion
+of autocorr parameter.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><ul class="simple">
+<li><p><strong>ofile</strong> (<em>str</em>) – The full path to which the measurement set will be written.</p></li>
+<li><p><strong>tname</strong> (<em>str</em>) – The telescope name.</p></li>
+<li><p><strong>yy</strong><strong>, </strong><strong>zz</strong> (<em>xx</em><em>,</em>) – The X, Y and Z ITRF coordinates of the antennas, in meters.</p></li>
+<li><p><strong>diam</strong> (<em>float</em>) – The dish diameter in meters.</p></li>
+<li><p><strong>mount</strong> (<em>str</em>) – The mount type, e.g. ‘alt-az’.</p></li>
+<li><p><strong>pos_obs</strong> (<em>CASA measure instance</em>) – The location of the observatory.</p></li>
+<li><p><strong>spwname</strong> (<em>str</em>) – The name of the spectral window, e.g. ‘L-band’.</p></li>
+<li><p><strong>freq</strong> (<em>str</em>) – The central frequency, as a CASA-recognized string, e.g. ‘1.4GHz’.</p></li>
+<li><p><strong>deltafreq</strong> (<em>str</em>) – The size of each channel, as a CASA-recognized string, e.g. ‘1.24kHz’.</p></li>
+<li><p><strong>freqresolution</strong> (<em>str</em>) – The frequency resolution, as a CASA-recognized string, e.g. ‘1.24kHz’.</p></li>
+<li><p><strong>nchannels</strong> (<em>int</em>) – The number of frequency channels.</p></li>
+<li><p><strong>integrationtime</strong> (<em>str</em>) – The subintegration time, i.e. the width of each time bin, e.g. ‘1.4s’.</p></li>
+<li><p><strong>obstm</strong> (<em>float</em>) – The start time of the observation in MJD.</p></li>
+<li><p><strong>dt</strong> (<em>float</em>) – The offset between the CASA start time and the true start time in days.</p></li>
+<li><p><strong>source</strong> (<em>dsacalib.utils.source instance</em>) – The source observed (or the phase-center).</p></li>
+<li><p><strong>stoptime</strong> (<em>float</em>) – The end time of the observation in MJD.</p></li>
+<li><p><strong>autocorr</strong> (<em>boolean</em>) – Set to <code class="docutils literal notranslate"><span class="pre">True</span></code> if the visibilities include autocorrelations, <code class="docutils literal notranslate"><span class="pre">False</span></code>
+if the only include crosscorrelations.</p></li>
+</ul>
+</dd>
+</dl>
+</dd></dl>
+
+<dl class="py class">
+<dt id="dsacalib.utils.src">
+<em class="property">class </em><code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">src</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">name</span></em>, <em class="sig-param"><span class="n">ra</span></em>, <em class="sig-param"><span class="n">dec</span></em>, <em class="sig-param"><span class="n">I</span><span class="o">=</span><span class="default_value">1.0</span></em>, <em class="sig-param"><span class="n">epoch</span><span class="o">=</span><span class="default_value">'J2000'</span></em>, <em class="sig-param"><span class="n">pa</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">maj_axis</span><span class="o">=</span><span class="default_value">None</span></em>, <em class="sig-param"><span class="n">min_axis</span><span class="o">=</span><span class="default_value">None</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.src" title="Permalink to this definition">¶</a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Simple class for holding source parameters.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt id="dsacalib.utils.to_deg">
+<code class="sig-prename descclassname">dsacalib.utils.</code><code class="sig-name descname">to_deg</code><span class="sig-paren">(</span><em class="sig-param"><span class="n">string</span></em><span class="sig-paren">)</span><a class="headerlink" href="#dsacalib.utils.to_deg" title="Permalink to this definition">¶</a></dt>
+<dd><p>Converts a string representation of RA or DEC to degrees.</p>
+<dl class="field-list simple">
+<dt class="field-odd">Parameters</dt>
+<dd class="field-odd"><p><strong>string</strong> (<em>str</em>) – RA or DEC in string format e.g. “12h00m19.21s” or “+73d00m45.7s”.</p>
+</dd>
+<dt class="field-even">Returns</dt>
+<dd class="field-even"><p><strong>deg</strong> – The angle in degrees.</p>
+</dd>
+<dt class="field-odd">Return type</dt>
+<dd class="field-odd"><p>astropy quantity</p>
+</dd>
+</dl>
+</dd></dl>
+
+</div>
+<div class="section" id="module-dsacalib">
+<span id="module-contents"></span><h2>Module contents<a class="headerlink" href="#module-dsacalib" title="Permalink to this headline">¶</a></h2>
+</div>
+</div>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="main navigation">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">dsacalib</a></h1>
+
+
+
+
+
+
+
+
+<h3>Navigation</h3>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="GettingStarted.html">Getting Started</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="modules.html">dsacalib</a><ul class="current">
+<li class="toctree-l2 current"><a class="current reference internal" href="#">dsacalib package</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  <li><a href="modules.html">dsacalib</a><ul>
+      <li>Previous: <a href="modules.html" title="previous chapter">dsacalib</a></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+<div id="searchbox" style="display: none" role="search">
+  <h3 id="searchlabel">Quick search</h3>
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" />
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</div>
+<script>$('#searchbox').show(0);</script>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &copy;2019, Dana Simard.
+      
+      |
+      Powered by <a href="http://sphinx-doc.org/">Sphinx 3.0.4</a>
+      &amp; <a href="https://github.com/bitprophet/alabaster">Alabaster 0.7.12</a>
+      
+      |
+      <a href="sources/dsacalib.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
