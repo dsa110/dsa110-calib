@@ -11,19 +11,12 @@ branches:
     - development
     - etcd-dana
 
-addons:
-  apt:
-    packages:
-      - git
-      - gfortran
-      - libgfortran3
-      - gcc
-
 install:
     - sudo apt-get update
+    - sudo apt-get install -y libgfortran3 gcc wget
     - pip install -r requirements.txt
-    - pip install casatools --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
-    - pip install casatasks --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
+    - pip install casatools==6.0.0.27 --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
+    - pip install casatasks==6.0.0.27 --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
     - pip install casadata --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
     - python setup.py install
 
