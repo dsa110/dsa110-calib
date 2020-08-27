@@ -69,9 +69,11 @@ class src():
         name : str
             Identifier for the source.
         ra : str
-            The right ascension of the source. e.g. "12h00m19.21s".
+            The right ascension of the source. e.g. "12h00m19.21s".Astropy
+            quantity also accepted.
         dec : str
-            The declination of the source. e.g. "+73d00m45.7s".
+            The declination of the source. e.g. "+73d00m45.7s". Astropy
+            quantity also accepted.
         I : float
             The flux of the source in Jy.  Defaults 1.
         epoch : str
