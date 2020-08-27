@@ -5,7 +5,7 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 import astropy.units as u
 import astropy.constants as c
 import numpy as np
-from pkg_resources import Requirement, resource_filename
+import dsacalib
 import os.path
 
 # The number of seconds in a sidereal day
@@ -42,7 +42,7 @@ F0 = 1.4        # Frequency of flux in GHz
 SPEC_IDX = -0.7 # Spectral index
 
 # Backup IERS table
-IERS_TABLE = 'file://{0}/data/finals2000A.all'.format(dsacalib.__path__[0])
+IERS_TABLE = '{0}/data/finals2000A.all'.format(dsacalib.__path__[0])
 # Templates & other package data
 PKG_DATA_PATH = '{0}/data/'.format(dsacalib.__path__[0])
 

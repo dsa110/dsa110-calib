@@ -5,10 +5,10 @@ from astropy.time import Time
 from astropy.utils import iers
 from dsacalib import utils, constants
 import numpy as np
-iers.conf.iers_auto_url_mirror = constants.iers_table
+iers.conf.iers_auto_url_mirror = constants.IERS_TABLE
 
-def test_sideraltime():
-    st = Time.now().sidereal_time('apparent', longitude=constants.ovro_lon*u.rad).radian
+def test_siderealtime():
+    st = Time.now().sidereal_time('apparent', longitude=constants.OVRO_LON*u.rad).radian
     assert st > 0
 
 
@@ -17,7 +17,7 @@ def test_src():
     assert ss.name == 'test'
     assert ss.ra.to_value(u.rad) == 0.
     assert ss.dec.to_value(u.rad) == np.pi/4
-    ss = utils.src('test', 0., 45.)
+    ss = utils.src('test', 0.*u.deg, 45.*u.deg)
     assert ss.name == 'test'
     assert ss.ra.to_value(u.rad) == 0.
     assert ss.dec.to_value(u.rad) == np.pi/4
