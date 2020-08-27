@@ -31,5 +31,5 @@ ptoffsets = {'dracosdec':(np.array([[0.61445538, 0.54614568], [0.23613347, 0.312
 status,caltime = triple_antenna_cal(obs_params,ant_params,show_plots=False,throw_exceptions=True)
 
 if status > 0:
-    print('Errors during calibration: {0}'.format(cs.decode(status))
+    print('Errors during calibration: {0}'.format(cs.decode(status)))
 
