@@ -9,7 +9,6 @@ branches:
   only:
     - master
     - development
-    - etcd-dana
 
 install:
     - sudo apt-get update
