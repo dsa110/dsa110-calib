@@ -1,0 +1,35 @@
+language: python
+
+python:
+   - 3.6
+
+dist: bionic
+
+branches:
+  only:
+    - master
+    - development
+    - etcd-dana
+
+install:
+    - sudo apt-get update
+    - sudo apt-get install -y libgfortran3 gcc wget
+    - pip install -r requirements.txt
+    - pip install casatools==6.0.0.27 --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
+    - pip install casatasks==6.0.0.27 --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
+    - pip install casadata --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
+    - python setup.py install
+
+before_script:
+  - git config --global user.email "dana.simard@gmail.com"
+  - git config --global user.name "Travis-CI"
+
+script:
+  - coverage run -m pytest
+
+after_success:
+  - coverage report
+  - codecov
+
+notifications:
+  email: false
