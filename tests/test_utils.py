@@ -1,12 +1,13 @@
 import pytest
 
 import astropy.units as u
-from dsacalib import utils, constants
+import numpy as np
+from dsacalib import constants
 from astropy.utils import iers
 iers.conf.iers_auto_url_mirror = constants.IERS_TABLE
 iers.conf.auto_max_age = None
 from astropy.time import Time
-import numpy as np
+from dsacalib import utils
 
 def test_siderealtime():
     st = Time.now().sidereal_time('apparent', longitude=constants.OVRO_LON*u.rad).radian
