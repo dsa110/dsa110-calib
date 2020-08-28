@@ -1,11 +1,11 @@
 import pytest
 
 import astropy.units as u
+from dsacalib import utils, constants
 from astropy.utils import iers
-iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
+iers.conf.iers_auto_url_mirror = constants.IERS_TABLE
 iers.conf.auto_max_age = None
 from astropy.time import Time
-from dsacalib import utils, constants
 import numpy as np
 
 def test_siderealtime():
