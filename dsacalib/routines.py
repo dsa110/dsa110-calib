@@ -196,7 +196,7 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
         amp_model = df.amplitude_sky_model(cal, lst, pt_dec, fobs)
         amp_model = np.tile(amp_model[np.newaxis, :, :, np.newaxis],
                             (vis.shape[0], 1, 1, vis.shape[-1]))
-        du.convert_to_ms(cal, vis, mjd[0], '{0}'.format(msname),
+        dmsio.convert_to_ms(cal, vis, mjd[0], '{0}'.format(msname),
                          bname, antenna_order, tsamp, nint=25,
                          antpos=antpos, dsa10=False,
                          model=None if sefd else amp_model)
