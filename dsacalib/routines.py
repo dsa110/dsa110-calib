@@ -8,7 +8,6 @@ import numpy as np
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 import astropy.units as u
-from astropy.time import Time
 import scipy # pylint: disable=unused-import
 import casatools as cc
 import dsautils.calstatus as cs
@@ -20,6 +19,10 @@ import dsacalib.calib as dc
 import dsacalib.plotting as dp
 import dsacalib.fringestopping as df
 import dsacalib.constants as ct
+from astropy.utils immport iers
+iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
+iers.conf.auto_max_age = None
+from astropy.time import Time # pylint: disable=wrong-import-position
 
 logger = dsl.DsaSyslogger()
 logger.subsystem("software")
