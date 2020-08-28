@@ -42,7 +42,7 @@ F0 = 1.4        # Frequency of flux in GHz
 SPEC_IDX = -0.7 # Spectral index
 
 # Backup IERS table
-IERS_TABLE = '{0}/data/finals2000A.all'.format(dsacalib.__path__[0])
+IERS_TABLE = 'file://{0}/data/finals2000A.all'.format(dsacalib.__path__[0])
 # Templates & other package data
-PKG_DATA_PATH = 'file://{0}/data/'.format(dsacalib.__path__[0])
+PKG_DATA_PATH = '{0}/data/'.format(dsacalib.__path__[0])
 
