@@ -19,7 +19,7 @@ import dsacalib.calib as dc
 import dsacalib.plotting as dp
 import dsacalib.fringestopping as df
 import dsacalib.constants as ct
-from astropy.utils immport iers
+from astropy.utils import iers
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
 from astropy.time import Time # pylint: disable=wrong-import-position
