@@ -1,8 +1,8 @@
-name: casa6
+name: casa
 channels:
+  - defaults
   - conda-forge
   - astropy
-  - defaults
 
 dependencies:
   - python=3.6
@@ -19,4 +19,5 @@ dependencies:
   - scipy=1.4.1
   - click=7.0
   - pyyaml=5.1.2
-  
+  - pylint
+  - pip
