@@ -9,16 +9,17 @@ from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 import astropy.units as u
 from astropy.time import Time
+import scipy # pylint: disable=unused-import
+import casatools as cc
+import dsautils.calstatus as cs
+import dsautils.dsa_syslog as dsl
 import dsacalib.utils as du
+import dsacalib.ms_io as dmsio
+import dsacalib.fits_io as dfio
 import dsacalib.calib as dc
 import dsacalib.plotting as dp
 import dsacalib.fringestopping as df
 import dsacalib.constants as ct
-import dsacalib
-import casatools as cc
-import dsautils.calstatus as cs
-
-import dsautils.dsa_syslog as dsl
 
 logger = dsl.DsaSyslogger()
 logger.subsystem("software")
@@ -130,7 +131,7 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
                          cs.INV_GAINCALTIME | cs.INV_DELAYCALTIME)
         caldur = 60*u.min if sefd else 10*u.min
         fobs, blen, bname, _tstart, _tstop, tsamp, vis, mjd, lst, \
-            transit_idx, antenna_order = du.read_psrfits_file(
+            transit_idx, antenna_order = dfio.read_psrfits_file(
                 fname, cal, antenna_order=antenna_order, autocorrs=True,
                 dur=caldur, utc_start=utc_start, dsa10=False, antpos=antpos)
         caltime = mjd[transit_idx]
@@ -259,9 +260,9 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
                       '{0}_{1}_gacal'.format(msname, cal.name)]:
             _check_path(fname)
         calstring = 'calculation of antenna gains'
-        _tamp, gamp, famp = du.read_caltable(
+        _tamp, gamp, famp = dmsio.read_caltable(
             '{0}_{1}_gacal'.format(msname, cal.name), nbls, cparam=True)
-        _tphase, gphase, fphase = du.read_caltable(
+        _tphase, gphase, fphase = dmsio.read_caltable(
             '{0}_{1}_gpcal'.format(msname, cal.name), nbls, cparam=True)
         gains = gamp.T*gphase.T
         flags = famp.T*fphase.T
@@ -346,7 +347,7 @@ def plot_solutions(msname, calname, antenna_order, fobs, blbased,
     _ = dp.plot_bandpass(msname, calname, antenna_order, fobs, blbased=blbased,
                          outname=outname, show=show_plots)
 
-def calibration_head(obs_params, ant_params, write_to_etcd=False, 
+def calibration_head(obs_params, ant_params, write_to_etcd=False,
                      throw_exceptions=None, sefd=False):
     """Controls calibraiton of a dataset and writing the results to etcd.
 
@@ -391,7 +392,7 @@ def calibration_head(obs_params, ant_params, write_to_etcd=False,
     print('Status: {0}'.format(cs.decode(status)))
     print('')
     if write_to_etcd:
-        du.caltable_to_etcd(obs_params['msname'], obs_params['cal'].name,
+        dmsio.caltable_to_etcd(obs_params['msname'], obs_params['cal'].name,
                             ant_params['antenna_order'], caltime, status,
                             baseline_cal=True)
     return status
@@ -441,7 +442,7 @@ def get_delay_bp_cal_vis(msname, calname, nbls):
     error += not cb.close()
     if error > 0:
         print('{0} errors occured during calibration'.format(error))
-    _vis_uncal, vis_cal, time, freq, flag = du.extract_vis_from_ms(msname, nbls)
+    _vis_uncal, vis_cal, time, freq, flag = dmsio.extract_vis_from_ms(msname, nbls)
     mask = (1-flag).astype(float)
     mask[mask < 0.5] = np.nan
     vis_cal = vis_cal*mask
@@ -514,7 +515,7 @@ def calculate_sefd(obs_params, ant_params, fmin=1.35, fmax=1.45,
     vis, tvis, fvis = get_delay_bp_cal_vis(msname, cal.name, nbls)
 
     # Open the gain files and read in the gains
-    time, gain, flag = du.read_caltable(
+    time, gain, flag = dmsio.read_caltable(
         '{0}_{1}_gacal'.format(msname, cal.name), nbls, cparam=True)
     gain = np.abs(gain) # Should already be purely real
     autocorr_idx = du.get_autobl_indices(nant, casa=True)
@@ -615,7 +616,7 @@ def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
             shutil.rmtree(file_path)
 
     fobs, blen, bname, tstart, _tstop, tsamp, vis, mjd, lst, _transit_idx, \
-        antenna_order = du.read_psrfits_file(
+        antenna_order = dfio.read_psrfits_file(
             fname, cal, dur=10*u.min, antpos=antpos, badants=badants)
     nant = len(antenna_order)
 
@@ -624,7 +625,7 @@ def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
     amp_model = np.tile(amp_model[np.newaxis, :, :, np.newaxis],
                         (vis.shape[0], 1, 1, vis.shape[-1]))
 
-    du.convert_to_ms(cal, vis, tstart, msname, bname, antenna_order,
+    dmsio.convert_to_ms(cal, vis, tstart, msname, bname, antenna_order,
                      tsamp=tsamp, nint=25, antpos=antpos,
                      model=amp_model)
     _check_path('{0}.ms'.format(msname))
@@ -636,11 +637,11 @@ def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
     dc.delay_calibration(msname, cal.name, refant=refant)
     _check_path('{0}_{1}_kcal'.format(msname, cal.name))
 
-    bad_times, times, error = dc.get_bad_times(msname, cal.name, nant,
+    bad_times, times, _error = dc.get_bad_times(msname, cal.name, nant,
                                                refant=refant)
     dc.flag_badtimes(msname, times, bad_times, nant)
 
     dc.gain_calibration(msname, cal.name, refant=refant, tga="10s", tgp="inf")
     for tbl in ['gacal', 'gpcal', 'bcal']:
         _check_path('{0}_{1}_{2}'.format(msname, cal.name, tbl))
-   
+

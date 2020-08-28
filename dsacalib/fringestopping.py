@@ -360,7 +360,7 @@ def divide_visibility_sky_model(vis, blen, sources, tobs, fobs, lst, pt_dec,
     return
 
 def complex_sky_model(source, ant_ra, pt_dec, fobs, tobs, blen, dish_dia=4.65,
-                      spind=0.7):
+                      spind=0.7, pointing_ra=None):
     """Computes the complex sky model, taking into account pointing errors.
 
     Use when the pointing error is large enough to introduce a phase error in
@@ -396,8 +396,11 @@ def complex_sky_model(source, ant_ra, pt_dec, fobs, tobs, blen, dish_dia=4.65,
     ndarray
         The calculated complex sky model.
     """
+    raise NotImplementedError
+    if pointing_ra is None:
+        pointing_ra = ant_ra
     model_amplitude = amplitude_sky_model(source, ant_ra, pt_dec, fobs,
-                                          dish_dia=4.65, spind=0.7)
+                                          dish_dia=dish_dia, spind=spind)
     fobs, tobs, blen = set_dimensions(fobs, tobs, blen)
     _, _, bw = calc_uvw(blen, tobs, source.epoch, source.ra, source.dec)
     _, _, bwp = calc_uvw(blen, tobs, 'RADEC', pointing_ra*u.rad, pt_dec*u.rad)
