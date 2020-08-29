@@ -9,10 +9,11 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 import matplotlib.pyplot as plt
 import numpy as np
 import astropy.units as u
-import dsacalib.constants as ct
-# Always import scipy before importing casatools
+import scipy # pylint: disable=unused-import
 import casatools as cc
-from dsacalib.utils import get_autobl_indices, read_caltable
+from dsacalib.utils import get_autobl_indices
+from dsacalib.ms_io import read_caltable
+import dsacalib.constants as ct
 
 def plot_dyn_spec(vis, fobs, mjd, bname, normalize=False, outname=None,
                   show=True, nx=None):

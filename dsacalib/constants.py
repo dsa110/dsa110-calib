@@ -6,6 +6,7 @@ import astropy.units as u
 import astropy.constants as c
 import numpy as np
 import dsacalib
+import os.path
 
 # The number of seconds in a sidereal day
 SECONDS_PER_SIDEREAL_DAY = 3600*23.9344699
@@ -44,3 +45,4 @@ SPEC_IDX = -0.7 # Spectral index
 IERS_TABLE = 'file://{0}/data/finals2000A.all'.format(dsacalib.__path__[0])
 # Templates & other package data
 PKG_DATA_PATH = '{0}/data/'.format(dsacalib.__path__[0])
+

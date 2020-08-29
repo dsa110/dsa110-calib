@@ -10,7 +10,7 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 from scipy.fftpack import fft, fftshift, fftfreq
 import casatools as cc
 import numpy as np
-from dsacalib.utils import read_caltable
+from dsacalib.ms_io import read_caltable
 
 def delay_calibration(msname, sourcename, refant, t='inf'):
     r"""Calibrates delays using CASA.
