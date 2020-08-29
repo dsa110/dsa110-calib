@@ -1,3 +1,7 @@
+
+[![Build Status](https://travis-ci.org/dsa110/dsa110-calib.svg?branch=master)](https://travis-ci.org/dsa110/dsa110-calib) 
+[![codecov](https://codecov.io/gh/dsa110/dsa110-calib/branch/master/graph/badge.svg)](https://codecov.io/gh/dsa110/dsa110-calib)
+
 # dsa110-calib
 Calibration routines for DSA-110. Docs at [dsa110.github.io/dsa110-calib](https://dsa110.github.io/dsa110-calib)
 
