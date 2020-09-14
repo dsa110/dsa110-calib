@@ -203,7 +203,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     # Check that the visibilities are ordered correctly by checking the order
     # of baselines in bname
     idx_order = []
-    autocorr = [anum[0], anum[0]] in list(bname)
+    autocorr = bname[0][0] == bname[0][1]
 
     for i in range(nant):
         for j in range(i if autocorr else i+1, nant):
