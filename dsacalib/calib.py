@@ -12,7 +12,8 @@ import casatools as cc
 import numpy as np
 from dsacalib.ms_io import read_caltable
 
-def delay_calibration(msname, sourcename, refant, t='inf', combine_spw=False, nspw=1):
+def delay_calibration(msname, sourcename, refant, t='inf', combine_spw=False,
+                      nspw=1):
     r"""Calibrates delays using CASA.
 
     Uses CASA to calibrate delays and write the calibrated visibilities to the
@@ -365,6 +366,8 @@ def flag_zeros(msname, datacolumn='data'):
 def flag_badtimes(msname, times, bad, nant, datacolumn='data', verbose=False):
     """Flags bad time bins for each antenna in a measurement set using CASA.
 
+    Could use some work to select antennas to flag in a smarter way.
+
     Parameters
     ----------
     msname : str
@@ -377,7 +380,8 @@ def flag_badtimes(msname, times, bad, nant, datacolumn='data', verbose=False):
         A 1-D boolean array with dimensions (len(`times`), `nant`). Should have
         a value of ``True`` if the corresponding timebins should be flagged.
     nant : int
-        The number of antennas in the measurement set.
+        The number of antennas in the measurement set (includes ones not in the
+        visibilities).
     datacolumn : str
         The column of the measurement set to flag. Options are ``'data'``,
         ``'model'``, ``'corrected'`` for the uncalibrated visibilities, the
@@ -406,7 +410,7 @@ def flag_badtimes(msname, times, bad, nant, datacolumn='data', verbose=False):
         rec['polarization_type'] = 'XX'
         tstr = ''
         for j, timesj in enumerate(times):
-            if bad[0, j, i]:
+            if bad[j]:
                 if len(tstr) > 0:
                     tstr += '; '
                 tstr += '{0}~{1}'.format(timesj-tdiff/2, timesj+tdiff/2)
@@ -419,7 +423,7 @@ def flag_badtimes(msname, times, bad, nant, datacolumn='data', verbose=False):
         rec['polarization_type'] = 'YY'
         tstr = ''
         for j, timesj in enumerate(times):
-            if bad[1, j, i]:
+            if bad[j]:
                 if len(tstr) > 0:
                     tstr += '; '
                 tstr += '{0}~{1}'.format(timesj-tdiff/2, timesj+tdiff/2)
@@ -481,8 +485,8 @@ def calc_delays(vis, df, nfavg=5, tavg=True):
 
     return vis_ft, delay_arr
 
-# Change refant to no longer default
-def get_bad_times(msname, sourcename, refant, tint='59s', combine_spw=False, nspw=1):
+def get_bad_times(msname, sourcename, refant, tint='59s', combine_spw=False,
+                  nspw=1):
     r"""Flags bad times in the calibrator data.
 
     Calculates delays on short time periods and compares them to the delay
@@ -520,10 +524,8 @@ def get_bad_times(msname, sourcename, refant, tint='59s', combine_spw=False, nsp
     """
     if combine_spw:
         combine = 'spw'
-        spwmap = [0]*nspw
     else:
         combine = ''
-        spwmap = [-1]
     error = 0
     # Solve the calibrator data on minute timescales
     cb = cc.calibrater()
@@ -551,12 +553,13 @@ def get_bad_times(msname, sourcename, refant, tint='59s', combine_spw=False, nsp
     bad_times = (bad_pixels.reshape(bad_pixels.shape[0],
                                             bad_pixels.shape[1], -1)
                          .sum(axis=-1).sum(axis=0) > threshold)
-    # bad_times[:, np.sum(np.sum(bad_times, axis=0), axis=1) > threshold, :] = \
-    #    np.ones((nant, 1, npol))
+    # bad_times[:, np.sum(np.sum(bad_times, axis=0), axis=1) > threshold, :] \
+    #    = np.ones((nant, 1, npol))
 
     return bad_times, times, error
 
-def apply_calibration(msname, calname, msnamecal=None, combine_spw=False, nspw=1):
+def apply_calibration(msname, calname, msnamecal=None, combine_spw=False,
+                      nspw=1):
     r"""Applies the calibration solution.
 
     Applies delay, bandpass and complex gain tables to a measurement set.
@@ -581,12 +584,10 @@ def apply_calibration(msname, calname, msnamecal=None, combine_spw=False, nspw=1
         The number of errors that occured during calibration.
     """
     if combine_spw:
-        combine = 'spw'
         spwmap = [0]*nspw
     else:
-        combine = ''
         spwmap = [-1]
-    
+
     if msnamecal is None:
         msnamecal = msname
     error = 0
@@ -640,6 +641,14 @@ def fill_antenna_gains(gains, flags=None):
         contain the calculated values for the antennas.
     """
     assert gains.shape[0] == 6, 'Will only calculate antenna gains for trio'
+#   use ant1 and ant2 to do this?
+#     for i in range(6):
+#         if ant1[i] != ant2[i]:
+#             idxp = np.where((ant1 == ant1[i]) & (ant2 == ant1[i]))[0][0]
+#             idxn = np.where((ant1 == ant2[i]) & (ant2 == ant2[i]))[0][0]
+#             idxd = np.where((ant1 == ant2) & (ant1 != ant1[i]) &
+#                             (ant1 != ant2[i]))[0][0]
+#             gains[i] = np.conjugate(gains[idxn])*gains[idxp]/gains[idxd]
     gains[0] = np.conjugate(gains[1])*gains[2]/gains[4]
     gains[3] = gains[1]*gains[4]/gains[2]
     gains[5] = gains[2]*np.conjugate(gains[4])/gains[1]

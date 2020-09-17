@@ -11,10 +11,9 @@ import numpy as np
 import astropy.units as u
 import scipy # pylint: disable=unused-import
 import casatools as cc
-from dsacalib.utils import get_autobl_indices
+from casacore.tables import table
 from dsacalib.ms_io import read_caltable
 import dsacalib.constants as ct
-from casacore.tables import table
 
 def plot_dyn_spec(vis, fobs, mjd, bname, normalize=False, outname=None,
                   show=True, nx=None):
@@ -559,7 +558,7 @@ def plot_antenna_delays(msname, calname, plabels=None, outname=None, show=True):
     """
     if plabels is None:
         plabels = ['A', 'B']
-    
+
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
     # Pull the solutions for the entire timerange and the
@@ -570,9 +569,10 @@ def plot_antenna_delays(msname, calname, plabels=None, outname=None, show=True):
     kcorr, _tkcorr, _flags, antenna_order, _ant2 = \
         read_caltable('{0}_{1}_kcal'.format(msname, calname), cparam=False)
     nant = len(antenna_order)
-    
+
     val_to_plot = (antenna_delays - kcorr).squeeze(axis=3).mean(axis=2)
-    idx_to_plot = np.where(np.abs(val_to_plot.reshape(nant, -1).mean(1)) > 1e-10)[0]
+    idx_to_plot = np.where(np.abs(val_to_plot.reshape(nant, -1).mean(1))
+                           > 1e-10)[0]
     tplot = (times-times[0])*ct.SECONDS_PER_DAY/60.
     _, ax = plt.subplots(1, 1, figsize=(10, 8))
     lcyc = ['.', 'x']
@@ -650,7 +650,7 @@ def plot_gain_calibration(msname, calname, plabels=None, outname=None,
     t0 = time[0]
     time = ((time-t0)*u.d).to_value(u.min)
     time_phase = ((time_phase-t0)*u.d).to_value(u.min)
-    
+
     idx_to_plot = np.where(np.abs(gain_amp.reshape(nlab, -1).mean(1)-1)
                            > 1e-10)[0]
 
@@ -686,7 +686,8 @@ def plot_gain_calibration(msname, calname, plabels=None, outname=None,
 
     ax[0].set_xlim(tplot[0], tplot[-1])
     ax[1].set_ylim(-np.pi, np.pi)
-    ax[0].legend(ncol=10, fontsize='x-small', bbox_to_anchor=(0.05, -0.1), loc='upper left')
+    ax[0].legend(ncol=10, fontsize='x-small', bbox_to_anchor=(0.05, -0.1),
+                 loc='upper left')
     ax[0].set_xlabel('time (min)')
     ax[1].set_xlabel('time (min)')
     ax[0].set_ylabel('Abs of gain')
@@ -737,17 +738,17 @@ def plot_bandpass(msname, calname,
     bpass = bpass.squeeze(axis=1)
     bpass = bpass.reshape(bpass.shape[0], -1, bpass.shape[-1])
     npol = bpass.shape[-1]
-    
+
     with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
         fobs = (np.array(tb.col('CHAN_FREQ')[:])/1e9).reshape(-1)
-    
+
     if bpass.shape[1] != fobs.shape[0]:
         nint = fobs.shape[0]//bpass.shape[1]
         fobs_plot = np.mean(fobs[:nint]) + \
             np.arange(bpass.shape[1])*np.median(np.diff(fobs))*nint
     else:
         fobs_plot = fobs.copy()
-    
+
     if np.all(ant2==ant2[0]):
         labels = ant1
     else:
