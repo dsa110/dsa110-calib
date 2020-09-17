@@ -16,10 +16,9 @@ import casatools as cc
 from dsautils import dsa_store
 from dsautils import calstatus as cs
 import astropy.units as u
-from dsacalib import constants as ct
-from dsacalib.utils import get_antpos_itrf, get_autobl_indices
-from pyuvdata import UVData
 from casacore.tables import table
+from dsacalib import constants as ct
+from dsacalib.utils import get_antpos_itrf
 
 de = dsa_store.DsaStore()
 
@@ -285,15 +284,15 @@ def extract_vis_from_ms(msname, data='data'):
         spw = np.array(tb.DATA_DESC_ID[:])
     with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
         fobs = (np.array(tb.col('CHAN_FREQ')[:])/1e9).reshape(-1)
-    
+
     baseline = 2048*(ant1+1)+(ant2+1)+2**16
 
     time, vals, flags, ant1, ant2 = reshape_calibration_data(
         vals, flags, ant1, ant2, baseline, time, spw)
-    
+
     return vals, time/ct.SECONDS_PER_DAY, fobs, flags, ant1, ant2
 
-def extract_vis_from_ms_old(ms_name, nbls, data='data'):
+def extract_vis_from_ms_old(msname, nbls, data='data'):
     """ Extracts visibilities from a CASA measurement set.
 
     Parameters
@@ -322,23 +321,19 @@ def extract_vis_from_ms_old(ms_name, nbls, data='data'):
     """
     error = 0
     ms = cc.ms()
-    error += not ms.open('{0}.ms'.format(ms_name))
+    error += not ms.open('{0}.ms'.format(msname))
     axis_info = ms.getdata(['axis_info'])['axis_info']
     freq = axis_info['freq_axis']['chan_freq'].squeeze()/1e9
     time = ms.getdata(['time'])['time'].reshape(-1, nbls)[..., 0]
     time = time/ct.SECONDS_PER_DAY
-
     vis = ms.getdata([data])[data]
     flags = ms.getdata(["flag"])['flag']
-    vis = vis_uncal.reshape(vis_uncal.shape[0], vis_uncal.shape[1], -1,
-                                  nbls).T
-
-
+    vis = vis.reshape(vis.shape[0], vis.shape[1], -1, nbls).T
     flags = flags.reshape(flags.shape[0], flags.shape[1], -1, nbls).T
     error += not ms.close()
     if error > 0:
         print('{0} errors occured during calibration'.format(error))
-    return vis_uncal, vis_cal, time, freq, flags
+    return vis, time, freq, flags
 
 def read_caltable(tablename, cparam=False):
     """Requires that each spw has the same number of frequency channels.
@@ -361,6 +356,37 @@ def read_caltable(tablename, cparam=False):
     return vals, time/ct.SECONDS_PER_DAY, flags, ant1, ant2
 
 def reshape_calibration_data(vals, flags, ant1, ant2, baseline, time, spw):
+    """Reshape calibration or measurement set data.
+    
+    Reshapes the 0th axis of the input data `vals` and `flags` from a
+    combined (baseline-time-spw) axis into 3 axes (baseline, time, spw).
+    
+    Parameters
+    ----------
+    vals : ndarray
+        The input values, shape (baseline-time-spw, freq, pol).
+    flags : ndarray
+        Flag array, same shape as vals.
+    ant1, ant2 : array
+        The antennas in the baseline, same length as the 0th axis of `vals`.
+    baseline : array
+        The baseline index, same length as the 0th axis of `vals`.
+    time : array
+        The time of each integration, same length as the 0th axis of `vals`.
+    spw : array
+        The spectral window index of each integration, same length as the 0th
+        axis of `vals`.
+    
+    Returns
+    -------
+    time : array
+        Unique times, same length as the time axis of the output `vals`.
+    vals, flags : ndarray
+        The reshaped input arrays, dimensions (baseline, time, spw, freq, pol)
+    ant1, ant2 : array
+        ant1 and ant2 for unique baselines, same length as the baseline axis of
+        the output `vals`.
+    """
     nbl = len(np.unique(baseline))
     nspw = len(np.unique(spw))
     ntime = len(time)//nbl//nspw
@@ -378,7 +404,7 @@ def reshape_calibration_data(vals, flags, ant1, ant2, baseline, time, spw):
             # baseline, spw, time
             assert np.all(spw[:ntime] == spw[0])
             time = time.reshape(nbl, nspw, ntime)[0, 0, :]
-            vals = vals.reshape(nbl, npsw, ntime, nfreq, npol).swapaxes(1, 2)
+            vals = vals.reshape(nbl, nspw, ntime, nfreq, npol).swapaxes(1, 2)
             flags = flags.reshape(nbl, nspw, ntime, nfreq, npol).swapaxes(1, 2)
             ant1 = ant1.reshape(nbl, nspw, ntime)[:, 0, 0]
             ant2 = ant2.reshape(nbl, nspw, ntime)[:, 0, 0]
@@ -411,7 +437,7 @@ def reshape_calibration_data(vals, flags, ant1, ant2, baseline, time, spw):
             ant1 = ant1.reshape(nspw, nbl, ntime)[0, :, 0]
             ant2 = ant2.reshape(nspw, nbl, ntime)[0, :, 0]
         else:
-            assert (np.all(time[:nbl] == time[0]))
+            assert np.all(time[:nbl] == time[0])
             # spw, time, bl
             time = time.reshape(nspw, ntime, nbl)[0, :, 0]
             vals = vals.reshape(nspw, ntime, nbl, nfreq, npol).swapaxes(0, 2)
@@ -473,7 +499,7 @@ def read_caltable_old(tablename, nbls, cparam=False):
     return time, vals, flags
 
 def caltable_to_etcd(msname, calname, antenna_order, caltime, status,
-                     baseline_cal=False, pols=None):
+                     pols=None):
     r"""Copies calibration values from delay and gain tables to etcd.
 
     The dictionary passed to etcd should look like: {"ant_num": <i>,
@@ -566,14 +592,15 @@ def caltable_to_etcd(msname, calname, antenna_order, caltime, status,
                                     'inv_delay_p2', 'inv_delaycaltime'])
         antenna_order_delays = np.zeros(0, dtype=np.int)
 
-    antenna_order = np.unique(np.array([antenna_order_amps, antenna_order_delays]))
-    for i, antnum in enumerate(antenna_order):
+    antenna_order = np.unique(np.array([antenna_order_amps,
+                                        antenna_order_delays]))
+    for antnum in antenna_order:
 
         # Everything needs to be cast properly.
         gainamp = []
         gainphase = []
         ant_delay = []
-        
+
         if antnum in antenna_order_amps:
             idx = np.where(antenna_order_amps == antnum)[0][0]
             for amp in amps[idx, :]:
