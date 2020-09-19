@@ -412,60 +412,9 @@ def _gauss(xvals, amp, mean, sigma, offset):
     """
     return amp*np.exp(-(xvals-mean)**2/(2*sigma**2))+offset
 
-def get_delay_bp_cal_vis(msname, calname, blbased, combine_spw=False, nspw=1):
-    r"""Extracts visibilities from measurement set with partial calibration.
-
-    Applies delay and bandpass calibration before extracting the visibilities.
-
-    Parameters
-    ----------
-    msname : str
-        The name of the measurement set containing the visibilities. The
-        measurement set `msname`.ms will be opened.
-    calname : str
-        The name of the calibrator source used in calibration of the
-        measurement set. The tables `msname`\_`calname`_kcal and
-        `msname`\_`calname`_bcal will be applied to the measurement set.
-
-    Returns
-    -------
-    vis_cal : ndarray
-        The visibilities with delay and bandpass calibration applied.
-        Dimensions (baselines, time, frequency, polarization).
-    time : array
-        The time of each subintegration in the visibilities, in MJD.
-    freq : array
-        The central frequency of each channel in the visibilities, in GHz.
-    """
-    if combine_spw:
-        spwmap = [0]*nspw
-    else:
-        spwmap = [-1]
-    error = 0
-    cb = cc.calibrater()
-    error += not cb.open('{0}.ms'.format(msname))
-    error += not cb.setapply(type='K', spwmap=spwmap,
-                             table='{0}_{1}_kcal'.format(msname, calname))
-    if blbased:
-        error += not cb.setapply(type='MF',
-                                 table='{0}_{1}_bcal'.format(msname, calname))
-    else:
-        error += not cb.setapply(type='B',
-                                 table='{0}_{1}_bcal'.format(msname, calname))
-    error += not cb.correct()
-    error += not cb.close()
-    if error > 0:
-        print('{0} errors occured during calibration'.format(error))
-    vis_cal, time, freq, flag, ant1, ant2 = dmsio.extract_vis_from_ms(
-        msname, 'CORRECTED_DATA')
-    print('{0} percent flagged'.format(np.sum(flag)/flag.size*100))
-    mask = (1-flag).astype(float)
-    mask[mask < 0.5] = np.nan
-    vis_cal = vis_cal*mask
-    return vis_cal, time, freq, ant1, ant2
-
-def calculate_sefd(obs_params, fmin=None, fmax=None,
-                   baseline_cal=True, showplots=False):
+def calculate_sefd(msname, cal, fmin=None, fmax=None,
+                   baseline_cal=True, showplots=False,
+                   msname_delaycal=None, calname_delaycal=None):
     r"""Calculates the SEFD from a measurement set.
 
     The measurement set must have been calibrated against a model of ones and
@@ -512,13 +461,20 @@ def calculate_sefd(obs_params, fmin=None, fmax=None,
         polarization pair, in MJD. Dimensions (antenna, polarization).
     """
     # Change so figures saved if showplots is False
-    msname = obs_params['msname']
-    cal = obs_params['cal']
+    if msname_delaycal is None:
+        msname_delaycal = msname
+    if calname_delaycal is None:
+        calname_delaycal = cal.name
     npol = 2
 
     # Get the visibilities (for autocorrs)
-    vis, tvis, fvis, ant1, ant2 = get_delay_bp_cal_vis(
-        msname, cal.name, baseline_cal)
+    dc.apply_delay_bp_cal(msname, calname_delaycal, msnamecal=msname_delaycal,
+                         blbased=baseline_cal)
+    vis, tvis, fvis, flag, ant1, ant2 = dmsio.extract_vis_from_ms(
+        msname, 'CORRECTED_DATA')
+    mask = (1-flag).astype(float)
+    mask[mask < 0.5] = np.nan
+    vis = vis*mask
     vis = vis[ant1 == ant2, ...]
     antenna_order = ant1[ant1 == ant2]
     nant = len(antenna_order)
