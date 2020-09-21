@@ -413,7 +413,7 @@ def _gauss(xvals, amp, mean, sigma, offset):
     return amp*np.exp(-(xvals-mean)**2/(2*sigma**2))+offset
 
 def calculate_sefd(msname, cal, fmin=None, fmax=None,
-                   baseline_cal=True, showplots=False,
+                   baseline_cal=False, showplots=False,
                    msname_delaycal=None, calname_delaycal=None):
     r"""Calculates the SEFD from a measurement set.
 

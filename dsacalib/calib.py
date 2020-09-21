@@ -520,8 +520,8 @@ def apply_delay_bp_cal(msname, calname, blbased=False, msnamecal=None,
         spwmap = [0]*nspw
     else:
         spwmap = [-1]
-    if msname_cal is None:
-        msname_cal = msname
+    if msnamecal is None:
+        msnamecal = msname
     error = 0
     caltables = [{'table': '{0}_{1}_kcal'.format(msnamecal, calname),
                   'type': 'K',
