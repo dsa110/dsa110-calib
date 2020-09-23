@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 import astropy.units as u
 import scipy # pylint: disable=unused-import
 import casatools as cc
+from casacore.tables import table
 import dsautils.calstatus as cs
 import dsautils.dsa_syslog as dsl
 import dsacalib.utils as du
@@ -235,8 +236,7 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
         current_error = (cs.FLAGGING_ERR | cs.INV_GAINAMP_P1 |
                          cs.INV_GAINAMP_P2 | cs.INV_GAINPHASE_P1 |
                          cs.INV_GAINPHASE_P2 | cs.INV_GAINCALTIME)
-        bad_times, times, error = dc.get_bad_times(msname, cal.name, nant,
-                                                   refant=refant)
+        bad_times, times, error = dc.get_bad_times(msname, cal.name, refant)
         if error > 0:
             status = cs.update(status, ['flagging_err'])
             logger.info('Non-fatal error occured in calculation of delays on '
@@ -263,27 +263,34 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
                       '{0}_{1}_gacal'.format(msname, cal.name)]:
             _check_path(fname)
         calstring = 'calculation of antenna gains'
-        _tamp, gamp, famp = dmsio.read_caltable(
-            '{0}_{1}_gacal'.format(msname, cal.name), nbls, cparam=True)
-        _tphase, gphase, fphase = dmsio.read_caltable(
-            '{0}_{1}_gpcal'.format(msname, cal.name), nbls, cparam=True)
-        gains = gamp.T*gphase.T
-        flags = famp.T*fphase.T
+        gamp, _tamp, famp, _ant1, _ant2 = dmsio.read_caltable(
+            '{0}_{1}_gacal'.format(msname, cal.name), cparam=True)
+        gphase, _tphase, fphase, _ant1, _ant2 = dmsio.read_caltable(
+            '{0}_{1}_gpcal'.format(msname, cal.name), cparam=True)
+        gains = (gamp*gphase).squeeze(axis=2)
+        flags = (famp*fphase).squeeze(axis=2)
+        # This makes some assumptions about the bl order! Should add some
+        # statements to make sure it's true
         gains, flags = dc.fill_antenna_gains(gains, flags)
 
         # These tables will contain the results on fine time-scales.
-        gamp = np.abs(gains).T.astype(np.complex128)
+        gamp = np.abs(gains).astype(np.complex128)
         gamp = gamp.reshape(gamp.shape[0], -1)
-        tb = cc.table()
-        tb.open('{0}_{1}_gacal'.format(msname, cal.name), nomodify=False)
-        tb.putcol('CPARAM', gamp)
-        tb.close()
+        # tb = cc.table()
+        with table('{0}_{1}_gacal'.format(msname, cal.name),
+                   readonly=False) as tb:
+            # tb.open('{0}_{1}_gacal'.format(msname, cal.name), nomodify=False)
+            shape = np.array(tb.CPARAM[:]).shape
+            tb.putcol('CPARAM', gamp.reshape(shape))
+        # tb.close()
 
-        gphase = np.exp(1.j*np.angle(gains).T)
-        gphase = gphase.reshape(gphase.shape[0], -1)
-        tb.open('{0}_{1}_gpcal'.format(msname, cal.name), nomodify=False)
-        tb.putcol('CPARAM', gphase)
-        tb.close()
+        gphase = np.exp(1.j*np.angle(gains))
+        with table('{0}_{1}_gpcal'.format(msname, cal.name),
+                   readonly=False) as tb:
+            # tb.open('{0}_{1}_gpcal'.format(msname, cal.name), nomodify=False)
+            shape = np.array(tb.CPARAM[:]).shape
+            tb.putcol('CPARAM', gphase.reshape(shape))
+        # tb.close()
 
         if not sefd:
             # reduce to a single value to use
@@ -300,13 +307,15 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
                                                                  cal.name))
 
             # Write out a new gains that is a single value.
-            tb = cc.table()
-            tb.open('{0}_{1}_gcal_ant'.format(msname, cal.name),
-                    nomodify=False)
-            tb.putcol('TIME', np.ones(6)*np.median(mjd)*ct.SECONDS_PER_DAY)
-            tb.putcol('FLAG', flags.T)
-            tb.putcol('CPARAM', gains.T)
-            tb.close()
+            #tb = cc.table()
+            with table('{0}_{1}_gcal_ant'.format(msname, cal.name),
+                       readonly=False) as tb:
+                # tb.open('{0}_{1}_gcal_ant'.format(msname, cal.name),
+                #     nomodify=False)
+                tb.putcol('TIME', np.ones(6)*np.median(mjd)*ct.SECONDS_PER_DAY)
+                tb.putcol('FLAG', flags.T)
+                tb.putcol('CPARAM', gains.T)
+            # tb.close()
             _check_path('{0}_{1}_gcal_ant'.format(msname, cal.name))
 
     except Exception as exc:
@@ -319,8 +328,8 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
 
     return status, caltime
 
-def plot_solutions(msname, calname, antenna_order, fobs, blbased,
-                   figure_dir="./figures/", show_plots=False):
+def plot_solutions(msname, calname, figure_dir="./figures/",
+                   show_plots=False):
     r"""Plots the antenna delay, gain and bandpass calibration solutions.
 
     Parameters
@@ -342,12 +351,11 @@ def plot_solutions(msname, calname, antenna_order, fobs, blbased,
         If False, plots are closed after being saved. Defaults False.
     """
     outname = '{0}/{1}_{2}'.format(figure_dir, msname, calname)
-    _ = dp.plot_antenna_delays(msname, calname, antenna_order, outname=outname,
+    _ = dp.plot_antenna_delays(msname, calname, outname=outname,
                                show=show_plots)
-    _ = dp.plot_gain_calibration(msname, calname, antenna_order,
-                                 blbased=blbased, outname=outname,
+    _ = dp.plot_gain_calibration(msname, calname, outname=outname,
                                  show=show_plots)
-    _ = dp.plot_bandpass(msname, calname, antenna_order, fobs, blbased=blbased,
+    _ = dp.plot_bandpass(msname, calname,
                          outname=outname, show=show_plots)
 
 def calibration_head(obs_params, ant_params, write_to_etcd=False,
@@ -396,8 +404,7 @@ def calibration_head(obs_params, ant_params, write_to_etcd=False,
     print('')
     if write_to_etcd:
         dmsio.caltable_to_etcd(obs_params['msname'], obs_params['cal'].name,
-                            ant_params['antenna_order'], caltime, status,
-                            baseline_cal=True)
+                            ant_params['antenna_order'], caltime, status)
     return status
 
 def _gauss(xvals, amp, mean, sigma, offset):
@@ -405,54 +412,9 @@ def _gauss(xvals, amp, mean, sigma, offset):
     """
     return amp*np.exp(-(xvals-mean)**2/(2*sigma**2))+offset
 
-def get_delay_bp_cal_vis(msname, calname, nbls):
-    r"""Extracts visibilities from measurement set with partial calibration.
-
-    Applies delay and bandpass calibration before extracting the visibilities.
-    TODO: Currently assuming baseline-based calibration but could be
-    generalized to antenna-based calibration!
-
-    Parameters
-    ----------
-    msname : str
-        The name of the measurement set containing the visibilities. The
-        measurement set `msname`.ms will be opened.
-    calname : str
-        The name of the calibrator source used in calibration of the
-        measurement set. The tables `msname`\_`calname`_kcal and
-        `msname`\_`calname`_bcal will be applied to the measurement set.
-    nbls : int
-        The number of baselines in the measurement set.
-
-    Returns
-    -------
-    vis_cal : ndarray
-        The visibilities with delay and bandpass calibration applied.
-        Dimensions (baselines, time, frequency, polarization).
-    time : array
-        The time of each subintegration in the visibilities, in MJD.
-    freq : array
-        The central frequency of each channel in the visibilities, in GHz.
-    """
-    error = 0
-    cb = cc.calibrater()
-    error += not cb.open('{0}.ms'.format(msname))
-    error += not cb.setapply(type='K',
-                             table='{0}_{1}_kcal'.format(msname, calname))
-    error += not cb.setapply(type='MF',
-                             table='{0}_{1}_bcal'.format(msname, calname))
-    error += not cb.correct()
-    error += not cb.close()
-    if error > 0:
-        print('{0} errors occured during calibration'.format(error))
-    _vis_uncal, vis_cal, time, freq, flag = dmsio.extract_vis_from_ms(msname, nbls)
-    mask = (1-flag).astype(float)
-    mask[mask < 0.5] = np.nan
-    vis_cal = vis_cal*mask
-    return vis_cal, time, freq
-
-def calculate_sefd(obs_params, ant_params, fmin=1.35, fmax=1.45,
-                   baseline_cal=True, showplots=False):
+def calculate_sefd(msname, cal, fmin=None, fmax=None,
+                   baseline_cal=False, showplots=False,
+                   msname_delaycal=None, calname_delaycal=None):
     r"""Calculates the SEFD from a measurement set.
 
     The measurement set must have been calibrated against a model of ones and
@@ -470,14 +432,6 @@ def calculate_sefd(obs_params, ant_params, fmin=1.35, fmax=1.45,
                 The calibrator source.  Will be used to identify the correct
                 calibration tables.  The table `msname`\_`cal.name`\_gacal will
                 be opened.
-
-    ant_params : dictionary
-        Antenna parameters from the observation.  The following must be
-        defined:
-
-            antenna_order : list
-                The names of the antennas in the order they appear in the
-                measurement set.
 
     fmin : float
         The lowest frequency to consider when calculating the off-source power
@@ -507,33 +461,50 @@ def calculate_sefd(obs_params, ant_params, fmin=1.35, fmax=1.45,
         polarization pair, in MJD. Dimensions (antenna, polarization).
     """
     # Change so figures saved if showplots is False
-    msname = obs_params['msname']
-    cal = obs_params['cal']
-    antenna_order = ant_params['antenna_order']
-    nant = len(antenna_order)
-    nbls = (nant*(nant+1))//2
+    if msname_delaycal is None:
+        msname_delaycal = msname
+    if calname_delaycal is None:
+        calname_delaycal = cal.name
     npol = 2
 
     # Get the visibilities (for autocorrs)
-    vis, tvis, fvis = get_delay_bp_cal_vis(msname, cal.name, nbls)
+    dc.apply_delay_bp_cal(msname, calname_delaycal, msnamecal=msname_delaycal,
+                         blbased=baseline_cal)
+    vis, tvis, fvis, flag, ant1, ant2 = dmsio.extract_vis_from_ms(
+        msname, 'CORRECTED_DATA')
+    mask = (1-flag).astype(float)
+    mask[mask < 0.5] = np.nan
+    vis = vis*mask
+    vis = vis[ant1 == ant2, ...]
+    antenna_order = ant1[ant1 == ant2]
+    nant = len(antenna_order)
+    # Note that these are antenna idxs, not names
 
     # Open the gain files and read in the gains
-    time, gain, flag = dmsio.read_caltable(
-        '{0}_{1}_gacal'.format(msname, cal.name), nbls, cparam=True)
-    gain = np.abs(gain) # Should already be purely real
-    autocorr_idx = du.get_autobl_indices(nant, casa=True)
-    if baseline_cal:
-        time = time[..., autocorr_idx[0]]
-        gain = gain[..., autocorr_idx]
-        flag = flag[..., autocorr_idx]
-    vis = vis[autocorr_idx, ...]
-
-    idxl = np.searchsorted(fvis, fmin)
-    idxr = np.searchsorted(fvis, fmax)
-    vis = vis[..., idxl:idxr, :]
+    gain, time, flag, ant1, ant2 = dmsio.read_caltable(
+        '{0}_{1}_gacal'.format(msname, cal.name), cparam=True)
+    #flag = ~flag
+    #flag[flag < 0.5] = np.nan
+    #gain = np.abs(np.nanmean(gain*flag, axis=2)).squeeze(axis=2)
+    gain = np.abs(np.mean(gain, axis=2)).squeeze(axis=2)
+    #flag = flag.squeeze(axis=3)
+    if np.all(ant2==ant2[0]):
+        gain_idxs = [np.where(ant1==antenna)[0][0] for antenna in
+                     antenna_order]
+    else:
+        gain_idxs = [np.where((ant1==antenna) & (ant2==antenna))[0][0] for
+                     antenna in antenna_order]
+    gain = gain[gain_idxs, ...]
+    flag = flag[gain_idxs, ...]
+    idxl = np.searchsorted(fvis, fmin) if fmin is not None else 0
+    idxr = np.searchsorted(fvis, fmax) if fmax is not None else vis.shape[-2]
+    if idxl < idxr:
+        vis = vis[..., idxl:idxr, :]
+    else:
+        vis = vis[..., idxr:idxl, :]
     imag_fraction = np.nanmean((vis.imag/vis.real).reshape(nant, -1),
                                axis=-1)
-    assert np.all(imag_fraction < 1e-10), ("Autocorrelations have "
+    assert np.nanmax(np.abs(imag_fraction) < 1e-4), ("Autocorrelations have "
                                            "non-negligable imaginary "
                                            "components.")
     vis = np.abs(vis)
@@ -553,17 +524,22 @@ def calculate_sefd(obs_params, ant_params, fmin=1.35, fmax=1.45,
     autocorr_gains_off = np.zeros((nant, npol))
 
     if showplots:
-        _fig, ax = plt.subplots(1, 3, figsize=(8*3, 8*1))
+        nx = 3
+        ny = nant//nx
+        if nant%nx != 0:
+            ny += 1
+        _fig, ax = plt.subplots(ny, nx, figsize=(8*nx, 8*ny))
         ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
+        ax = ax.flatten()
 
     # Fit a Gaussian to the gains
     for i in range(nant):
         for j in range(npol):
             if showplots:
-                ax[i].plot(time-time[0], gain[j, :, i], '.', color=ccyc[j])
-            initial_params = [np.max(gain[j, :, i]), (time[-1]-time[0])/2,
+                ax[i].plot(time-time[0], gain[i, :, j], '.', color=ccyc[j])
+            initial_params = [np.max(gain[i, :, j]), (time[-1]-time[0])/2,
                               0.0035, 0]
-            params, cov = curve_fit(_gauss, time-time[0], gain[j, :, i],
+            params, cov = curve_fit(_gauss, time-time[0], gain[i, :, j],
                                     p0=initial_params)
 
             ant_gains_on[i, j] = params[0]+params[3]
@@ -605,7 +581,8 @@ def calculate_sefd(obs_params, ant_params, fmin=1.35, fmax=1.45,
     return sefds, ant_gains, ant_transit_time
 
 def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
-
+    """Calibrate dsa10 data.
+    """
     if badants is None:
         badants = []
 
@@ -637,14 +614,12 @@ def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
     if '8' in antenna_order:
         dc.flag_antenna(msname, '8', pol='A')
 
-    dc.delay_calibration(msname, cal.name, refant=refant)
+    dc.delay_calibration(msname, cal.name, refant)
     _check_path('{0}_{1}_kcal'.format(msname, cal.name))
 
-    bad_times, times, _error = dc.get_bad_times(msname, cal.name, nant,
-                                               refant=refant)
+    bad_times, times, _error = dc.get_bad_times(msname, cal.name, refant)
     dc.flag_badtimes(msname, times, bad_times, nant)
 
     dc.gain_calibration(msname, cal.name, refant=refant, tga="10s", tgp="inf")
     for tbl in ['gacal', 'gpcal', 'bcal']:
         _check_path('{0}_{1}_{2}'.format(msname, cal.name, tbl))
-
