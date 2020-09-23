@@ -11,7 +11,7 @@ import numpy as np
 import astropy.units as u
 import scipy # pylint: disable=unused-import
 import casatools as cc
-from dsacalib.utils import get_autobl_indices
+from casacore.tables import table
 from dsacalib.ms_io import read_caltable
 import dsacalib.constants as ct
 
@@ -515,8 +515,7 @@ def plot_image(msname, imtype, sr0, verbose=False, outname=None, show=True,
     if error > 0:
         print('{0} errors occured during imaging'.format(error))
 
-def plot_antenna_delays(msname, calname, antenna_order, outname=None,
-                        show=True):
+def plot_antenna_delays(msname, calname, plabels=None, outname=None, show=True):
     r"""Plots antenna delay variations between two delay calibrations.
 
     Compares the antenna delays used in the calibration solution on the
@@ -557,29 +556,36 @@ def plot_antenna_delays(msname, calname, antenna_order, outname=None,
         The delay correction calculated using the entire observation time, in
         nanoseconds.  Dimensions (polarization, 1, antenna).
     """
-    nant = len(antenna_order)
+    if plabels is None:
+        plabels = ['A', 'B']
+
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
 
     # Pull the solutions for the entire timerange and the
     # 60-s data from the measurement set tables
-    times, antenna_delays, _flags = read_caltable('{0}_{1}_2kcal'.format(
-        msname, calname), nant, cparam=False)
-    npol = antenna_delays.shape[0]
-    times = times[:, 0]
-    _tkcorr, kcorr, _flags = read_caltable('{0}_{1}_kcal'.format(
-        msname, calname), nant, cparam=False)
+    antenna_delays, times, _flags, _ant1, _ant2 = \
+        read_caltable('{0}_{1}_2kcal'.format(msname, calname), cparam=False)
+    npol = antenna_delays.shape[-1]
+    kcorr, _tkcorr, _flags, antenna_order, _ant2 = \
+        read_caltable('{0}_{1}_kcal'.format(msname, calname), cparam=False)
+    nant = len(antenna_order)
 
+    val_to_plot = (antenna_delays - kcorr).squeeze(axis=3).mean(axis=2)
+    idx_to_plot = np.where(np.abs(val_to_plot.reshape(nant, -1).mean(1))
+                           > 1e-10)[0]
     tplot = (times-times[0])*ct.SECONDS_PER_DAY/60.
     _, ax = plt.subplots(1, 1, figsize=(10, 8))
     lcyc = ['.', 'x']
-    for i in range(nant):
+    for i, bidx in enumerate(idx_to_plot):
         for j in range(npol):
-            ax.plot(tplot, antenna_delays[j, :, i]-kcorr[j, 0, i],
-                    marker=lcyc[j%len(lcyc)], label=antenna_order[i], alpha=0.5,
-                    color=ccyc[i%len(ccyc)])
+            ax.plot(tplot, val_to_plot[bidx, :, j],
+                    marker=lcyc[j%len(lcyc)],
+                    label='{0} {1}'.format(antenna_order[bidx]+1, plabels[j]),
+                    alpha=0.5, color=ccyc[i%len(ccyc)])
     ax.set_ylim(-5, 5)
     ax.set_ylabel('delay (ns)')
-    ax.legend(ncol=3, fontsize='medium')
+    ax.legend(ncol=len(idx_to_plot)//15+1, fontsize='small',
+              bbox_to_anchor=(1.05, 1), loc='upper left')
     ax.set_xlabel('time (min)')
     ax.axhline(1.5)
     ax.axhline(-1.5)
@@ -588,10 +594,10 @@ def plot_antenna_delays(msname, calname, antenna_order, outname=None,
     if not show:
         plt.close()
 
-    return times, antenna_delays, kcorr
+    return times, antenna_delays, kcorr, antenna_order
 
-def plot_gain_calibration(msname, calname, antenna_order, blbased=False,
-                          plabels=None, outname=None, show=True):
+def plot_gain_calibration(msname, calname, plabels=None, outname=None,
+                          show=True):
     r"""Plots the gain calibration solutions.
 
     Parameters
@@ -625,34 +631,28 @@ def plot_gain_calibration(msname, calname, antenna_order, blbased=False,
     if plabels is None:
         plabels = ['A', 'B']
 
-    nant = len(antenna_order)
-    if blbased:
-        labels = []
-        for i in range(nant):
-            for j in range(i, nant):
-                labels += [[i, j]]
+    gain_phase, time_phase, _flags, ant1, ant2 = \
+        read_caltable('{0}_{1}_gpcal'.format(msname, calname), cparam=True)
+    gain_phase = gain_phase.squeeze(axis=3)
+    gain_phase = gain_phase.mean(axis=2)
+    npol = gain_phase.shape[-1]
+    if np.all(ant2==ant2[0]):
+        labels = ant1
     else:
-        labels = antenna_order
+        labels = np.array([ant1, ant2]).T
+    nlab = labels.shape[0]
 
-    nlab = len(labels)
-    idxs_to_plot = list(range(nlab))
-    if blbased:
-        autocorr_idx = get_autobl_indices(nant)
-        autocorr_idx = [(nlab-1)-aidx for aidx in autocorr_idx]
-        for idx in autocorr_idx:
-            idxs_to_plot.remove(idx)
-
-    time_phase, gain_phase, _flags = read_caltable('{0}_{1}_gpcal'.format(
-        msname, calname), nlab, cparam=True)
-    time_phase = time_phase[:, 0]
-    npol = gain_phase.shape[0]
-
-    time, gain_amp, _flags = read_caltable('{0}_{1}_gacal'.format(
-        msname, calname), nlab, cparam=True)
-    time = time[:, 0]
+    gain_amp, time, _flags, _ant1, _ant2 = \
+        read_caltable('{0}_{1}_gacal'.format(msname, calname), cparam=True)
+    gain_amp = gain_amp.squeeze(axis=3)
+    gain_amp = gain_amp.mean(axis=2)
+    time_days = time.copy()
     t0 = time[0]
     time = ((time-t0)*u.d).to_value(u.min)
     time_phase = ((time_phase-t0)*u.d).to_value(u.min)
+
+    idx_to_plot = np.where(np.abs(gain_amp.reshape(nlab, -1).mean(1)-1)
+                           > 1e-10)[0]
 
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
     lcyc = ['-', ':']
@@ -665,10 +665,10 @@ def plot_gain_calibration(msname, calname, antenna_order, blbased=False,
         tplot = [0, 1]
         gplot = np.tile(gain_amp, [1, 2, 1])
 
-    for i, bidx in enumerate(idxs_to_plot):
+    for i, bidx in enumerate(idx_to_plot):
         for pidx in range(npol):
-            ax[0].plot(tplot, np.abs(gplot[pidx, :, bidx]),
-                       label='{0} {1}'.format(labels[bidx], plabels[pidx]),
+            ax[0].plot(tplot, np.abs(gplot[bidx, :, pidx]),
+                       label='{0} {1}'.format(labels[bidx]+1, plabels[pidx]),
                        color=ccyc[i%len(ccyc)], ls=lcyc[pidx])
 
     if gain_phase.shape[1] > 1:
@@ -678,15 +678,16 @@ def plot_gain_calibration(msname, calname, antenna_order, blbased=False,
         tplot = [tplot[0], tplot[-1]] # use the time from the gains
         gplot = np.tile(gain_phase, [1, 2, 1])
 
-    for i, bidx in enumerate(idxs_to_plot):
+    for i, bidx in enumerate(idx_to_plot):
         for pidx in range(npol):
-            ax[1].plot(tplot, np.angle(gplot[pidx, :, bidx]),
-                       label='{0} {1}'.format(labels[bidx], plabels[pidx]),
+            ax[1].plot(tplot, np.angle(gplot[bidx, :, pidx]),
+                       label='{0} {1}'.format(labels[bidx]+1, plabels[pidx]),
                        color=ccyc[i%len(ccyc)], ls=lcyc[pidx])
 
     ax[0].set_xlim(tplot[0], tplot[-1])
     ax[1].set_ylim(-np.pi, np.pi)
-    ax[0].legend(ncol=3, fontsize=12)
+    ax[0].legend(ncol=10, fontsize='x-small', bbox_to_anchor=(0.05, -0.1),
+                 loc='upper left')
     ax[0].set_xlabel('time (min)')
     ax[1].set_xlabel('time (min)')
     ax[0].set_ylabel('Abs of gain')
@@ -695,9 +696,9 @@ def plot_gain_calibration(msname, calname, antenna_order, blbased=False,
         plt.savefig('{0}_gaincal.png'.format(outname))
     if not show:
         plt.close()
-    return time, gain_amp, gain_phase, labels, t0
+    return time_days, gain_amp, gain_phase, labels
 
-def plot_bandpass(msname, calname, antenna_order, fobs, blbased=False,
+def plot_bandpass(msname, calname,
                   plabels=None, outname=None, show=True):
     r"""Plots the bandpass calibration solutions.
 
@@ -730,26 +731,16 @@ def plot_bandpass(msname, calname, antenna_order, fobs, blbased=False,
     if plabels is None:
         plabels = ['A', 'B']
 
-    nant = len(antenna_order)
-    if blbased:
-        labels = []
-        for i in range(nant):
-            for j in range(i, nant):
-                labels += [[i, j]]
-    else:
-        labels = antenna_order
+    bpass, _tbpass, _flags, ant1, ant2 = read_caltable('{0}_{1}_bcal'.format(
+        msname, calname), cparam=True)
+    # squeeze along the time axis
+    # baseline, time, spw, frequency, pol
+    bpass = bpass.squeeze(axis=1)
+    bpass = bpass.reshape(bpass.shape[0], -1, bpass.shape[-1])
+    npol = bpass.shape[-1]
 
-    nlab = len(labels)
-    idxs_to_plot = list(range(nlab))
-    if blbased:
-        autocorr_idx = get_autobl_indices(nant)
-        autocorr_idx = [(nlab-1)-aidx for aidx in autocorr_idx]
-        for idx in autocorr_idx:
-            idxs_to_plot.remove(idx)
-
-    _tbpass, bpass, _flags = read_caltable('{0}_{1}_bcal'.format(
-        msname, calname), nlab, cparam=True)
-    npol = bpass.shape[0]
+    with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
+        fobs = (np.array(tb.col('CHAN_FREQ')[:])/1e9).reshape(-1)
 
     if bpass.shape[1] != fobs.shape[0]:
         nint = fobs.shape[0]//bpass.shape[1]
@@ -758,25 +749,34 @@ def plot_bandpass(msname, calname, antenna_order, fobs, blbased=False,
     else:
         fobs_plot = fobs.copy()
 
+    if np.all(ant2==ant2[0]):
+        labels = ant1
+    else:
+        labels = np.array([ant1, ant2]).T
+    nant = len(ant1)
+
+    idxs_to_plot = np.where(np.abs(bpass.reshape(nant, -1).mean(1)-1) >
+                            1e-10)[0]
+
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
     lcyc = ['-', ':']
     _, ax = plt.subplots(1, 2, figsize=(16, 6), sharex=True)
     for i, bidx in enumerate(idxs_to_plot):
         for pidx in range(npol):
-            ax[0].plot(fobs_plot, np.abs(bpass[pidx, :, bidx]), '.',
-                       label='{0}{1}'.format(labels[bidx], plabels[pidx]),
+            ax[0].plot(fobs_plot, np.abs(bpass[bidx, :, pidx]), '.',
+                       label='{0} {1}'.format(labels[bidx], plabels[pidx]),
                        alpha=0.5, ls=lcyc[pidx], color=ccyc[i%len(ccyc)])
-            ax[1].plot(fobs_plot, np.angle(bpass[pidx, :, bidx]), '.',
-                       label='{0}{1}'.format(labels[bidx], plabels[pidx]),
+            ax[1].plot(fobs_plot, np.angle(bpass[bidx, :, pidx]), '.',
+                       label='{0} {1}'.format(labels[bidx], plabels[pidx]),
                        alpha=0.5, ls=lcyc[pidx], color=ccyc[i%len(ccyc)])
     ax[0].set_xlabel('freq (GHz)')
     ax[1].set_xlabel('freq (GHz)')
     ax[0].set_ylabel('B cal amp')
     ax[1].set_ylabel('B cal phase')
-    ax[0].legend(ncol=3, fontsize='medium')
+    ax[0].legend(ncol=3, fontsize='small')
     if outname is not None:
         plt.savefig('{0}_bandpass.png'.format(outname))
     if not show:
         plt.close()
 
-    return bpass
+    return bpass, fobs, labels
