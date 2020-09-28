@@ -19,6 +19,7 @@ import astropy.units as u
 from casacore.tables import table
 from dsacalib import constants as ct
 from dsacalib.utils import get_antpos_itrf
+from antpos.utils import get_itrf
 
 de = dsa_store.DsaStore()
 
@@ -656,3 +657,48 @@ def caltable_to_etcd(msname, calname, antenna_order, caltime, status,
                 dd['pol'] = ['A', 'B']
 
         de.put_dict('/mon/cal/{0}'.format(antnum), dd)
+
+def write_beamformer_weights(msname, calname, antennas, ncorr, outdir):
+    """Writes weights for the beamformer.
+    """
+    antpos_df = get_itrf()
+    x_itrf = antpos_df.loc[antennas]['dx_m'].astype(np.float32)
+    weights = np.ones((ncorr, len(antennas), 48, 2), dtype=np.complex64)
+    with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
+        fobs = np.array(tb.CHAN_FREQ[:])
+    # Assert that fobs covers the whole range!
+    gains, time, flags, ant1, ant2 = read_caltable('{0}_{1}_gacal'.format(msname, calname), True)
+    gains[flags] = np.nan
+    gains = np.nanmean(gains, axis=1)
+    phases, _, flags, ant1p, ant2p = read_caltable('{0}_{1}_gpcal'.format(msname, calname), True)
+    phases[flags] = np.nan
+    phases = np.nanmean(phases, axis=1)
+    assert np.all(ant1p==ant1)
+    bgains, _, flags, ant1ba, _ = read_caltable('{0}_{1}_bacal'.format(msname, calname), True)
+    bgains[flags] = np.nan
+    bgains = np.nanmean(bgains, axis=1)
+    assert np.all(ant1ba==ant1)
+    bphases, _, flags, ant1bp, _ = read_caltable('{0}_{1}_gpcal'.format(msname, calname), True)
+    bphases[flags] = np.nan
+    bphases = np.nanmean(bphases, axis=1)
+    assert np.all(ant1bp==ant1)
+    gains = gains*phases*bgains*bphases
+    gains = gains.reshape(118, ncorr, -1, 2)
+    nfint = gains.shape[2]//weights.shape[2]
+    assert gains.shape[2]%weights.shape[2]==0
+    gains = np.nanmean(gains.reshape(gains.shape[0], gains.shape[1], -1, nfint, gains.shape[3]),
+                       axis=3)
+    if not np.all(ant2==ant2[0]):
+        idxs = np.where(ant1==ant2)
+        gains = gains[idxs]
+        ant1 = ant1[idxs]
+    for i, antid in enumerate(ant1):
+        if antid+1 in antennas:
+            idx = np.where(antennas==antid+1)[0][0]
+            weights[:, idx, ...] = gains[i, ...]
+    weights[weights!=weights] = 0.
+    for i in range(ncorr):
+        wcorr = weights[i, ...].view(np.float32).flatten()
+        wcorr = np.concatenate([x_itrf, wcorr], axis=0)
+        with open('{0}/beamformer_weights_corr{1:02d}.dat'.format(outdir, i), 'wb') as f:
+            f.write(bytes(wcorr))
