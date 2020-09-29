@@ -414,7 +414,7 @@ def _gauss(xvals, amp, mean, sigma, offset):
 
 def calculate_sefd(msname, cal, fmin=None, fmax=None,
                    baseline_cal=False, showplots=False,
-                   msname_delaycal=None, calname_delaycal=None):
+                   msname_delaycal=None, calname_delaycal=None, halfpower=False):
     r"""Calculates the SEFD from a measurement set.
 
     The measurement set must have been calibrated against a model of ones and
@@ -448,6 +448,9 @@ def calculate_sefd(msname, cal, fmin=None, fmax=None,
     showplots : Boolean
         If set to ``True``, plots will be generated that show the Gaussian fits
         to the gains. Defaults ``False``.
+    halfpower : Boolean
+        If True, will calculate the sefd using the half-power point instead of
+        using the off-source power.  Defaults False.
 
     Returns
     -------
@@ -549,22 +552,28 @@ def calculate_sefd(msname, cal, fmin=None, fmax=None,
             eant_transit_time[i, j] = np.sqrt(cov[1, 1])
             ant_transit_width[i, j] = params[2]
             eant_transit_width[i, j] = np.sqrt(cov[2, 2])
-
-            offbins_before[i, j] = np.searchsorted(
-                time, ant_transit_time[i, j]-ant_transit_width[i, j]*3)
-            offbins_after[i, j] = len(time)-np.searchsorted(
-                time, ant_transit_time[i, j]+ant_transit_width[i, j]*3)
-            idxl = np.searchsorted(
-                tvis, ant_transit_time[i, j]-ant_transit_width[i, j]*3)
-            idxr = np.searchsorted(
-                tvis, ant_transit_time[i, j]+ant_transit_width[i, j]*3)
-
-            autocorr_gains_off[i, j] = np.nanmedian(
-                np.concatenate(
-                    (vis[i, :idxl, :, j], vis[i, idxr:, :, j]), axis=0))
-
-            print('{0} {1}: on {2:.2f}'.format(
-                antenna_order[i], 'A' if j == 0 else 'B', ant_gains_on[i, j]))
+            if not halfpower:
+                offbins_before[i, j] = np.searchsorted(
+                    time, ant_transit_time[i, j]-ant_transit_width[i, j]*3)
+                offbins_after[i, j] = len(time)-np.searchsorted(
+                    time, ant_transit_time[i, j]+ant_transit_width[i, j]*3)
+                idxl = np.searchsorted(
+                    tvis, ant_transit_time[i, j]-ant_transit_width[i, j]*3)
+                idxr = np.searchsorted(
+                    tvis, ant_transit_time[i, j]+ant_transit_width[i, j]*3)
+                autocorr_gains_off[i, j] = np.nanmedian(
+                    np.concatenate(
+                        (vis[i, :idxl, :, j], vis[i, idxr:, :, j]), axis=0))
+            else:
+                hwhm = np.sqrt(2*np.log(2))*ant_transit_width[i, j]
+                idxl = np.searchsorted(tvis, ant_transit_time[i, j]-hwhm)
+                idxr = np.searchsorted(tvis, ant_transit_time[i, j]+hwhm)
+                autocorr_gains_off[i, j] = np.nanmedian(
+                    np.concatenate(
+                        (vis[i, idxl-10:idxl+10, :, j],
+                         vis[i, idxr-10:idxr+10, :, j]), axis=0))
+            # print('{0} {1}: on {2:.2f}'.format(
+            #    antenna_order[i], 'A' if j == 0 else 'B', ant_gains_on[i, j]))
             if showplots:
                 ax[i].plot(time-time[0], _gauss(time-time[0], *params), '-',
                            color=ccyc[j],
@@ -576,7 +585,10 @@ def calculate_sefd(msname, cal, fmin=None, fmax=None,
                 ax[i].set_ylabel("Unnormalized power")
 
     ant_gains = ant_gains_on/cal.I
-    sefds = autocorr_gains_off/ant_gains
+    if halfpower:
+        sefds = autocorr_gains_off/(ant_gains/2)
+    else:
+        sefds = autocorr_gains_off/ant_gains
 
     return sefds, ant_gains, ant_transit_time
 
