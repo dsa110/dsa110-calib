@@ -665,6 +665,62 @@ def caltable_to_etcd(msname, calname, antenna_order, caltime, status,
 
         de.put_dict('/mon/cal/{0}'.format(antnum), dd)
 
+def get_antenna_gains(gains, ant1, ant2, refant=0):
+    """Calculates antenna gains, g_i, from CASA table of G_ij=g_i g_j*.
+
+    Currently does not support baseline-based gains.
+    Refant only used for baseline-based case.
+    """
+    antennas = np.unique(np.concatenate((ant1, ant2)))
+    output_shape = list(gains.shape)
+    output_shape[0] = len(antennas)
+    antenna_gains = np.zeros(tuple(output_shape), dtype=gains.dtype)
+    if np.all(ant2 == ant2[0]):
+        # antenna-based calibration
+        refant = ant2[0]
+        gref = np.sqrt(np.abs(gains[ant1==refant]))
+        for i, ant in enumerate(antennas):
+            antenna_gains[i] = 1/gains[ant1==ant]#/gref
+    else:
+        assert len(antennas) == 3, ("Baseline-based only supported for trio of"
+                                    "antennas")
+        for i, ant in enumerate(antennas):
+            ant1idxs = np.where(ant1==ant)[0]
+            ant2idxs = np.where(ant2==ant)[0]
+            otheridx = np.where((ant1!=ant) & (ant2!=ant))[0][0]
+            # phase
+            sign = 1
+            idx_phase = np.where((ant1==ant) & (ant2==refant))[0]
+            if len(idx_phase) == 0:
+                idx_phase = np.where((ant2==refant) & (ant1==ant))[0]
+                assert len(idx_phase) == 1
+                sign = -1
+            # amplitude
+            if len(ant1idxs) == 2:
+                g01 = gains[ant1idxs[0]]
+                g20 = np.conjugate(gains[ant1idxs[1]])
+                if ant1[otheridx] == ant2[ant1idxs[1]]:
+                    g21 = gains[otheridx]
+                else:
+                    g21 = np.conjugate(gains[otheridx])
+            if len(ant1idxs) == 1:
+                g01 = gains[ant1idxs[0]]
+                g20 = gains[ant2idxs[0]]
+                if ant1[otheridx] == ant1[ant2idxs[0]]:
+                    g21 = gains[otheridx]
+                else:
+                    g21 = np.conjugate(gains[otheridx])
+            else:
+                g01 = np.conjugate(gains[ant2idxs[0]])
+                g20 = gains[ant2idxs[1]]
+                if ant1[otheridx] == ant1[ant2idxs[1]]:
+                    g21 = gains[otheridx]
+                else:
+                    g21 = np.conjugate(gains[otheridx])
+            antenna_gains[i] = (np.sqrt(np.abs(g01*g20/g21))*np.exp(
+                sign*1.0j*np.angle(gains[idx_phase])))**(-1)
+    return antennas, antenna_gains
+
 def write_beamformer_weights(msname, calname, antennas, outdir,
                              corr_list=None):
     """Writes weights for the beamformer.
@@ -716,31 +772,33 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
     if f_reversed:
         assert np.all(np.abs(fobs[::-1]-fweights.ravel())/fweights.ravel() < 1e-5)
 
-    # Way to be certain the solutions cover the corect frequency range?
-    # Think to do this, we have to read in the parameter file, which means
-    # being sure that dsa110-meridian-fs is up-to-date on the calibrator
-    # machine.
     gains, time, flags, ant1, ant2 = read_caltable(
         '{0}_{1}_gacal'.format(msname, calname), True)
     caltime = Time(np.median(time), format='mjd', precision=0)
     gains[flags] = np.nan
     gains = np.nanmean(gains, axis=1)
-    phases, _, flags, ant1p, _ = read_caltable(
+    phases, _, flags, ant1p, ant2p = read_caltable(
         '{0}_{1}_gpcal'.format(msname, calname), True)
     phases[flags] = np.nan
     phases = np.nanmean(phases, axis=1)
     assert np.all(ant1p == ant1)
-    bgains, _, flags, ant1ba, _ = read_caltable(
+    assert np.all(ant2p == ant2)
+    gantenna, gains = get_antenna_gains(gains*phases, ant1, ant2)
+    
+    bgains, _, flags, ant1, ant2  = read_caltable(
         '{0}_{1}_bacal'.format(msname, calname), True)
     bgains[flags] = np.nan
     bgains = np.nanmean(bgains, axis=1)
-    assert np.all(ant1ba == ant1)
-    bphases, _, flags, ant1bp, _ = read_caltable(
+    bphases, _, flags, ant1p, ant2p = read_caltable(
         '{0}_{1}_gpcal'.format(msname, calname), True)
     bphases[flags] = np.nan
     bphases = np.nanmean(bphases, axis=1)
-    assert np.all(ant1bp == ant1)
-    gains = gains*phases*bgains*bphases
+    assert np.all(ant1p == ant1)
+    assert np.all(ant2p == ant2)
+    bantenna, bgains = get_antenna_gains(bgains*bphases, ant1, ant2)
+    assert(np.all(bantenna == gantenna))
+    
+    gains = gains*bgains
     gains = gains.reshape(118, ncorr, -1, 2)
     nfint = gains.shape[2]//weights.shape[2]
     assert gains.shape[2]%weights.shape[2]==0

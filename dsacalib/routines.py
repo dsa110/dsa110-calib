@@ -486,19 +486,20 @@ def calculate_sefd(msname, cal, fmin=None, fmax=None,
     # Open the gain files and read in the gains
     gain, time, flag, ant1, ant2 = dmsio.read_caltable(
         '{0}_{1}_gacal'.format(msname, cal.name), cparam=True)
-    #flag = ~flag
-    #flag[flag < 0.5] = np.nan
-    #gain = np.abs(np.nanmean(gain*flag, axis=2)).squeeze(axis=2)
-    gain = np.abs(np.mean(gain, axis=2)).squeeze(axis=2)
-    #flag = flag.squeeze(axis=3)
-    if np.all(ant2==ant2[0]):
-        gain_idxs = [np.where(ant1==antenna)[0][0] for antenna in
-                     antenna_order]
-    else:
-        gain_idxs = [np.where((ant1==antenna) & (ant2==antenna))[0][0] for
-                     antenna in antenna_order]
-    gain = gain[gain_idxs, ...]
-    flag = flag[gain_idxs, ...]
+    gain[flag] = np.nan
+    # phase, _, flag, ant1p, ant2p = dmsio.read_caltable(
+    #     '{0}_{1}_gpcal'.format(msname, cal.name), cparam=True)
+    # phase[flag] = np.nan
+    # assert np.all(ant1p == ant1)
+    # assert np.all(ant2p == ant2)
+    # gain = gain*phase
+    antenna, gain = dmsio.get_antenna_gains(gain, ant1, ant2)
+    antenna = list(antenna)
+    idxs = [antenna.index(ant) for ant in antenna_order]
+    gain = gain[idxs, ...]
+    assert gain.shape[0] == nant
+    gain = np.abs(gain*np.conjugate(gain))
+    gain = np.abs(np.nanmean(gain, axis=2)).squeeze(axis=2)
     idxl = np.searchsorted(fvis, fmin) if fmin is not None else 0
     idxr = np.searchsorted(fvis, fmax) if fmax is not None else vis.shape[-2]
     if idxl < idxr:
@@ -590,7 +591,7 @@ def calculate_sefd(msname, cal, fmin=None, fmax=None,
     else:
         sefds = autocorr_gains_off/ant_gains
 
-    return sefds, ant_gains, ant_transit_time
+    return antenna_order, sefds, ant_gains, ant_transit_time
 
 def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
     """Calibrate dsa10 data.
