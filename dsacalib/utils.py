@@ -263,7 +263,7 @@ def mask_bad_pixels(vis, thresh=6.0, mask=None):
     vis = vis-np.median(vis, axis=1, keepdims=True)
     if mask is not None:
         vis = vis*mask.reshape(nbls, -1, npol)
-    std = np.std(vis, axis=1, keepdims=True)
+    std = np.std(np.abs(vis), axis=1, keepdims=True)
     good_pixels = np.abs(vis) < thresh*std
     fraction_flagged = 1 - good_pixels.sum(1)/good_pixels.shape[1]
     good_pixels = good_pixels.reshape(nbls, nt, nf, npol)

@@ -10,18 +10,27 @@ Routines to interact with CASA measurement sets and calibration tables.
 # Replace to_deg w/ astropy versions
 
 # Always import scipy before importing casatools.
+import shutil
+from scipy.interpolate import interp1d
 import os
 import numpy as np
 from pkg_resources import resource_filename
 import yaml
+import glob
 import scipy # pylint: disable=unused-import
 import casatools as cc
+from casatasks import importuvfits
+from casacore.tables import addImagingColumns, table
+from pyuvdata import UVData
 from dsautils import dsa_store
+import dsautils.dsa_syslog as dsl
 from dsautils import calstatus as cs
+from dsamfs.fringestopping import calc_uvw_blt
 import astropy.units as u
-from casacore.tables import table
+import astropy.constants as c
 from dsacalib import constants as ct
-from dsacalib.utils import get_antpos_itrf
+import dsacalib.utils as du
+from dsacalib.fringestopping import calc_uvw, amplitude_sky_model
 from antpos.utils import get_itrf
 from astropy.utils import iers
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
@@ -29,6 +38,9 @@ iers.conf.auto_max_age = None
 from astropy.time import Time # pylint: disable=wrong-import-position
 
 de = dsa_store.DsaStore()
+LOGGER = dsl.DsaSyslogger()
+LOGGER.subsystem("software")
+LOGGER.app("dsacalib")
 
 def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
                 freq, deltafreq, freqresolution, nchannels, integrationtime,
@@ -192,7 +204,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
                                axis=2)
     stoptime = '{0}s'.format(vis.shape[1]*tsamp*nint)
 
-    anum, xx, yy, zz = get_antpos_itrf(antpos)
+    anum, xx, yy, zz = du.get_antpos_itrf(antpos)
     # Sort the antenna positions
     idx_order = sorted([int(a)-1 for a in antenna_order])
     anum = np.array(anum)[idx_order]
@@ -297,8 +309,11 @@ def extract_vis_from_ms(msname, data='data'):
 
     time, vals, flags, ant1, ant2 = reshape_calibration_data(
         vals, flags, ant1, ant2, baseline, time, spw)
+    
+    with table('{0}.ms/FIELD'.format(msname)) as tb:
+        pt_dec =tb.PHASE_DIR[:][0][0][1]
 
-    return vals, time/ct.SECONDS_PER_DAY, fobs, flags, ant1, ant2
+    return vals, time/ct.SECONDS_PER_DAY, fobs, flags, ant1, ant2, pt_dec
 
 # def extract_vis_from_ms_old(msname, nbls, data='data'):
 #     """ Extracts visibilities from a CASA measurement set.
@@ -677,8 +692,8 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
     antenna_gains = np.zeros(tuple(output_shape), dtype=gains.dtype)
     if np.all(ant2 == ant2[0]):
         # antenna-based calibration
-        refant = ant2[0]
-        gref = np.sqrt(np.abs(gains[ant1==refant]))
+        # refant = ant2[0]
+        # gref = np.sqrt(np.abs(gains[ant1==refant]))
         for i, ant in enumerate(antennas):
             antenna_gains[i] = 1/gains[ant1==ant]#/gref
     else:
@@ -763,7 +778,13 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
             fweights[i, :] = fobs_corr.reshape(fweights.shape[1], -1).mean(axis=1)
     
     antpos_df = get_itrf()
-    x_itrf = antpos_df.loc[antennas]['dx_m'].astype(np.float32)
+    blen = np.zeros((len(antennas), 3))
+    for i, ant in enumerate(antennas):
+        blen[i, 0] = antpos_df['x_m'].loc[ant]-antpos_df['x_m'].loc[24]
+        blen[i, 1] = antpos_df['y_m'].loc[ant]-antpos_df['y_m'].loc[24]
+        blen[i, 2] = antpos_df['z_m'].loc[ant]-antpos_df['z_m'].loc[24]
+    bu, _, _ = calc_uvw(blen, 59000., 'HADEC', 0.*u.rad, 0.6*u.rad)
+    bu = bu.squeeze().astype(np.float32)
 
     with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
         fobs = np.array(tb.CHAN_FREQ[:])/1e9
@@ -784,26 +805,35 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
     assert np.all(ant1p == ant1)
     assert np.all(ant2p == ant2)
     gantenna, gains = get_antenna_gains(gains*phases, ant1, ant2)
-    
-    bgains, _, flags, ant1, ant2  = read_caltable(
-        '{0}_{1}_bacal'.format(msname, calname), True)
+
+    #bgains, _, flags, ant1, ant2  = read_caltable(
+    #    '{0}_{1}_bacal'.format(msname, calname), True)
+    #bgains[flags] = np.nan
+    #bgains = np.nanmean(bgains, axis=1)
+    #bphases, _, flags, ant1p, ant2p = read_caltable(
+    #    '{0}_{1}_bpcal'.format(msname, calname), True)
+    #bphases[flags] = np.nan
+    #bphases = np.nanmean(bphases, axis=1)
+    #assert np.all(ant1p == ant1)
+    #assert np.all(ant2p == ant2)
+    #bantenna, bgains = get_antenna_gains(bgains*bphases, ant1, ant2)
+    bgains, _, flags, ant1, ant2 = read_caltable(
+        '{0}_{1}_bcal'.format(msname, calname), True)
     bgains[flags] = np.nan
     bgains = np.nanmean(bgains, axis=1)
-    bphases, _, flags, ant1p, ant2p = read_caltable(
-        '{0}_{1}_gpcal'.format(msname, calname), True)
-    bphases[flags] = np.nan
-    bphases = np.nanmean(bphases, axis=1)
-    assert np.all(ant1p == ant1)
-    assert np.all(ant2p == ant2)
-    bantenna, bgains = get_antenna_gains(bgains*bphases, ant1, ant2)
+    bantenna, bgains = get_antenna_gains(bgains, ant1, ant2)
     assert(np.all(bantenna == gantenna))
     
     gains = gains*bgains
+    print(gains.shape)
+    gains = gains.reshape(118, -1, 2)
+    if f_reversed:
+        print(gains.shape)
+        gains = gains[:, ::-1, :]
     gains = gains.reshape(118, ncorr, -1, 2)
     nfint = gains.shape[2]//weights.shape[2]
     assert gains.shape[2]%weights.shape[2]==0
-    if f_reversed:
-        gains = gains[:, :, ::-1, :]
+
     gains = np.nanmean(gains.reshape(gains.shape[0], gains.shape[1], -1, nfint,
                                      gains.shape[3]), axis=3)
     if not np.all(ant2==ant2[0]):
@@ -814,11 +844,252 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
         if antid+1 in antennas:
             idx = np.where(antennas==antid+1)[0][0]
             weights[:, idx, ...] = gains[i, ...]
+    
+    # interpolate over missing values
+    med = np.nanmedian(weights, axis=2, keepdims=True)
+    std = np.nanstd(weights.real, axis=2, keepdims=True)+1j*np.std(
+        weights.imag, axis=2, keepdims=True)
+    weights[np.abs((weights-med).real) > 3*std.real] = np.nan
+    weights[np.abs((weights-med).imag) > 3*std.imag] = np.nan
+    for i in range(weights.shape[0]):
+        for j in range(weights.shape[1]):
+            for k in range(weights.shape[-1]):
+                idx = np.where(np.isnan(weights[i, j, :, k]))[0]
+                if len(idx) > 0:
+                    x = np.where(~np.isnan(weights[i, j, :, k]))[0]
+                    if len(x) > 24:
+                        fr = interp1d(x, weights[i, j, x, k].real, bounds_error=False, kind='nearest')
+                        fi = interp1d(x, weights[i, j, x, k].imag, bounds_error=False, kind='nearest')
+                        weights[i, j, idx, k] = fr(idx) + 1j*fi(idx)
     weights[np.isnan(weights)] = 0.
+    weights = np.conjugate(weights)
+
     for i, corr_idx in enumerate(corr_list):
         wcorr = weights[i, ...].view(np.float32).flatten()
-        wcorr = np.concatenate([x_itrf, wcorr], axis=0)
+        wcorr = np.concatenate([bu, wcorr], axis=0)
         fname = '{0}/beamformer_weights_corr{1:02d}'.format(outdir, corr_idx)
         with open('{0}.dat'.format(fname), 'wb') as f:
             f.write(bytes(wcorr))
         os.link('{0}.dat'.format(fname), '{0}_{1}.dat'.format(fname, caltime.isot))
+
+def convert_calibrator_pass_to_ms(filenames, duration, msdir='/mnt/data/dsa110/msfiles/', hdf5dir='/mnt/data/dsa110/'):
+    for date in filenames.keys():
+        for calname in filenames[date].keys():
+            msname = '{0}/{1}_{2}'.format(msdir, date, calname)
+            cal = filenames[date][calname]['cal']
+            print(date, calname, len(filenames[date][calname]['files']))
+            if len(filenames[date][calname]['files']) == 1:
+                uvh5_to_ms(
+                    sorted(glob.glob('{0}/corr??/{1}*.hdf5'.format(hdf5dir, filenames[date][calname]['files'][0][:-2]))),
+                    msname,
+                    ra=cal.ra,
+                    dec=cal.dec,
+                    flux=cal.I,
+                    dt=duration
+                )
+                LOGGER.info('Wrote {0}.ms'.format(msname))
+            elif len(filenames[date][calname]['files']) > 0:
+                msnames = []
+                for filename in filenames[date][calname]['files']:
+                    try:
+                        uvh5_to_ms(
+                            sorted(glob.glob('{0}/corr??/{1}*.hdf5'.format(hdf5dir, filename[:-2]))),
+                            '{0}/{1}'.format(msdir, filename),
+                            ra=cal.ra,
+                            dec=cal.dec,
+                            flux=cal.I,
+                            dt=duration
+                        )
+                        msnames += ['{0}/{1}'.format(msdir, filename)]
+                    except ValueError:
+                        pass
+                if os.path.exists('{0}.ms'.format(msname)):
+
+                    for root, dirs, files in os.walk('{0}.ms'.format(msname),
+                                                     topdown=False):
+                        for name in files:
+                            os.unlink(os.path.join(root, name))
+                    shutil.rmtree('{0}.ms'.format(msname))
+                virtualconcat(msnames, '{0}.ms'.format(msname))
+                LOGGER.info('Wrote {0}.ms'.format(msname))
+            else:
+                LOGGER.info('No data for {0} transit on {1}'.format(date, calname))
+
+def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
+               flux=None):
+    """
+    Converts a uvh5 data to a uvfits file.
+
+    Parameters
+    ----------
+    fname : str
+        The full path to the uvh5 data file.
+    ra : astropy quantity
+        The RA at which to phase the data. If None, will phase at the meridian
+        of the center of the uvh5 file.
+    dec : astropy quantity
+        The DEC at which to phase the data. If None, will phase at the pointing
+        declination.
+    dt : astropy quantity
+        Duration of data to extract. If None, will extract the entire file.
+    """
+    zenith_dec = 0.6503903199825691*u.rad
+    UV = UVData()
+    # Read in the data
+    if antenna_list is not None:
+        UV.read(fname, file_type='uvh5', antenna_names=antenna_list,
+                run_check_acceptability=False, strict_uvw_antpos_check=False)
+    else:
+        UV.read(fname, file_type='uvh5', run_check_acceptability=False,
+                strict_uvw_antpos_check=False)
+    pt_dec = UV.extra_keywords['phase_center_dec']*u.rad
+    lamb = c.c/(UV.freq_array*u.Hz)
+    if ra is None:
+        ra = UV.lst_array[UV.Nblts//2]*u.rad
+    if dec is None:
+        dec = pt_dec
+
+    if dt is not None:
+        extract_times(UV, ra, dt)
+    time = Time(UV.time_array, format='jd')
+    
+    # Set antenna positions 
+    # This should already be done by the writer but for some reason they 
+    # are being converted to ICRS
+    df_itrf = get_itrf(height=UV.telescope_location_lat_lon_alt[-1])
+    UV.antenna_positions = np.array([df_itrf['x_m'], df_itrf['y_m'],
+                                     df_itrf['z_m']]).T-UV.telescope_location
+    blen = np.zeros((UV.Nbls, 3))
+    for i, ant1 in enumerate(UV.ant_1_array[:UV.Nbls]):
+        ant2 = UV.ant_2_array[i]
+        blen[i, ...] = UV.antenna_positions[ant2, :] - \
+            UV.antenna_positions[ant1, :]
+
+    uvw_m = calc_uvw_blt(blen, time[:UV.Nbls].mjd, 'HADEC',
+                         np.zeros(UV.Nbls)*u.rad, np.ones(UV.Nbls)*pt_dec)
+    uvw_z = calc_uvw_blt(blen, time[:UV.Nbls].mjd, 'HADEC',
+                         np.zeros(UV.Nbls)*u.rad, np.ones(UV.Nbls)*zenith_dec)
+    dw = (uvw_z[:, -1] - uvw_m[:, -1])*u.m
+    phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis])
+                         .to_value(u.dimensionless_unscaled))
+    UV.uvw_array = np.tile(uvw_z[np.newaxis, :, :], (UV.Ntimes, 1, 1)
+                       ).reshape(-1, 3)
+    UV.data_array = (UV.data_array.reshape(UV.Ntimes, UV.Nbls, UV.Nspws,
+                                           UV.Nfreqs, UV.Npols)
+                     /phase_model[np.newaxis, ..., np.newaxis]).reshape(
+        UV.Nblts, UV.Nspws, UV.Nfreqs, UV.Npols)
+
+    # Use antenna positions since CASA uvws are slightly off from pyuvdatas
+    # UV.phase(ra.to_value(u.rad), dec.to_value(u.rad), use_ant_pos=True)
+    # Below is the manual calibration which can be used instead. 
+    # Currently using because casa uvws are more accurate than pyuvdatas
+    blen = np.tile(blen[np.newaxis, :, :], (UV.Ntimes, 1, 1)).reshape(-1, 3)
+    uvw = calc_uvw_blt(blen, time.mjd, 'RADEC', ra.to(u.rad), dec.to(u.rad))
+    dw = (uvw[:, -1] - np.tile(uvw_m[np.newaxis, :, -1], (UV.Ntimes, 1)
+                             ).reshape(-1))*u.m
+    phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis])
+                         .to_value(u.dimensionless_unscaled))
+    UV.uvw_array = uvw
+    UV.data_array = UV.data_array/phase_model[..., np.newaxis]
+    UV.phase_type = 'phased'
+    UV.phase_center_dec = dec.to_value(u.rad)
+    UV.phase_center_ra = ra.to_value(u.rad)
+    UV.phase_center_epoch = 2000.
+    # Look for missing channels
+    freq = UV.freq_array.squeeze()
+    # The channels may have been reordered by pyuvdata so check that the
+    # parameter UV.channel_width makes sense now.
+    ascending = np.median(np.diff(freq)) > 0
+    if ascending:
+        assert np.all(np.diff(freq) > 0)
+        if UV.channel_width < 0:
+            UV.channel_width *= -1
+    else:
+        assert np.all(np.diff(freq) < 0)
+        if UV.channel_width > 0:
+            UV.channel_width *= -1
+    # Are there missing channels?
+    if not np.all(np.diff(freq)-UV.channel_width < 1e-5):
+        # There are missing channels!
+        nfreq = int(np.rint(np.abs(freq[-1]-freq[0])/UV.channel_width+1))
+        freq_out = freq[0] + np.arange(nfreq)*UV.channel_width
+        existing_idxs = np.rint((freq-freq[0])/UV.channel_width).astype(int)
+        data_out = np.zeros((UV.Nblts, UV.Nspws, nfreq, UV.Npols),
+                            dtype=UV.data_array.dtype)
+        nsample_out = np.zeros((UV.Nblts, UV.Nspws, nfreq, UV.Npols),
+                                dtype=UV.nsample_array.dtype)
+        flag_out = np.zeros((UV.Nblts, UV.Nspws, nfreq, UV.Npols),
+                             dtype=UV.flag_array.dtype)
+        data_out[:, :, existing_idxs, :] = UV.data_array
+        nsample_out[:, :, existing_idxs, :] = UV.nsample_array
+        flag_out[:, :, existing_idxs, :] = UV.flag_array
+        # Now write everything
+        UV.Nfreqs = nfreq
+        UV.freq_array = freq_out[np.newaxis, :]
+        UV.data_array = data_out
+        UV.nsample_array = nsample_out
+        UV.flag_array = flag_out
+
+    if os.path.exists('{0}.fits'.format(msname)):
+        os.remove('{0}.fits'.format(msname))
+
+    UV.write_uvfits('{0}.fits'.format(msname),
+                    spoof_nonessential=True)
+    # Get the model to write to the data
+    if flux is not None:
+        fobs = UV.freq_array.squeeze()/1e9
+        lst = UV.lst_array
+        model = amplitude_sky_model(du.src('cal', ra, dec, flux),
+                                    lst, pt_dec, fobs)
+        model = np.tile(model[:, :, np.newaxis], (1, 1, UV.Npols))
+    else:
+        model = np.ones((UV.Nblts, UV.Nfreqs, UV.Npols), dtype=np.complex64)
+
+    if os.path.exists('{0}.ms'.format(msname)):
+        shutil.rmtree('{0}.ms'.format(msname))
+    importuvfits('{0}.fits'.format(msname),
+                 '{0}.ms'.format(msname))
+
+    # Changes these to use casacore instead
+    with table('{0}.ms/ANTENNA'.format(msname), readonly=False) as tb:
+        tb.putcol('POSITION',
+              np.array([df_itrf['x_m'], df_itrf['y_m'], df_itrf['z_m']]).T)
+
+    addImagingColumns('{0}.ms'.format(msname))
+    with table('{0}.ms'.format(msname), readonly=False) as tb:
+        tb.putcol('MODEL_DATA', model)
+        tb.putcol('CORRECTED_DATA', tb.getcol('DATA')[:])
+
+def extract_times(UV, ra, dt):
+    """Extracts specified times from the UVData instance.
+    """
+    lst_min = (ra - (dt*2*np.pi*u.rad/(ct.SECONDS_PER_SIDEREAL_DAY*u.s))/2
+              ).to_value(u.rad)%(2*np.pi)
+    lst_max = (ra + (dt*2*np.pi*u.rad/(ct.SECONDS_PER_SIDEREAL_DAY*u.s))/2
+              ).to_value(u.rad)%(2*np.pi)
+    if lst_min < lst_max:
+        idx_to_extract = np.where((UV.lst_array >= lst_min) &
+                                  (UV.lst_array <= lst_max))[0]
+    else:
+        idx_to_extract = np.where((UV.lst_array >= lst_min) |
+                                  (UV.lst_array <= lst_max))[0]
+    if len(idx_to_extract) == 0:
+        raise ValueError("No times in uvh5 file match requested timespan "
+                         "with duration {0} centered at RA {1}.".format(
+                         dt, ra))
+    idxmin = min(idx_to_extract)
+    idxmax = max(idx_to_extract)+1
+    assert (idxmax-idxmin)%UV.Nbls == 0
+    UV.uvw_array = UV.uvw_array[idxmin:idxmax, ...]
+    UV.data_array = UV.data_array[idxmin:idxmax, ...]
+    UV.time_array = UV.time_array[idxmin:idxmax, ...]
+    UV.lst_array = UV.lst_array[idxmin:idxmax, ...]
+    UV.nsample_array = UV.nsample_array[idxmin:idxmax, ...]
+    UV.flag_array = UV.flag_array[idxmin:idxmax, ...]
+    UV.ant_1_array = UV.ant_1_array[idxmin:idxmax, ...]
+    UV.ant_2_array = UV.ant_2_array[idxmin:idxmax, ...]
+    UV.baseline_array = UV.baseline_array[idxmin:idxmax, ...]
+    UV.integration_time = UV.integration_time[idxmin:idxmax, ...]
+    UV.Nblts = int(idxmax-idxmin)
+    assert UV.data_array.shape[0]==UV.Nblts
+    UV.Ntimes = UV.Nblts//UV.Nbls

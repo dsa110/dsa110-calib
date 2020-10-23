@@ -258,6 +258,8 @@ def visibility_sky_model(vis_shape, vis_dtype, blen, sources, tobs, fobs, lst,
         The modelled complex visibilities, dimensions (directions, baselines,
         time, frequency, polarization).
     """
+    # Something seriously wrong here.
+    raise NotImplementedError
     fobs, tobs, blen = set_dimensions(fobs, tobs, blen)
     bws = np.zeros((len(sources), len(blen), len(tobs), 1, 1))
     famps = np.zeros((len(sources), 1, len(tobs), len(fobs), 1))
