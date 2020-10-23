@@ -571,24 +571,28 @@ def plot_antenna_delays(msname, calname, plabels=None, outname=None, show=True):
     nant = len(antenna_order)
 
     val_to_plot = (antenna_delays - kcorr).squeeze(axis=3).mean(axis=2)
-    idx_to_plot = np.where(np.abs(val_to_plot.reshape(nant, -1).mean(1))
-                           > 1e-10)[0]
+    mean_along_time = np.abs(val_to_plot.reshape(nant, -1, npol).mean(1))
+    idx_to_plot = np.where(
+        (mean_along_time[..., 0] > 1e-10) |
+        (mean_along_time[..., 1] > 1e-10))[0]
     tplot = (times-times[0])*ct.SECONDS_PER_DAY/60.
-    _, ax = plt.subplots(1, 1, figsize=(10, 8))
+    ny = max(len(idx_to_plot)//10+1, 2)
+    _, ax = plt.subplots(ny, 1, figsize=(10, 8*ny))
     lcyc = ['.', 'x']
     for i, bidx in enumerate(idx_to_plot):
         for j in range(npol):
-            ax.plot(tplot, val_to_plot[bidx, :, j],
+            ax[i//10].plot(tplot, val_to_plot[bidx, :, j],
                     marker=lcyc[j%len(lcyc)],
                     label='{0} {1}'.format(antenna_order[bidx]+1, plabels[j]),
                     alpha=0.5, color=ccyc[i%len(ccyc)])
-    ax.set_ylim(-5, 5)
-    ax.set_ylabel('delay (ns)')
-    ax.legend(ncol=len(idx_to_plot)//15+1, fontsize='small',
-              bbox_to_anchor=(1.05, 1), loc='upper left')
-    ax.set_xlabel('time (min)')
-    ax.axhline(1.5)
-    ax.axhline(-1.5)
+    for i in range(ny):
+        ax[i].set_ylim(-5, 5)
+        ax[i].set_ylabel('delay (ns)')
+        ax[i].legend(ncol=len(idx_to_plot)//15+1, fontsize='small',
+                  bbox_to_anchor=(1.05, 1), loc='upper left')
+        ax[i].set_xlabel('time (min)')
+        ax[i].axhline(1.5)
+        ax[i].axhline(-1.5)
     if outname is not None:
         plt.savefig('{0}_antdelays.png'.format(outname))
     if not show:
@@ -750,13 +754,13 @@ def plot_bandpass(msname, calname,
         fobs_plot = fobs.copy()
 
     if np.all(ant2==ant2[0]):
-        labels = ant1
+        labels = ant1+1
     else:
-        labels = np.array([ant1, ant2]).T
+        labels = np.array([ant1+1, ant2+1]).T
     nant = len(ant1)
 
-    idxs_to_plot = np.where(np.abs(bpass.reshape(nant, -1).mean(1)-1) >
-                            1e-10)[0]
+    idxs_to_plot = np.where(np.abs(np.abs(bpass).reshape(nant, -1).mean(1)-1) >
+                            1e-5)[0]
 
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
     lcyc = ['-', ':']
@@ -772,7 +776,7 @@ def plot_bandpass(msname, calname,
     ax[0].set_xlabel('freq (GHz)')
     ax[1].set_xlabel('freq (GHz)')
     ax[0].set_ylabel('B cal amp')
-    ax[1].set_ylabel('B cal phase')
+    ax[1].set_ylabel('B cal phase (rad)')
     ax[0].legend(ncol=3, fontsize='small')
     if outname is not None:
         plt.savefig('{0}_bandpass.png'.format(outname))
@@ -780,3 +784,42 @@ def plot_bandpass(msname, calname,
         plt.close()
 
     return bpass, fobs, labels
+
+def plot_autocorr(UV):
+    freq = UV.freq_array.squeeze()
+    ant1 = UV.ant_1_array.reshape(UV.Ntimes, -1)[0, :]
+    ant2 = UV.ant_2_array.reshape(UV.Ntimes, -1)[0, :]
+    time = UV.time_array.reshape(UV.Ntimes, -1)[:, 0]
+    vis = UV.data_array.reshape(UV.Ntimes, -1, UV.Nfreqs, UV.Npols)
+    #tdiff = np.diff(time)
+    #assert np.all(tdiff==tdiff[0])
+    autocorrs = np.where(ant1==ant2)[0]
+    ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    fig, ax = plt.subplots(len(autocorrs)//len(ccyc)+1, 1,
+                           figsize=(8, 4*len(autocorrs)//len(ccyc)+1),
+                           sharex=True, sharey=True)
+    for j in range(len(autocorrs)//len(ccyc)+1):
+        for i, ac in enumerate(autocorrs[len(ccyc)*j:len(ccyc)*(j+1)]):
+            ax[j].plot(freq.squeeze()/1e9, np.abs(np.nanmean(vis[:, ac, ..., 0],axis=0)), alpha=0.5, 
+                     color = ccyc[i%len(ccyc)], ls='-', label=ant1[ac]+1)
+            ax[j].plot(freq.squeeze()/1e9, np.abs(np.nanmean(vis[:, ac, ..., 1],axis=0)), alpha=0.5, 
+                     color = ccyc[i%len(ccyc)], ls=':')
+        ax[j].legend()
+        #ax[j].set_xlim(1.325, 1.550)
+    ax[-1].set_xlabel('freq (GHz)')
+        #plt.setp(ax[j].get_xticklabels(),visible=True)
+    plt.subplots_adjust(hspace=0)
+    
+    fig, ax = plt.subplots(len(autocorrs)//len(ccyc)+1, 1,
+                           figsize=(8, 4*len(autocorrs)//len(ccyc)+1),
+                           sharex=True, sharey=True)
+    for j in range(len(autocorrs)//len(ccyc)+1):
+        for i, ac in enumerate(autocorrs[len(ccyc)*j:len(ccyc)*(j+1)]):
+            ax[j].plot((time-time[0])*24*60, np.abs(vis[:, ac, ..., 0].mean(axis=1)), alpha=0.5, 
+                     color = ccyc[i%len(ccyc)], ls='-', label=ant1[ac]+1)
+            ax[j].plot((time-time[0])*24*60, np.abs(vis[:, ac, ..., 1].mean(axis=1)), alpha=0.5, 
+                     color = ccyc[i%len(ccyc)], ls=':')
+        ax[j].legend()
+    ax[-1].set_xlabel('time (min)')
+        #plt.setp(ax[j].get_xticklabels(),visible=True)
+    plt.subplots_adjust(hspace=0)

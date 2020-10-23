@@ -42,10 +42,10 @@ def delay_calibration(msname, sourcename, refant, t='inf', combine_spw=False,
         The number of errors that occured during calibration.
     """
     if combine_spw:
-        combine = 'spw'
+        combine = 'field,scan,obs,spw'
         spwmap = [0]*nspw
     else:
-        combine = ''
+        combine = 'field,scan,obs'
         spwmap = [-1]
     error = 0
     cb = cc.calibrater()
@@ -91,14 +91,14 @@ def gain_calibration(msname, sourcename, tga, tgp, refant, combine_spw=False,
         The number of errors that occured during calibration.
     """
     if combine_spw:
-        combine = 'spw'
+        combine = 'field,scan,obs,spw'
         spwmap = [0]*nspw
     else:
-        combine = ''
+        combine = 'field,scan,obs'
         spwmap = [-1]
     caltables = [{'table': '{0}_{1}_kcal'.format(msname, sourcename),
                   'type': 'K', 
-                   'spwmap': spwmap}]
+                  'spwmap': spwmap}]
     error = 0
     # Solve for bandpass calibration
     cb = cc.calibrater()
@@ -126,11 +126,42 @@ def gain_calibration(msname, sourcename, tga, tgp, refant, combine_spw=False,
                     'type': 'M' if blbased else 'G',
                     'spwmap': spwmap}]
     error += apply_calibration_tables(cb, caltables)
-    error += not cb.setsolve(type='M', combine=combine,
+    error += not cb.setsolve(type='M' if blbased else 'G', combine=combine,
                              table='{0}_{1}_gacal'.format(msname, sourcename),
                              t=tga, refant=refant, apmode='a')
     error += not cb.solve()
     error += not cb.close()
+
+    # Solve for bandpass calibration again
+    caltables = [{'table': '{0}_{1}_kcal'.format(msname, sourcename),
+                  'type': 'K', 
+                  'spwmap': spwmap}]
+    caltables += [{'table': '{0}_{1}_gpcal'.format(msname, sourcename),
+                    'type': 'M' if blbased else 'G',
+                    'spwmap': spwmap}]
+    caltables += [{'table': '{0}_{1}_gacal'.format(msname, sourcename),
+                    'type': 'M' if blbased else 'G',
+                    'spwmap': spwmap}]
+    
+    cb = cc.calibrater()
+    error += not cb.open('{0}.ms'.format(msname))
+    error += apply_calibration_tables(cb, caltables)
+    error += not cb.setsolve(type='MF' if blbased else 'B', combine=combine,
+                             table='{0}_{1}_bcal'.format(msname, sourcename),
+                             refant=refant, apmode='ap', solnorm=True)
+    error += not cb.solve()
+    error += not cb.close()
+#     caltables += [{'table': '{0}_{1}_bpcal'.format(msname, sourcename),
+#                    'type': 'MF' if blbased else 'B',
+#                    'spwmap': spwmap}]
+#     cb = cc.calibrater()
+#     error += not cb.open('{0}.ms'.format(msname))
+#     error += apply_calibration_tables(cb, caltables)
+#     error += not cb.setsolve(type='MF' if blbased else 'B', combine=combine,
+#                              table='{0}_{1}_bacal'.format(msname, sourcename),
+#                              refant=refant, apmode='a', solnorm=True)
+#     error += not cb.solve()
+#     error += not cb.close()
 
     return error
 
@@ -169,12 +200,55 @@ def flag_antenna(msname, antenna, datacolumn='data', pol=None):
     error += not ag.open('{0}.ms'.format(msname))
     error += not ag.selectdata()
     rec = {}
-    rec['mode'] = 'clip'
-    rec['clipoutside'] = False
+    rec['mode'] = 'manual'
+    #rec['clipoutside'] = False
     rec['datacolumn'] = datacolumn
     rec['antenna'] = antenna
     if pol is not None:
-        rec['polarization_type'] = 'XX' if pol == 'A' else 'YY'
+        rec['correlation'] = 'XX' if pol == 'A' else 'YY'
+    else:
+        rec['correlation'] = 'XX,YY'
+    error += not ag.parseagentparameters(rec)
+    error += not ag.init()
+    error += not ag.run()
+    error += not ag.done()
+
+    return error
+
+def flag_baselines(msname, datacolumn='data', uvrange='2~15m'):
+    """Flags an antenna in a measurement set using CASA.
+
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set.  The MS `msname`.ms will be opened.
+    antenna : str
+        The antenna to flag. If type *str*, this is the name of the antenna. If
+        type *int*, the index of the antenna in the measurement set.
+    datacolumn : str
+        The column of the measurement set to flag. Options are ``'data'``,
+        ``'model'``, ``'corrected'`` for the uncalibrated visibilities, the
+        visibility model (used by CASA to calculate calibration solutions), the
+        calibrated visibilities.  Defaults to ``'data'``.
+    pol : str
+        The polarization to flag. Must be `'A'` (which is mapped to
+        polarization 'XX' of the CASA measurement set) or `'B'` (mapped to
+        polarization 'YY').  Can also be `None`, for which both polarizations
+        are flagged.  Defaults to `None`.
+
+    Returns
+    -------
+    error : int
+        The number of errors that occured during calibration.
+    """
+    error = 0
+    ag = cc.agentflagger()
+    error += not ag.open('{0}.ms'.format(msname))
+    error += not ag.selectdata()
+    rec = {}
+    rec['mode'] = 'manual'
+    rec['datacolumn'] = datacolumn
+    rec['uvrange'] = uvrange
     error += not ag.parseagentparameters(rec)
     error += not ag.init()
     error += not ag.run()
@@ -409,9 +483,9 @@ def get_bad_times(msname, sourcename, refant, tint='59s', combine_spw=False,
         The number of errors that occured during calibration.
     """
     if combine_spw:
-        combine = 'spw'
+        combine = 'field,scan,obs,spw'
     else:
-        combine = ''
+        combine = 'field,scan,obs'
     error = 0
     # Solve the calibrator data on minute timescales
     cb = cc.calibrater()
@@ -618,11 +692,12 @@ def calibrate_gain(msname, calname, caltable_prefix, refant, tga, tgp, blbased=F
     if combined:
         spwmap = [0]
     else:
-        spwmap = [i]
+        spwmap = [-1]
     if blbased:
         gtype = 'M'
     else:
         gtype = 'G'
+    combine='scan,field,obs'
     caltables = [{'table': '{0}_kcal'.format(caltable_prefix),
                   'type': 'K',
                   'spwmap': spwmap},
@@ -633,7 +708,7 @@ def calibrate_gain(msname, calname, caltable_prefix, refant, tga, tgp, blbased=F
     cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     error += apply_calibration_tables(cb, caltables)
-    error += not cb.setsolve(type=gtype,
+    error += not cb.setsolve(type=gtype, combine=combine,
                              table='{0}_{1}_gpcal'.format(msname, calname),
                              t=tgp, minblperant=1, refant=refant, apmode='p')
     error += not cb.solve()
@@ -644,7 +719,7 @@ def calibrate_gain(msname, calname, caltable_prefix, refant, tga, tgp, blbased=F
                    'type': gtype,
                    'spwmap': spwmap}]
     error += apply_calibration_tables(cb, caltables)
-    error += not cb.setsolve(type=gtype,
+    error += not cb.setsolve(type=gtype, combine=combine,
                              table='{0}_{1}_gacal'.format(msname, calname),
                              t=tga, minblperant=1, refant=refant, apmode='a')
     error += not cb.solve()
