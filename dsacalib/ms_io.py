@@ -19,7 +19,7 @@ import yaml
 import glob
 import scipy # pylint: disable=unused-import
 import casatools as cc
-from casatasks import importuvfits
+from casatasks import importuvfits, virtualconcat
 from casacore.tables import addImagingColumns, table
 from pyuvdata import UVData
 from dsautils import dsa_store
@@ -362,7 +362,10 @@ def read_caltable(tablename, cparam=False):
     """Requires that each spw has the same number of frequency channels.
     """
     with table(tablename) as tb:
-        spw = np.array(tb.SPECTRAL_WINDOW_ID[:])
+        try:
+            spw = np.array(tb.SPECTRAL_WINDOW_ID[:])
+        except AttributeError:
+            spw = np.array([0])
         time = np.array(tb.TIME[:])
         if cparam:
             vals = np.array(tb.CPARAM[:])
@@ -521,7 +524,7 @@ def reshape_calibration_data(vals, flags, ant1, ant2, baseline, time, spw):
 
 #     return time, vals, flags
 
-def caltable_to_etcd(msname, calname, antenna_order, caltime, status,
+def caltable_to_etcd(msname, calname, caltime, status,
                      pols=None):
     r"""Copies calibration values from delay and gain tables to etcd.
 
@@ -539,27 +542,35 @@ def caltable_to_etcd(msname, calname, antenna_order, caltime, status,
     calname : str
         The calibrator name.  Will open the calibration tables
         `msname`\_`calname`\_kcal and `msname`\_`calname`\_gcal_ant.
-    antenna_order : list or array
-        The antenna numbers, in CASA ordering.
     baseline_cal : boolean
         Set to ``True`` if the gain table was calculated using baseline-based
         calibration, ``False`` if the gain table was calculated using
         antenna-based calibration. Defaults ``False``.
     pols : list
         The names of the polarizations. If ``None``, will be set to
-        ``['A', 'B']``. Defaults ``None``.
+        ``['B', 'A']``. Defaults ``None``.
     """
     if pols is None:
-        pols = ['A', 'B']
+        pols = ['B', 'A']
 
     try:
         # Complex gains for each antenna.
         amps, tamp, flags, ant1, ant2 = read_caltable(
-            '{0}_{1}_gcal_ant'.format(msname, calname), cparam=True)
+            '{0}_{1}_gacal'.format(msname, calname),
+            cparam=True
+        )
         mask = np.ones(flags.shape)
         mask[flags == 1] = np.nan
         amps = amps*mask
-        # Change to use the new reading
+        
+        phase, tphase, flags, ant1, ant2 = read_caltable(
+            '{0}_{1}_gacal'.format(msname, calname),
+            cparam=True
+        )
+        mask = np.ones(flags.shape)
+        mask[flags == 1] = np.nan
+        phase = phase*mask
+
         if np.all(ant2 == ant2[0]):
             antenna_order_amps = ant1
         if not np.all(ant2 == ant2[0]):
@@ -569,24 +580,37 @@ def caltable_to_etcd(msname, calname, antenna_order, caltime, status,
             antenna_order_amps = ant1[idxs]
 
         # Check the output shapes.
+        print(tamp.shape, amps.shape)
         assert amps.shape[0] == len(antenna_order_amps)
         assert amps.shape[1] == tamp.shape[0]
         assert amps.shape[2] == 1
         assert amps.shape[3] == 1
         assert amps.shape[4] == len(pols)
 
-        amps = np.nanmedian(amps.squeeze(axis=2).squeeze(axis=2), axis=1)
+        amps = np.nanmedian(
+            amps.squeeze(axis=2).squeeze(axis=2),
+            axis=1
+        )*np.nanmedian(
+            phase.squeeze(axis=2).squeeze(axis=2),
+            axis=1
+        )
         tamp = np.median(tamp)
         gaincaltime_offset = (tamp-caltime)*ct.SECONDS_PER_DAY
 
-    except Exception:
+    except Exception as e:
         tamp = np.nan
         amps = np.ones((0, len(pols)))*np.nan
         gaincaltime_offset = 0.
         antenna_order_amps = np.zeros(0, dtype=np.int)
-        status = cs.update(status, ['gain_tbl_err', 'inv_gainamp_p1',
-                                    'inv_gainamp_p2', 'inv_gainphase_p1',
-                                    'inv_gainphase_p2', 'inv_gaincaltime'])
+        status = cs.update(
+            status,
+            cs.GAIN_TBL_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_GAINCALTIME
+        )
 
     # Delays for each antenna.
     try:
@@ -611,12 +635,20 @@ def caltable_to_etcd(msname, calname, antenna_order, caltime, status,
         tdel = np.nan
         delays = np.ones((0, len(pols)))*np.nan
         delaycaltime_offset = 0.
-        status = cs.update(status, ['delay_tbl-err', 'inv_delay_p1',
-                                    'inv_delay_p2', 'inv_delaycaltime'])
+        status = cs.update(
+            status,
+            cs.DELAY_TBL_ERR |
+            cs.INV_DELAY_P1 |
+            cs.INV_DELAY_P2 |
+            cs.INV_DELAYCAL_TIME
+        )
         antenna_order_delays = np.zeros(0, dtype=np.int)
 
-    antenna_order = np.unique(np.array([antenna_order_amps,
-                                        antenna_order_delays]))
+    antenna_order = np.unique(
+        np.array([antenna_order_amps,
+                  antenna_order_delays])
+    )
+
     for antnum in antenna_order:
 
         # Everything needs to be cast properly.
@@ -628,8 +660,8 @@ def caltable_to_etcd(msname, calname, antenna_order, caltime, status,
             idx = np.where(antenna_order_amps == antnum)[0][0]
             for amp in amps[idx, :]:
                 if not np.isnan(amp):
-                    gainamp += [np.abs(amp)]
-                    gainphase += [np.angle(amp)]
+                    gainamp += [float(np.abs(amp))]
+                    gainphase += [float(np.angle(amp))]
                 else:
                     gainamp += [None]
                     gainphase += [None]
@@ -647,23 +679,27 @@ def caltable_to_etcd(msname, calname, antenna_order, caltime, status,
         else:
             ant_delay = [None]*len(pols)
 
-        dd = {'ant_num': antnum+1,
-              'time': caltime,
-              'pol': pols,
-              'gainamp': gainamp,
-              'gainphase': gainphase,
-              'delay': ant_delay,
-              'calsource': calname,
-              'gaincaltime_offset': gaincaltime_offset,
-              'delaycaltime_offset': delaycaltime_offset,
-              'sim': False,
-              'status':status}
-        required_keys = dict({'ant_num':['inv_antnum', 0],
-                              'time':['inv_time', 0.],
-                              'pol':['inv_pol', ['A', 'B']],
-                              'calsource':['inv_calsource', 'Unknown'],
-                              'sim':['inv_sim', False],
-                              'status':['other_err', 0]})
+        dd = {
+            'ant_num': int(antnum+1),
+            'time': float(caltime),
+            'pol': pols,
+            'gainamp': gainamp,
+            'gainphase': gainphase,
+            'delay': ant_delay,
+            'calsource': calname,
+            'gaincaltime_offset': float(gaincaltime_offset),
+            'delaycaltime_offset': float(delaycaltime_offset),
+            'sim': False,
+            'status':status
+        }
+        required_keys = dict({
+            'ant_num': [cs.INV_ANTNUM, 0],
+            'time': [cs.INV_TIME, 0.],
+            'pol': [cs.INV_POL, ['B', 'A']],
+            'calsource': [cs.INV_CALSOURCE, 'Unknown'],
+            'sim': [cs.INV_SIM, False],
+            'status': [cs.UNKNOWN_ERR, 0]
+        })
         for key, value in required_keys.items():
             if dd[key] is None:
                 print('caltable_to_etcd: key {0} must not be None to write to '
@@ -675,10 +711,10 @@ def caltable_to_etcd(msname, calname, antenna_order, caltime, status,
             if pol is None:
                 print('caltable_to_etcd: pol must not be None to write to '
                       'etcd')
-                status = cs.update(status, 'inv_pol')
-                dd['pol'] = ['A', 'B']
-
-        de.put_dict('/mon/cal/{0}'.format(antnum), dd)
+                status = cs.update(status, cs.INV_POL)
+                dd['pol'] = ['B', 'A']
+        if antnum==23:
+            de.put_dict('/mon/cal/{0}'.format(antnum+1), dd)
 
 def get_antenna_gains(gains, ant1, ant2, refant=0):
     """Calculates antenna gains, g_i, from CASA table of G_ij=g_i g_j*.
@@ -737,7 +773,7 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
     return antennas, antenna_gains
 
 def write_beamformer_weights(msname, calname, antennas, outdir,
-                             corr_list=None):
+                             corr_list, antenna_flags):
     """Writes weights for the beamformer.
 
     Parameters
@@ -758,8 +794,6 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
     """
     # Get the frequencies we want to write solutions for.
     corr_settings = resource_filename("dsamfs", "data/dsa_parameters.yaml")
-    if corr_list is None:
-        corr_list = np.arange(16)
     ncorr = len(corr_list)
     weights = np.ones((ncorr, len(antennas), 48, 2), dtype=np.complex64)
     fweights = np.ones((ncorr, 48), dtype=np.float32)
@@ -806,17 +840,6 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
     assert np.all(ant2p == ant2)
     gantenna, gains = get_antenna_gains(gains*phases, ant1, ant2)
 
-    #bgains, _, flags, ant1, ant2  = read_caltable(
-    #    '{0}_{1}_bacal'.format(msname, calname), True)
-    #bgains[flags] = np.nan
-    #bgains = np.nanmean(bgains, axis=1)
-    #bphases, _, flags, ant1p, ant2p = read_caltable(
-    #    '{0}_{1}_bpcal'.format(msname, calname), True)
-    #bphases[flags] = np.nan
-    #bphases = np.nanmean(bphases, axis=1)
-    #assert np.all(ant1p == ant1)
-    #assert np.all(ant2p == ant2)
-    #bantenna, bgains = get_antenna_gains(bgains*bphases, ant1, ant2)
     bgains, _, flags, ant1, ant2 = read_caltable(
         '{0}_{1}_bcal'.format(msname, calname), True)
     bgains[flags] = np.nan
@@ -824,18 +847,23 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
     bantenna, bgains = get_antenna_gains(bgains, ant1, ant2)
     assert(np.all(bantenna == gantenna))
     
+    nantenna = gains.shape[0]
+    npol = gains.shape[-1]
+    
     gains = gains*bgains
     print(gains.shape)
-    gains = gains.reshape(118, -1, 2)
+    gains = gains.reshape(nantenna, -1, npol)
     if f_reversed:
-        print(gains.shape)
         gains = gains[:, ::-1, :]
-    gains = gains.reshape(118, ncorr, -1, 2)
+    gains = gains.reshape(nantenna, ncorr, -1, npol)
     nfint = gains.shape[2]//weights.shape[2]
     assert gains.shape[2]%weights.shape[2]==0
 
-    gains = np.nanmean(gains.reshape(gains.shape[0], gains.shape[1], -1, nfint,
-                                     gains.shape[3]), axis=3)
+    gains = np.nanmean(
+        gains.reshape(
+            gains.shape[0], gains.shape[1], -1, nfint, gains.shape[3]
+        ), axis=3
+    )
     if not np.all(ant2==ant2[0]):
         idxs = np.where(ant1==ant2)
         gains = gains[idxs]
@@ -845,75 +873,192 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
             idx = np.where(antennas==antid+1)[0][0]
             weights[:, idx, ...] = gains[i, ...]
     
-    # interpolate over missing values
-    med = np.nanmedian(weights, axis=2, keepdims=True)
-    std = np.nanstd(weights.real, axis=2, keepdims=True)+1j*np.std(
-        weights.imag, axis=2, keepdims=True)
-    weights[np.abs((weights-med).real) > 3*std.real] = np.nan
-    weights[np.abs((weights-med).imag) > 3*std.imag] = np.nan
-    for i in range(weights.shape[0]):
-        for j in range(weights.shape[1]):
-            for k in range(weights.shape[-1]):
-                idx = np.where(np.isnan(weights[i, j, :, k]))[0]
-                if len(idx) > 0:
-                    x = np.where(~np.isnan(weights[i, j, :, k]))[0]
-                    if len(x) > 24:
-                        fr = interp1d(x, weights[i, j, x, k].real, bounds_error=False, kind='nearest')
-                        fi = interp1d(x, weights[i, j, x, k].imag, bounds_error=False, kind='nearest')
-                        weights[i, j, idx, k] = fr(idx) + 1j*fi(idx)
+#     # interpolate over missing values
+#     med = np.nanmedian(weights, axis=2, keepdims=True)
+#     std = np.nanstd(weights.real, axis=2, keepdims=True)+\
+#         1j*np.std(weights.imag, axis=2, keepdims=True)
+#     weights[np.abs((weights-med).real) > 3*std.real] = np.nan
+#     weights[np.abs((weights-med).imag) > 3*std.imag] = np.nan
+#     for i in range(weights.shape[0]):
+#         for j in range(weights.shape[1]):
+#             for k in range(weights.shape[-1]):
+#                 idx = np.where(np.isnan(weights[i, j, :, k]))[0]
+#                 if len(idx) > 0:
+#                     x = np.where(~np.isnan(weights[i, j, :, k]))[0]
+#                     if len(x) > 24:
+#                         fr = interp1d(
+#                             x,
+#                             weights[i, j, x, k].real,
+#                             bounds_error=False,
+#                             kind='nearest'
+#                         )
+#                         fi = interp1d(
+#                             x,
+#                             weights[i, j, x, k].imag,
+#                             bounds_error=False,
+#                             kind='nearest'
+#                         )
+#                         weights[i, j, idx, k] = fr(idx) + 1j*fi(idx)
     weights[np.isnan(weights)] = 0.
-    weights = np.conjugate(weights)
-
+    # weights = np.conjugate(weights)
+    # Flag bad antennas
+    flags = np.tile(antenna_flags[ np.newaxis, :, np.newaxis, :],
+                    (ncorr, 1, 48, 1))
+    weights[flags] = 0.
+    
+    filenames = []
     for i, corr_idx in enumerate(corr_list):
         wcorr = weights[i, ...].view(np.float32).flatten()
         wcorr = np.concatenate([bu, wcorr], axis=0)
-        fname = '{0}/beamformer_weights_corr{1:02d}'.format(outdir, corr_idx)
-        with open('{0}.dat'.format(fname), 'wb') as f:
+        fname = 'beamformer_weights_corr{0:02d}'.format(corr_idx)
+        fname2 = '{0}_{1}_{2}'.format(
+            fname,
+            calname,
+            caltime.isot.split('.')[0]
+        )
+        if os.path.exists('{0}/{1}.dat'.format(outdir, fname)):
+            os.unlink('{0}/{1}.dat'.format(outdir, fname))
+        with open('{0}/{1}.dat'.format(outdir, fname), 'wb') as f:
             f.write(bytes(wcorr))
-        os.link('{0}.dat'.format(fname), '{0}_{1}.dat'.format(fname, caltime.isot))
+        os.link(
+            '{0}/{1}.dat'.format(outdir, fname),
+            '{0}/{1}.dat'.format(outdir, fname2)
+        )
+        filenames += ['{0}.dat'.format(fname2)]
+    return corr_list, bu, fweights, filenames
 
-def convert_calibrator_pass_to_ms(filenames, duration, msdir='/mnt/data/dsa110/msfiles/', hdf5dir='/mnt/data/dsa110/'):
-    for date in filenames.keys():
-        for calname in filenames[date].keys():
-            msname = '{0}/{1}_{2}'.format(msdir, date, calname)
-            cal = filenames[date][calname]['cal']
-            print(date, calname, len(filenames[date][calname]['files']))
-            if len(filenames[date][calname]['files']) == 1:
+def get_delays(antennas, msname, calname, applied_delays):
+    """Returns the delays that should be set in the correlator.
+
+    delays and applied_delays are in units of nanoseconds.
+    """
+    delays, time, flags, ant1, ant2 = read_caltable('{0}_{1}_kcal'.format(msname, calname))
+    delays[flags] = np.nan
+    ant1 = list(ant1)
+    idx = [ant1.index(ant-1) for ant in antennas]
+    delays = delays[idx]
+    delays = delays.squeeze() + applied_delays
+    delays = delays - np.nanmin(delays)
+    
+    delays = (np.rint(delays/2)*2)
+    flags = np.isnan(delays)
+    delays[flags] = 0
+    return delays.astype(np.int), flags
+
+def write_beamformer_solutions(
+    msname, calname, caltime, antennas, applied_delays,
+    corr_list=np.arange(1, 17),
+    outdir='/home/user/beamformer_weights/',
+    flagged_antennas=None):
+
+    delays, flags = get_delays(antennas, msname, calname, applied_delays)
+    for ant in flagged_antennas:
+        delays[antennas==ant, ...] = 0
+        flags[antennas==ant, ...] = 1
+    delays = delays-np.min(delays[~flags])
+    while not np.all(delays[~flags] < 1024):
+        if np.sum(delays[~flags] > 1024) < np.nansum(delays[~flags] < 1024):
+            argflag = np.argmax(delays[~flags])
+        else:
+            argflag = np.argmin(delays[~flags])
+        argflag = np.where(~flags.flatten())[0][argflag]
+        flags[np.unravel_index(argflag, flags.shape)] = 1
+        delays = delays-np.min(delays[~flags])
+    delays[flags]=0
+
+    corr_list, eastings, fobs, weights_files = write_beamformer_weights(
+        msname,
+        calname,
+        antennas,
+        outdir,
+        corr_list,
+        flags
+    )
+        
+    calibration_dictionary = {
+        'cal_solutions':
+        {
+            'source': calname,
+            'caltime': float(caltime.mjd),
+            'antenna_order': [int(ant) for ant in antennas],
+            'corr_order': [int(corr) for corr in corr_list],
+            'pol_order': ['B', 'A'],
+            'delays': [[int(delay[0]//2), int(delay[1]//2)] for delay in delays],
+            'eastings': [float(easting) for easting in eastings],
+            'weights_axis0': 'antenna',
+            'weights_axis1': 'frequency',
+            'weights_axis2': 'pol',
+            'weight_files': weights_files,
+        }
+    }
+
+    with open(
+        '{0}/beamformer_weights_{1}_{2}.yaml'.format(
+            outdir,
+            calname,
+            caltime.isot.split('.')[0]
+        ),
+        'w'
+    ) as file:
+        yaml.dump(calibration_dictionary, file)
+    return flags
+
+def convert_calibrator_pass_to_ms(cal, date, files, duration, msdir='/mnt/data/dsa110/msfiles/', hdf5dir='/mnt/data/dsa110/'):
+    """Converts hdf5 files near a calibrator pass to a CASA ms.
+    """
+    msname = '{0}/{1}_{2}'.format(msdir, date, cal.name)
+    if len(files) == 1:
+        try:
+            uvh5_to_ms(
+                sorted(glob.glob(
+                    '{0}/corr??/{1}*.hdf5'.format(hdf5dir, files[0][:-4])
+                )),
+                msname,
+                ra=cal.ra,
+                dec=cal.dec,
+                flux=cal.I,
+                dt=duration
+            )
+            LOGGER.info('Wrote {0}.ms'.format(msname))
+        except (ValueError, IndexError):
+            LOGGER.info(
+                'No data for {0} transit on {1}'.format(date, cal.name)
+            )
+    elif len(files) > 0:
+        msnames = []
+        for filename in files:
+            try:
                 uvh5_to_ms(
-                    sorted(glob.glob('{0}/corr??/{1}*.hdf5'.format(hdf5dir, filenames[date][calname]['files'][0][:-2]))),
-                    msname,
+                    sorted(glob.glob('{0}/corr??/{1}*.hdf5'.format(hdf5dir, filename[:-4]))),
+                    '{0}/{1}'.format(msdir, filename),
                     ra=cal.ra,
                     dec=cal.dec,
                     flux=cal.I,
                     dt=duration
                 )
-                LOGGER.info('Wrote {0}.ms'.format(msname))
-            elif len(filenames[date][calname]['files']) > 0:
-                msnames = []
-                for filename in filenames[date][calname]['files']:
-                    try:
-                        uvh5_to_ms(
-                            sorted(glob.glob('{0}/corr??/{1}*.hdf5'.format(hdf5dir, filename[:-2]))),
-                            '{0}/{1}'.format(msdir, filename),
-                            ra=cal.ra,
-                            dec=cal.dec,
-                            flux=cal.I,
-                            dt=duration
-                        )
-                        msnames += ['{0}/{1}'.format(msdir, filename)]
-                    except ValueError:
-                        pass
-                if os.path.exists('{0}.ms'.format(msname)):
-
-                    for root, dirs, files in os.walk('{0}.ms'.format(msname),
-                                                     topdown=False):
-                        for name in files:
-                            os.unlink(os.path.join(root, name))
-                    shutil.rmtree('{0}.ms'.format(msname))
-                virtualconcat(msnames, '{0}.ms'.format(msname))
-                LOGGER.info('Wrote {0}.ms'.format(msname))
-            else:
-                LOGGER.info('No data for {0} transit on {1}'.format(date, calname))
+                msnames += ['{0}/{1}'.format(msdir, filename)]
+            except (ValueError, IndexError):
+                pass
+        if os.path.exists('{0}.ms'.format(msname)):
+            for root, dirs, files in os.walk('{0}.ms'.format(msname),
+                                             topdown=False):
+                for name in files:
+                    os.unlink(os.path.join(root, name))
+            shutil.rmtree('{0}.ms'.format(msname))
+        if len(msnames) > 1:
+            virtualconcat(
+                ['{0}.ms'.format(msn) for msn in msnames],
+                '{0}.ms'.format(msname))
+            LOGGER.info('Wrote {0}.ms'.format(msname))
+        elif len(msnames) == 1:
+            os.rename('{0}.ms'.format(msnames[0]), '{0}.ms'.format(msname))
+            LOGGER.info('Wrote {0}.ms'.format(msname))
+        else:
+            LOGGER.info(
+                'No data for {0} transit on {1}'.format(date, cal.name)
+            )
+    else:
+        LOGGER.info('No data for {0} transit on {1}'.format(date, cal.name))
 
 def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
                flux=None):
@@ -933,8 +1078,10 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     dt : astropy quantity
         Duration of data to extract. If None, will extract the entire file.
     """
+    print(fname)
     zenith_dec = 0.6503903199825691*u.rad
     UV = UVData()
+
     # Read in the data
     if antenna_list is not None:
         UV.read(fname, file_type='uvh5', antenna_names=antenna_list,
@@ -942,6 +1089,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     else:
         UV.read(fname, file_type='uvh5', run_check_acceptability=False,
                 strict_uvw_antpos_check=False)
+    print( UV.ant_1_array[UV.ant_1_array==UV.ant_2_array][:25])
     pt_dec = UV.extra_keywords['phase_center_dec']*u.rad
     lamb = c.c/(UV.freq_array*u.Hz)
     if ra is None:
@@ -957,8 +1105,21 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     # This should already be done by the writer but for some reason they 
     # are being converted to ICRS
     df_itrf = get_itrf(height=UV.telescope_location_lat_lon_alt[-1])
-    UV.antenna_positions = np.array([df_itrf['x_m'], df_itrf['y_m'],
-                                     df_itrf['z_m']]).T-UV.telescope_location
+    if len(df_itrf['x_m']) != UV.antenna_positions.shape[0]:
+        LOGGER.info(
+            'Mismatch between antennas in current environment ({0}) '
+            'and correlator environment ({1}) for file {2}'.format(
+                len(df_itrf['x_m']),
+                UV.antenna_positions.shape[0],
+                fname
+            )
+        )
+    UV.antenna_positions[:len(df_itrf['x_m'])] = np.array([
+        df_itrf['x_m'],
+        df_itrf['y_m'],
+        df_itrf['z_m']
+    ]).T-UV.telescope_location
+    antenna_positions = UV.antenna_positions + UV.telescope_location
     blen = np.zeros((UV.Nbls, 3))
     for i, ant1 in enumerate(UV.ant_1_array[:UV.Nbls]):
         ant2 = UV.ant_2_array[i]
@@ -1050,10 +1211,8 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     importuvfits('{0}.fits'.format(msname),
                  '{0}.ms'.format(msname))
 
-    # Changes these to use casacore instead
     with table('{0}.ms/ANTENNA'.format(msname), readonly=False) as tb:
-        tb.putcol('POSITION',
-              np.array([df_itrf['x_m'], df_itrf['y_m'], df_itrf['z_m']]).T)
+        tb.putcol('POSITION', antenna_positions)
 
     addImagingColumns('{0}.ms'.format(msname))
     with table('{0}.ms'.format(msname), readonly=False) as tb:
