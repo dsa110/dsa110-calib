@@ -11,6 +11,7 @@ from scipy.fftpack import fft, fftshift, fftfreq
 import casatools as cc
 import numpy as np
 from dsacalib.ms_io import read_caltable
+from casacore.tables import table
 
 def delay_calibration(msname, sourcename, refant, t='inf', combine_spw=False,
                       nspw=1):
@@ -58,7 +59,7 @@ def delay_calibration(msname, sourcename, refant, t='inf', combine_spw=False,
     return error
 
 def gain_calibration(msname, sourcename, tga, tgp, refant, combine_spw=False,
-                     nspw=1, blbased=False):
+                     nspw=1, blbased=False, tbeam='30s', delaycal=True):
     r"""Use CASA to calculate bandpass and complex gain solutions.
 
     Saves solutions to calibration tables and calibrates the measurement set by
@@ -96,72 +97,158 @@ def gain_calibration(msname, sourcename, tga, tgp, refant, combine_spw=False,
     else:
         combine = 'field,scan,obs'
         spwmap = [-1]
-    caltables = [{'table': '{0}_{1}_kcal'.format(msname, sourcename),
-                  'type': 'K', 
-                  'spwmap': spwmap}]
     error = 0
-    # Solve for bandpass calibration
+
+    # Amplitude bandpass calibration 
+    caltables = [{
+        'table': '{0}_{1}_kcal'.format(msname, sourcename),
+        'type': 'K', 
+        'spwmap': spwmap
+    }]
     cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     error += apply_calibration_tables(cb, caltables)
-    error += not cb.setsolve(type='MF' if blbased else 'B', combine=combine,
-                             table='{0}_{1}_bcal'.format(msname, sourcename),
-                             refant=refant, apmode='a', solnorm=True)
+    error += not cb.setsolve(
+        type='MF' if blbased else 'B',
+        combine=combine,
+        table='{0}_{1}_bacal'.format(msname, sourcename),
+        refant=refant,
+        apmode='a',
+        solnorm=True
+    )
     error += not cb.solve()
     error += not cb.close()
     cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
-    caltables += [{'table': '{0}_{1}_bcal'.format(msname, sourcename),
-                   'type': 'MF' if blbased else 'B',
-                   'spwmap': spwmap}]
+    
+    # Phase bandpass calibration 
+    caltables += [{
+        'table': '{0}_{1}_bacal'.format(msname, sourcename),
+        'type': 'MF' if blbased else 'B', 
+        'spwmap': spwmap
+    }]
+    if not delaycal:
+        cb = cc.calibrater()
+        error += not cb.open('{0}.ms'.format(msname))
+        error += apply_calibration_tables(cb, caltables)
+        error += not cb.setsolve(
+            type='MF' if blbased else 'B',
+            combine=combine,
+            table='{0}_{1}_bpcal'.format(msname, sourcename),
+            refant=refant,
+            apmode='p',
+            solnorm=True
+        )
+        error += not cb.solve()
+        error += not cb.close()
+
+
+        # Gain calibration on specified timescale
+        caltables += [{
+            'table': '{0}_{1}_bpcal'.format(msname, sourcename),
+            'type': 'MF' if blbased else 'B',
+            'spwmap': spwmap
+        }]
+    cb = cc.calibrater()
+    error += not cb.open('{0}.ms'.format(msname))
     error += apply_calibration_tables(cb, caltables)
-    error += not cb.setsolve(type='M' if blbased else 'G', combine=combine,
-                             table='{0}_{1}_gpcal'.format(msname, sourcename),
-                             t=tgp, refant=refant, apmode='p')
+    error += not cb.setsolve(
+        type='M' if blbased else 'G',
+        combine=combine,
+        table='{0}_{1}_gpcal'.format(msname, sourcename),
+        t=tgp,
+        refant=refant,
+        apmode='p'
+    )
     error += not cb.solve()
     error += not cb.close()
     cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
-    caltables += [{'table': '{0}_{1}_gpcal'.format(msname, sourcename),
-                    'type': 'M' if blbased else 'G',
-                    'spwmap': spwmap}]
+    caltables += [{
+        'table': '{0}_{1}_gpcal'.format(msname, sourcename),
+        'type': 'M' if blbased else 'G',
+        'spwmap': spwmap
+    }]
     error += apply_calibration_tables(cb, caltables)
-    error += not cb.setsolve(type='M' if blbased else 'G', combine=combine,
-                             table='{0}_{1}_gacal'.format(msname, sourcename),
-                             t=tga, refant=refant, apmode='a')
+    error += not cb.setsolve(
+        type='M' if blbased else 'G',
+        combine=combine,
+        table='{0}_{1}_gacal'.format(msname, sourcename),
+        t=tga,
+        refant=refant,
+        apmode='a'
+    )
     error += not cb.solve()
     error += not cb.close()
 
     # Solve for bandpass calibration again
-    caltables = [{'table': '{0}_{1}_kcal'.format(msname, sourcename),
-                  'type': 'K', 
-                  'spwmap': spwmap}]
-    caltables += [{'table': '{0}_{1}_gpcal'.format(msname, sourcename),
-                    'type': 'M' if blbased else 'G',
-                    'spwmap': spwmap}]
-    caltables += [{'table': '{0}_{1}_gacal'.format(msname, sourcename),
-                    'type': 'M' if blbased else 'G',
-                    'spwmap': spwmap}]
+    caltables = [{
+        'table': '{0}_{1}_kcal'.format(msname, sourcename),
+        'type': 'K', 
+        'spwmap': spwmap
+    }]
+    caltables += [{
+        'table': '{0}_{1}_gpcal'.format(msname, sourcename),
+        'type': 'M' if blbased else 'G',
+        'spwmap': spwmap
+    }]
+    caltables += [{
+        'table': '{0}_{1}_gacal'.format(msname, sourcename),
+        'type': 'M' if blbased else 'G',
+        'spwmap': spwmap
+    }]
+    cb = cc.calibrater()
+    error += not cb.open('{0}.ms'.format(msname))
+    error += apply_calibration_tables(cb, caltables)
+    error += not cb.setsolve(
+        type='MF' if blbased else 'B',
+        combine=combine,
+        table='{0}_{1}_bcal'.format(msname, sourcename),
+        refant=refant, apmode='a',
+        solnorm=True
+    )
+    error += not cb.solve()
+    error += not cb.close()
+
+    # Bandpass phase
+    caltables += [{
+        'table': '{0}_{1}_bcal'.format(msname, sourcename),
+        'type': 'MF' if blbased else 'B',
+        'spwmap': spwmap
+    }]
     
     cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     error += apply_calibration_tables(cb, caltables)
-    error += not cb.setsolve(type='MF' if blbased else 'B', combine=combine,
-                             table='{0}_{1}_bcal'.format(msname, sourcename),
-                             refant=refant, apmode='ap', solnorm=True)
+    error += not cb.setsolve(
+        type='MF' if blbased else 'B',
+        combine=combine,
+        table='{0}_{1}_bpcal'.format(msname, sourcename),
+        refant=refant, apmode='p',
+        solnorm=True
+    )
     error += not cb.solve()
     error += not cb.close()
-#     caltables += [{'table': '{0}_{1}_bpcal'.format(msname, sourcename),
-#                    'type': 'MF' if blbased else 'B',
-#                    'spwmap': spwmap}]
-#     cb = cc.calibrater()
-#     error += not cb.open('{0}.ms'.format(msname))
-#     error += apply_calibration_tables(cb, caltables)
-#     error += not cb.setsolve(type='MF' if blbased else 'B', combine=combine,
-#                              table='{0}_{1}_bacal'.format(msname, sourcename),
-#                              refant=refant, apmode='a', solnorm=True)
-#     error += not cb.solve()
-#     error += not cb.close()
+
+    with table('{0}_{1}_bpcal'.format(msname, sourcename)) as tb:
+        phase = np.array(tb.CPARAM[:])
+    with table('{0}_{1}_bcal'.format(msname, sourcename), readonly=False) as tb:
+        bpass = np.array(tb.CPARAM[:])*phase
+        tb.putcol('CPARAM', bpass)
+    
+    cb = cc.calibrater()
+    error += not cb.open('{0}.ms'.format(msname))
+    error += apply_calibration_tables(cb, caltables)
+    error += not cb.setsolve(
+        type='M' if blbased else 'G',
+        combine=combine,
+        table='{0}_{1}_2gcal'.format(msname, sourcename),
+        refant=refant,
+        apmode='ap',
+        t=tbeam
+    )
+    error += not cb.solve()
+    error += not cb.close()
 
     return error
 
