@@ -32,10 +32,12 @@ setup(name='dsa110-calib',
                         'etcd3',
                         'structlog',
                         'dsa110-antpos',
-                        'dsa110-pyutils'
+                        'dsa110-pyutils',
+                        'dsa110-meridian-fs'
       ],
       dependency_links = [
           "https://github.com/dsa110/dsa110-antpos/tarball/master#egg=dsa110-antpos",
-          "https://github.com/dsa110/dsa110-pyutils/tarball/ds/dev#egg=dsa110-pyutils",
+          "https://github.com/dsa110/dsa110-pyutils/tarball/master#egg=dsa110-pyutils",
+          "https://github.com/dsa110/dsa110-meridian-fs/tarball/master#egg=dsa110-meridian-fs"
           ]
 )

@@ -8,7 +8,6 @@ import scipy # pylint: disable=unused-import
 import casatools as cc
 import numpy as np
 import dsacalib
-import os.path
 
 # The number of seconds in a sidereal day
 SECONDS_PER_SIDEREAL_DAY = 3600*23.9344699
@@ -38,7 +37,7 @@ OVRO_ALT = ovro_loc['m2']['value']
 # c expressed in units relevant to us
 C_GHZ_M = c.c.to_value(u.GHz*u.m)
 
-# Amount to integrate data by after fringestopping, 
+# Amount to integrate data by after fringestopping,
 # when writing to a CASA ms
 # Currently integrating for 10-s
 # When commissioning DSA-110, want 1-s integrations
@@ -52,4 +51,3 @@ SPEC_IDX = -0.7 # Spectral index
 IERS_TABLE = 'file://{0}/data/finals2000A.all'.format(dsacalib.__path__[0])
 # Templates & other package data
 PKG_DATA_PATH = '{0}/data/'.format(dsacalib.__path__[0])
-

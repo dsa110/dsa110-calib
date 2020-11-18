@@ -22,7 +22,7 @@ def test_dsa10(tmpdir):
     antpos = '{0}/antpos_ITRF.txt'.format(datadir)
     refant = '2'
     dr.dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants)
-    
+
 def test_3ant(tmpdir):
     M87 = src('M87','12h30m49.4233s','+12d23m28.043s',138.4870)
     obs_params = {'fname': '{0}/data/{1}_test.fits'.format(dsacalib.__path__[0],
@@ -38,7 +38,7 @@ def test_3ant(tmpdir):
     status, caltime = dr.triple_antenna_cal(obs_params, ant_params)
     assert status == 0
 
-def test_3ant_sefd(tmpdir):
+def test_3ant_sefd():
     M87 = src('M87', '12h30m49.4233s', '+12d23m28.043s', 138.4870)
     obs_params = {'fname': '{0}/data/{1}_test.fits'.format(
         dsacalib.__path__[0], M87.name),
@@ -54,4 +54,3 @@ def test_3ant_sefd(tmpdir):
     assert status == 0
     # Current file is too short to fit the SEFD
     # sefds, ant_gains, ant_transit_time = calculate_sefd(obs_params, ant_params)
-
