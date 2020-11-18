@@ -4,16 +4,14 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 2020/06
 """
 import shutil
 import os
+import glob
 import numpy as np
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
 import astropy.units as u
 from astropy.coordinates import Angle
 import pandas
-import glob
 import scipy # pylint: disable=unused-import
-import casatools as cc
-from casatasks import virtualconcat
 from casacore.tables import table
 import dsautils.calstatus as cs
 import dsautils.dsa_syslog as dsl
@@ -44,7 +42,7 @@ def _check_path(fname):
 
 def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
                        sefd=False):
-    r"""Calibrate visibilities from 3 antennas.  
+    r"""Calibrate visibilities from 3 antennas.
 
     Assumes visbilities are stored using dsa-10 or dsa-110 fits format.
     TODO: Only keep one of the gain tables in the end, on a fine timescale.
@@ -108,15 +106,15 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
 
         calstring = 'opening visibility file'
         current_error = (
-            cs.INFILE_ERR | 
+            cs.INFILE_ERR |
             cs.INV_ANTNUM |
-            cs.INV_GAINAMP_P1 | 
+            cs.INV_GAINAMP_P1 |
             cs.INV_GAINAMP_P2 |
-            cs.INV_GAINPHASE_P1 | 
+            cs.INV_GAINPHASE_P1 |
             cs.INV_GAINPHASE_P2 |
-            cs.INV_DELAY_P1 | 
+            cs.INV_DELAY_P1 |
             cs.INV_DELAY_P2 |
-            cs.INV_GAINCALTIME | 
+            cs.INV_GAINCALTIME |
             cs.INV_DELAYCALTIME
         )
         caldur = 60*u.min if sefd else 10*u.min
@@ -151,17 +149,16 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
         current_error = (
             cs.INFILE_FORMAT_ERR |
             cs.INV_GAINAMP_P1 |
-            cs.INV_GAINAMP_P2 | 
+            cs.INV_GAINAMP_P2 |
             cs.INV_GAINPHASE_P1 |
-            cs.INV_GAINPHASE_P2 | 
+            cs.INV_GAINPHASE_P2 |
             cs.INV_DELAY_P1 |
-            cs.INV_DELAY_P2 | 
+            cs.INV_DELAY_P2 |
             cs.INV_GAINCALTIME |
             cs.INV_DELAYCALTIME
         )
 
         nant = len(antenna_order)
-        nbls = (nant*(nant+1))//2
         assert nant == 3, ("triple_antenna_cal only works with a triplet of "
                            "antennas")
         assert int(refant) in antenna_order, ("refant {0} not in "
@@ -199,7 +196,7 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
             mask=maskt*maskf
         )
         mask = maskt*maskf*maskp
-        fraction_flagged = 1-np.sum(mask)/mask.size
+#        fraction_flagged = 1-np.sum(mask)/mask.size
 #         if fraction_flagged > 0.15:
 #             LOGGER.info("{0}% of data flagged".format(fraction_flagged))
         vis *= mask
@@ -320,9 +317,10 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
             cs.INV_GAINPHASE_P2 |
             cs.INV_GAINCALTIME
         )
-        error = dc.gain_calibration_blbased(
+        error = dc.gain_calibration_system_health(
             msname,
             cal.name,
+            blbased=True,
             refant=refant,
             tga='30s',
             tgp='30s'
@@ -435,8 +433,11 @@ def plot_solutions(msname, calname, figure_path,
             show=show_plots
         )
     except RuntimeError:
-        LOGGER.info('Plotting antenna delays failed for {0}'.format(msname))
-        pass
+        LOGGER.info(
+            'Plotting antenna delays failed for {0}'.format(
+                msname
+            )
+        )
     try:
         _ = dp.plot_gain_calibration(
             msname,
@@ -445,8 +446,11 @@ def plot_solutions(msname, calname, figure_path,
             show=show_plots
         )
     except RuntimeError:
-        LOGGER.info('Plotting gain calibration solutions failed for {0}'.format(msname))
-        pass
+        LOGGER.info(
+            'Plotting gain calibration solutions failed for {0}'.format(
+                msname
+            )
+        )
     try:
         _ = dp.plot_bandpass(
             msname,
@@ -455,8 +459,11 @@ def plot_solutions(msname, calname, figure_path,
             show=show_plots
         )
     except RuntimeError:
-        LOGGER.info('Plotting bandpass calibration solutions failed for {0}'.format(msname))
-        pass
+        LOGGER.info(
+            'Plotting bandpass calibration solutions failed for {0}'.format(
+                msname
+            )
+        )
 
 def calibration_head(obs_params, ant_params, write_to_etcd=False,
                      throw_exceptions=None, sefd=False):
@@ -507,14 +514,20 @@ def calibration_head(obs_params, ant_params, write_to_etcd=False,
                             ant_params['antenna_order'], caltime, status)
     return status
 
-def _gauss(xvals, amp, mean, sigma, offset):
+def _gauss_offset(xvals, amp, mean, sigma, offset):
     """Calculates the value of a Gaussian at the locations `x`.
     """
     return amp*np.exp(-(xvals-mean)**2/(2*sigma**2))+offset
 
-def calculate_sefd(msname, cal, fmin=None, fmax=None,
-                   baseline_cal=False, showplots=False,
-                   msname_delaycal=None, calname_delaycal=None, halfpower=False):
+def _gauss(xvals, amp, mean, sigma):
+    """Calculates the value of a Gaussian at the locations `x`.
+    """
+    return amp*np.exp(-(xvals-mean)**2/(2*sigma**2))
+
+def calculate_sefd(
+    msname, cal, fmin=None, fmax=None, baseline_cal=False, showplots=False,
+    msname_delaycal=None, calname_delaycal=None, halfpower=False
+    ):
     r"""Calculates the SEFD from a measurement set.
 
     The measurement set must have been calibrated against a model of ones and
@@ -585,14 +598,8 @@ def calculate_sefd(msname, cal, fmin=None, fmax=None,
 
     # Open the gain files and read in the gains
     gain, time, flag, ant1, ant2 = dmsio.read_caltable(
-        '{0}_{1}_gacal'.format(msname, cal.name), cparam=True)
+        '{0}_{1}_2gcal'.format(msname, cal.name), cparam=True)
     gain[flag] = np.nan
-    # phase, _, flag, ant1p, ant2p = dmsio.read_caltable(
-    #     '{0}_{1}_gpcal'.format(msname, cal.name), cparam=True)
-    # phase[flag] = np.nan
-    # assert np.all(ant1p == ant1)
-    # assert np.all(ant2p == ant2)
-    # gain = gain*phase
     antenna, gain = dmsio.get_antenna_gains(gain, ant1, ant2)
     gain = 1/gain
     antenna = list(antenna)
@@ -604,7 +611,7 @@ def calculate_sefd(msname, cal, fmin=None, fmax=None,
     idxl = np.searchsorted(fvis, fmin) if fmin is not None else 0
     idxr = np.searchsorted(fvis, fmax) if fmax is not None else vis.shape[-2]
     fref = np.median(fvis[idxl:idxr])
-    
+
     if idxl < idxr:
         vis = vis[..., idxl:idxr, :]
     else:
@@ -631,22 +638,32 @@ def calculate_sefd(msname, cal, fmin=None, fmax=None,
     autocorr_gains_off = np.zeros((nant, npol))
     ant_gains = np.zeros((nant, npol))
     sefds = np.zeros((nant, npol))
-    
-    
+
     expected_transit_time = ((
-        cal.ra-Time(time[0], format='mjd').sidereal_time(
-            'apparent', longitude=ct.OVRO_LON*u.rad))
-        *u.hour/u.hourangle).to_value(u.d)
-    max_flux = df.amplitude_sky_model(cal, cal.ra.to_value(u.rad),
-                                      pt_dec, fref)
-    
+        cal.ra-Time(
+            time[0],
+            format='mjd'
+        ).sidereal_time(
+            'apparent',
+            longitude=ct.OVRO_LON*u.rad
+        )
+    )*u.hour/u.hourangle
+    ).to_value(u.d)
+    max_flux = df.amplitude_sky_model(
+        cal,
+        cal.ra.to_value(u.rad),
+        pt_dec,
+        fref
+    )
+
     if showplots:
         nx = 3
         ny = nant//nx
         if nant%nx != 0:
             ny += 1
-        _fig, ax = plt.subplots(ny, nx, figsize=(8*nx, 8*ny),
-                                sharey=True)
+        _fig, ax = plt.subplots(
+            ny, nx, figsize=(8*nx, 8*ny), sharey=True
+        )
         ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
         ax = ax.flatten()
 
@@ -656,20 +673,21 @@ def calculate_sefd(msname, cal, fmin=None, fmax=None,
             if showplots:
                 ax[i].plot(time-time[0], gain[i, :, j], '.', color=ccyc[j])
             initial_params = [np.max(gain[i, :, j]), expected_transit_time,
-                              0.0035, 0]
+                              0.0035] #, 0]
             try:
                 x = time-time[0]
                 y = gain[i, :, j]
                 idx = ~np.isnan(y)
+                assert len(idx) >= 4
                 params, cov = curve_fit(_gauss, x[idx], y[idx],
                                     p0=initial_params)
-            except (RuntimeError, ValueError):
+            except (RuntimeError, ValueError, AssertionError):
                 params = initial_params.copy()
                 cov = np.zeros((len(params), len(params)))
 
-            ant_gains_on[i, j] = params[0]+params[3]
+            ant_gains_on[i, j] = params[0]#+params[3]
             ant_gains[i, j] = ant_gains_on[i, j]/max_flux
-            eant_gains_on[i, j] = np.sqrt(cov[0, 0])+np.sqrt(cov[3, 3])
+            eant_gains_on[i, j] = np.sqrt(cov[0, 0])#+np.sqrt(cov[3, 3])
 
             ant_transit_time[i, j] = time[0]+params[1]
             eant_transit_time[i, j] = np.sqrt(cov[1, 1])
@@ -696,32 +714,34 @@ def calculate_sefd(msname, cal, fmin=None, fmax=None,
                     np.concatenate(
                         (vis[i, idxl-10:idxl+10, :, j],
                          vis[i, idxr-10:idxr+10, :, j]), axis=0))
-                sefds[i, j] = autocorr_gains_off[i, j]/ant_gains[i, j] - max_flux/2
+                sefds[i, j] = (
+                    autocorr_gains_off[i, j]/ant_gains[i, j]- max_flux/2
+                )
             if showplots:
-                ax[i].plot(time-time[0], _gauss(time-time[0], *params), '-',
-                           color=ccyc[j],
-                           #label='{0} {1}: {2:.4f} /Jy; {3:.0f}'.format(
-                           #    antenna_order[i]+1, 'A' if j == 0 else 'B',
-                           #    ant_gains[i, j]))
-                           label='{0} {1}: {2:.0f} Jy; {3:.03f} min'.format(
-                               antenna_order[i]+1,
-                               'A' if j==0 else 'B',
-                               sefds[i, j],
-                               (ant_transit_time[i, j]-time[0]-
-                                expected_transit_time)*ct.SECONDS_PER_DAY/60))
+                ax[i].plot(
+                    time-time[0],
+                    _gauss(time-time[0], *params),
+                    '-',
+                    color=ccyc[j],
+                    label='{0} {1}: {2:.0f} Jy; {3:.03f} min'.format(
+                        antenna_order[i]+1,
+                        'A' if j==0 else 'B',
+                        sefds[i, j],
+                        (
+                            ant_transit_time[i, j]
+                            -time[0]
+                            -expected_transit_time
+                        )*ct.SECONDS_PER_DAY/60
+                    )
+                )
                 ax[i].legend()
                 # ax[i].axvline(expected_transit_time, color='k')
                 ax[i].set_xlabel("Time (d)")
                 ax[i].set_ylabel("Unnormalized power")
 
-    # ant_gains = ant_gains_on/max_flux
     if showplots:
         max_gain = np.nanmax(ant_gains_on)
         ax[0].set_ylim(-0.1*max_gain, 1.1*max_gain)
-    #if halfpower:
-    #    sefds = autocorr_gains_off/ant_gains - max_flux/2
-    #else:
-    #    sefds = autocorr_gains_off/ant_gains
 
     return antenna_order+1, sefds, ant_gains, ant_transit_time, fref
 
@@ -765,20 +785,28 @@ def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
     bad_times, times, _error = dc.get_bad_times(msname, cal.name, refant)
     dc.flag_badtimes(msname, times, bad_times, nant)
 
-    dc.gain_calibration(msname, cal.name, refant=refant, tga="10s", tgp="inf")
+    dc.gain_calibration_system_health(
+        msname,
+        cal.name,
+        refant=refant,
+        tga="10s",
+        tgp="inf"
+    )
     for tbl in ['gacal', 'gpcal', 'bcal']:
         _check_path('{0}_{1}_{2}'.format(msname, cal.name, tbl))
-        
+
 def flag_pixels(msname, thresh=6.0):
     """Flags pixels using dsautils.mask_bad_pixels.
     """
     # Flag RFI - only for single spw
-    vis, time, fobs, flags, ant1, ant2, pt_dec = extract_vis_from_ms(msname)
-    good_pixels, fraction_flagged = du.mask_bad_pixels(
+    vis, _time, _fobs, flags, _ant1, _ant2, _pt_dec = extract_vis_from_ms(
+        msname
+    )
+    good_pixels, _fraction_flagged = du.mask_bad_pixels(
         vis.squeeze(2),
         mask=~flags.squeeze(2),
         thresh=thresh
-    ) 
+    )
 
 #     (idx1s, idx2s) = np.where(fraction_flagged > 0.3)
 #     for idx1 in idx1s:
@@ -799,24 +827,32 @@ def flag_pixels(msname, thresh=6.0):
         shape = np.array(tb.getcol('FLAG')[:]).shape
         tb.putcol('FLAG', flags.reshape(shape))
 
-def flag_antennas_using_delays(antenna_delays, kcorr, msname, kcorr_thresh=0.3):
+def flag_antennas_using_delays(
+    antenna_delays, kcorr, msname, kcorr_thresh=0.3
+):
     """Flags antennas by comparing the delay on short times to the delay cal.
     """
     error = 0
-    percent_bad = (np.abs(antenna_delays-kcorr) > 1).sum(1).squeeze(1).squeeze(1)/antenna_delays.shape[1]
+    percent_bad = (
+        np.abs(antenna_delays-kcorr) > 1
+    ).sum(1).squeeze(1).squeeze(1)/antenna_delays.shape[1]
     for i in range(percent_bad.shape[0]):
         for j in range(percent_bad.shape[1]):
             if percent_bad[i, j] > kcorr_thresh:
                 error += not dc.flag_antenna(msname, '{0}'.format(i+1),
                                 pol='A' if j==0 else 'B')
                 LOGGER.info(
-                    'Flagged antenna {0}{1} in {2}'.format(i+1, 'A' if j==0 else 'B', msname))
+                    'Flagged antenna {0}{1} in {2}'
+                    .format(i+1, 'A' if j==0 else 'B', msname)
+                )
     return error
 
-def calibrate_measurement_set(msname, cal, caltime, refant='24',
-                              throw_exceptions=True, delaycal=True,
-                              bad_antennas=None, nspw=1, combine_spw=False,
-                              bad_uvrange='2~23m'):
+def calibrate_for_system_health(
+    msname, cal, refant='102', throw_exceptions=True, bad_antennas=None,
+    nspw=1, combine_spw=False, bad_uvrange='2~27m'
+):
+    """Calibrates antenna delays and gains for system health monitoring.
+    """
     status = 0
     current_error = cs.UNKNOWN_ERR
     calstring = 'initialization'
@@ -825,13 +861,13 @@ def calibrate_measurement_set(msname, cal, caltime, refant='24',
         # Remove files that we will create so that things will fail if casa
         # doesn't write a table.
         tables_to_remove = [
+            '{0}_{1}_kcal'.format(msname, cal.name),
             '{0}_{1}_2kcal'.format(msname, cal.name),
             '{0}_{1}_gacal'.format(msname, cal.name),
             '{0}_{1}_gpcal'.format(msname, cal.name),
-            '{0}_{1}_bcal'.format(msname, cal.name)
+            '{0}_{1}_bcal'.format(msname, cal.name),
+            '{0}_{1}_2gcal'.format(msname, cal.name)
         ]
-        if delaycal:
-            tables_to_remove += ['{0}_{1}_kcal'.format(msname, cal.name)]
         for path in tables_to_remove:
             if os.path.exists(path):
                 shutil.rmtree(path)
@@ -854,61 +890,64 @@ def calibrate_measurement_set(msname, cal, caltime, refant='24',
         dc.reset_flags(msname, datacolumn='model')
         dc.reset_flags(msname, datacolumn='corrected')
 
-        
         current_error = (
             cs.FLAGGING_ERR
         )
         error = dc.flag_baselines(msname, uvrange=bad_uvrange)
         if error > 0:
             LOGGER.info(
-                'Non-fatal error occured in flagging short baselines of {0}.'.format(msname)
+                'Non-fatal error occured in flagging short baselines of {0}.'
+                .format(msname)
             )
         error = dc.flag_zeros(msname)
         if error > 0:
             LOGGER.info(
-                'Non-fatal error occured in flagging zeros of {0}.'.format(msname)
+                'Non-fatal error occured in flagging zeros of {0}.'.format(
+                    msname
+                )
             )
         if bad_antennas is not None:
             for ant in bad_antennas:
                 error = dc.flag_antenna(msname, ant)
                 if error > 0:
                     LOGGER.info(
-                        'Non-fatal error occured in flagging ant {0} of {1}.'.format(ant, msname)
+                        'Non-fatal error occured in flagging ant {0} of {1}.'
+                        .format(ant, msname)
                     )
         if nspw==1:
             flag_pixels(msname)
         if error > 0:
             LOGGER.info(
-                'Non-fatal error occured in flagging bad pixels of {0}.'.format(msname)
+                'Non-fatal error occured in flagging bad pixels of {0}.'
+                .format(msname)
             )
 
-        if delaycal:
-            # Antenna-based delay calibration
-            calstring = 'delay calibration'
-            current_error = (
-                cs.DELAY_CAL_ERR |
-                cs.INV_GAINAMP_P1 |
-                cs.INV_GAINAMP_P2 |
-                cs.INV_GAINPHASE_P1 |
-                cs.INV_GAINPHASE_P2 |
-                cs.INV_DELAY_P1 |
-                cs.INV_DELAY_P2 |
-                cs.INV_GAINCALTIME |
-                cs.INV_DELAYCALTIME
+        # Antenna-based delay calibration
+        calstring = 'delay calibration'
+        current_error = (
+            cs.DELAY_CAL_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_DELAY_P1 |
+            cs.INV_DELAY_P2 |
+            cs.INV_GAINCALTIME |
+            cs.INV_DELAYCALTIME
+        )
+        error = dc.delay_calibration(
+            msname,
+            cal.name,
+            refant=refant,
+            combine_spw=combine_spw
+        )
+        if error > 0:
+            status = cs.update(status, cs.DELAY_CAL_ERR )
+            LOGGER.info(
+                'Non-fatal error occured in delay calibration of {0}.'
+                .format(msname)
             )
-            error = dc.delay_calibration(
-                msname,
-                cal.name,
-                refant=refant,
-                combine_spw=combine_spw,
-                nspw=nspw
-            )
-            if error > 0:
-                status = cs.update(status, cs.DELAY_CAL_ERR )
-                LOGGER.info(
-                    'Non-fatal error occured in delay calibration of {0}.'.format(msname)
-                )
-            _check_path('{0}_{1}_kcal'.format(msname, cal.name))
+        _check_path('{0}_{1}_kcal'.format(msname, cal.name))
 
         calstring = 'flagging of ms data'
         current_error = (
@@ -919,50 +958,48 @@ def calibrate_measurement_set(msname, cal, caltime, refant='24',
             cs.INV_GAINPHASE_P2 |
             cs.INV_GAINCALTIME
         )
-        bad_times, times, error = dc.get_bad_times(msname, cal.name, refant)
-        times, antenna_delays, kcorr, ant_nos = dp.plot_antenna_delays(
+        _bad_times, _times, error = dc.get_bad_times(msname, cal.name, refant)
+        _times, antenna_delays, kcorr, _ant_nos = dp.plot_antenna_delays(
             msname, cal.name, show=False)
-        if delaycal and nspw==1:
+        if nspw==1:
             error += flag_antennas_using_delays(antenna_delays, kcorr, msname)
             if error > 0:
                 status = cs.update(status, cs.FLAGGING_ERR)
-                LOGGER.info('Non-fatal error occured in flagging of bad timebins on {0}'.format(msname))
+                LOGGER.info(
+                    'Non-fatal error occured in flagging of bad timebins on '
+                    '{0}'.format(msname)
+                )
         try:
             _check_path('{0}_{1}_2kcal'.format(msname, cal.name))
         except AssertionError:
             status = cs.update(status, cs.FLAGGING_ERR)
-            LOGGER.info('Non-fatal error occured in flagging of bad timebins on {0}'.format(msname))
-
-        if delaycal:
-            # Antenna-based delay calibration
-            calstring = 'delay calibration'
-            current_error = (
-                cs.DELAY_CAL_ERR |
-                cs.INV_GAINAMP_P1 |
-                cs.INV_GAINAMP_P2 |
-                cs.INV_GAINPHASE_P1 |
-                cs.INV_GAINPHASE_P2 |
-                cs.INV_DELAY_P1 |
-                cs.INV_DELAY_P2 |
-                cs.INV_GAINCALTIME |
-                cs.INV_DELAYCALTIME
+            LOGGER.info(
+                'Non-fatal error occured in flagging of bad timebins on {0}'
+                .format(msname)
             )
-            shutil.rmtree('{0}_{1}_kcal'.format(msname, cal.name))
-            error = dc.delay_calibration(msname, cal.name, refant=refant)
-            if error > 0:
-                status = cs.update(status, cs.DELAY_CAL_ERR )
-                LOGGER.info(
-                    'Non-fatal error occured in delay calibration of {0}.'.format(msname)
-                )
-            _check_path('{0}_{1}_kcal'.format(msname, cal.name))
-        
-            # Change to delays of even 2 nanoseconds
-            with table(
-                '{0}_{1}_kcal'.format(msname, cal.name), 
-                readonly=False
-            ) as tb:
-                fparam = np.array(tb.FPARAM[:])
-                tb.putcol('FPARAM', np.round(fparam/2)*2)
+
+        # Antenna-based delay calibration
+        calstring = 'delay calibration'
+        current_error = (
+            cs.DELAY_CAL_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_DELAY_P1 |
+            cs.INV_DELAY_P2 |
+            cs.INV_GAINCALTIME |
+            cs.INV_DELAYCALTIME
+        )
+        shutil.rmtree('{0}_{1}_kcal'.format(msname, cal.name))
+        error = dc.delay_calibration(msname, cal.name, refant=refant)
+        if error > 0:
+            status = cs.update(status, cs.DELAY_CAL_ERR )
+            LOGGER.info(
+                'Non-fatal error occured in delay calibration of {0}.'
+                .format(msname)
+            )
+        _check_path('{0}_{1}_kcal'.format(msname, cal.name))
 
         calstring = 'bandpass and gain calibration'
         current_error = (
@@ -973,7 +1010,7 @@ def calibrate_measurement_set(msname, cal, caltime, refant='24',
             cs.INV_GAINPHASE_P2 |
             cs.INV_GAINCALTIME
         )
-        error = dc.gain_calibration(
+        error = dc.gain_calibration_system_health(
             msname,
             cal.name,
             'inf',
@@ -983,14 +1020,421 @@ def calibrate_measurement_set(msname, cal, caltime, refant='24',
             nspw=nspw
         )
         if error > 0:
-            status = cs.update(status, ds.GAIN_BP_CAL_ERR)
-            LOGGER.info('Non-fatal error occured in gain/bandpass calibration of {0}.'.format(msname))
+            status = cs.update(status, cs.GAIN_BP_CAL_ERR)
+            LOGGER.info(
+                'Non-fatal error occured in gain/bandpass calibration of {0}.'
+                .format(msname)
+            )
         for fname in [
             '{0}_{1}_bcal'.format(msname, cal.name),
             '{0}_{1}_gpcal'.format(msname, cal.name),
-            '{0}_{1}_gacal'.format(msname, cal.name)
+            '{0}_{1}_gacal'.format(msname, cal.name),
+            '{0}_{1}_2gcal'.format(msname, cal.name)
         ]:
             _check_path(fname)
+
+    except Exception as exc:
+        status = cs.update(status, current_error)
+        du.exception_logger(LOGGER, calstring, exc, throw_exceptions)
+
+    return status
+
+
+def calibrate_beamformer_weights(msname, cal, refant='24',
+                                 throw_exceptions=True,
+                                 bad_antennas=None,
+                                 bad_uvrange='2~27m'):
+    status = 0
+    current_error = cs.UNKNOWN_ERR
+    calstring = 'initialization'
+
+    try:
+        # Remove files that we will create so that things will fail if casa
+        # doesn't write a table.
+        tables_to_remove = [
+            '{0}_{1}_kcal'.format(msname, cal.name),
+            '{0}_{1}_bkcal'.format(msname, cal.name),
+            '{0}_{1}_gacal'.format(msname, cal.name),
+            '{0}_{1}_gpcal'.format(msname, cal.name),
+            '{0}_{1}_bcal'.format(msname, cal.name),
+            '{0}_{1}_2gcal'.format(msname, cal.name)
+        ]
+        for path in tables_to_remove:
+            if os.path.exists(path):
+                shutil.rmtree(path)
+
+        calstring = "flagging of ms data"
+        current_error = (
+            cs.FLAGGING_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_DELAY_P1 |
+            cs.INV_DELAY_P2 |
+            cs.INV_GAINCALTIME |
+            cs.INV_DELAYCALTIME
+        )
+
+        # Reset flags in the measurement set
+        dc.reset_flags(msname, datacolumn='data')
+        dc.reset_flags(msname, datacolumn='model')
+        dc.reset_flags(msname, datacolumn='corrected')
+
+        current_error = (
+            cs.FLAGGING_ERR
+        )
+        error = dc.flag_baselines(msname, uvrange=bad_uvrange)
+        if error > 0:
+            LOGGER.info(
+                'Non-fatal error occured in flagging short baselines of {0}.'
+                .format(msname)
+            )
+        error = dc.flag_zeros(msname)
+        if error > 0:
+            LOGGER.info(
+                'Non-fatal error occured in flagging zeros of {0}.'
+                .format(msname)
+            )
+        if bad_antennas is not None:
+            for ant in bad_antennas:
+                error = dc.flag_antenna(msname, ant)
+                if error > 0:
+                    LOGGER.info(
+                        'Non-fatal error occured in flagging ant {0} of {1}.'
+                        .format(ant, msname)
+                    )
+        flag_pixels(msname)
+        if error > 0:
+            LOGGER.info(
+                'Non-fatal error occured in flagging bad pixels of {0}.'
+                .format(msname)
+            )
+
+        # Antenna-based delay calibration
+        calstring = 'delay calibration'
+        current_error = (
+            cs.DELAY_CAL_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_DELAY_P1 |
+            cs.INV_DELAY_P2 |
+            cs.INV_GAINCALTIME |
+            cs.INV_DELAYCALTIME
+        )
+        error = dc.delay_calibration(
+            msname,
+            cal.name,
+            refant=refant
+        )
+        if error > 0:
+            status = cs.update(status, cs.DELAY_CAL_ERR )
+            LOGGER.info(
+                'Non-fatal error occured in delay calibration of {0}.'
+                .format(msname)
+            )
+        _check_path('{0}_{1}_kcal'.format(msname, cal.name))
+
+        calstring = 'flagging of ms data'
+        current_error = (
+            cs.FLAGGING_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_GAINCALTIME
+        )
+        _bad_times, _times, error = dc.get_bad_times(msname, cal.name, refant)
+        _times, antenna_delays, kcorr, _ant_nos = dp.plot_antenna_delays(
+            msname, cal.name, show=False)
+        error += flag_antennas_using_delays(antenna_delays, kcorr, msname)
+        if error > 0:
+            status = cs.update(status, cs.FLAGGING_ERR)
+            LOGGER.info(
+                'Non-fatal error occured in flagging of bad timebins on {0}'
+                .format(msname)
+            )
+        try:
+            _check_path('{0}_{1}_2kcal'.format(msname, cal.name))
+        except AssertionError:
+            status = cs.update(status, cs.FLAGGING_ERR)
+            LOGGER.info(
+                'Non-fatal error occured in flagging of bad timebins on {0}'
+                .format(msname)
+            )
+
+        # Antenna-based delay calibration
+        calstring = 'delay calibration'
+        current_error = (
+            cs.DELAY_CAL_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_DELAY_P1 |
+            cs.INV_DELAY_P2 |
+            cs.INV_GAINCALTIME |
+            cs.INV_DELAYCALTIME
+        )
+        shutil.rmtree('{0}_{1}_kcal'.format(msname, cal.name))
+        error = dc.delay_calibration(msname, cal.name, refant=refant)
+        if error > 0:
+            status = cs.update(status, cs.DELAY_CAL_ERR )
+            LOGGER.info(
+                'Non-fatal error occured in delay calibration of {0}.'
+                .format(msname)
+            )
+        _check_path('{0}_{1}_kcal'.format(msname, cal.name))
+
+        calstring = 'bandpass and gain calibration'
+        current_error = (
+            cs.GAIN_BP_CAL_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_GAINCALTIME
+        )
+        error = dc.gain_calibration_beamformer_weights(
+            msname,
+            cal.name,
+            refant
+        )
+        if error > 0:
+            status = cs.update(status, cs.GAIN_BP_CAL_ERR)
+            LOGGER.info(
+                'Non-fatal error occured in gain/bandpass calibration of {0}.'
+                .format(msname)
+            )
+        for fname in [
+            '{0}_{1}_bcal'.format(msname, cal.name),
+            '{0}_{1}_bkcal'.format(msname, cal.name),
+            '{0}_{1}_gpcal'.format(msname, cal.name),
+            '{0}_{1}_gacal'.format(msname, cal.name),
+            '{0}_{1}_2gcal'.format(msname, cal.name),
+        ]:
+            _check_path(fname)
+
+        # Combine bandpass solutions and delay solutions
+        with table('{0}_{1}_bkcal'.format(msname, cal.name)) as tb:
+            bpass = np.array(tb.CPARAM[:])
+        with table('{0}_{1}_bacal'.format(msname, cal.name)) as tb:
+            bpass *= np.array(tb.CPARAM[:])
+        with table('{0}_{1}_bpcal'.format(msname, cal.name)) as tb:
+            bpass *= np.array(tb.CPARAM[:])
+        with table(
+            '{0}_{1}_bcal'.format(msname, cal.name),
+            readonly=False
+        ) as tb:
+            tb.putcol('CPARAM', bpass)
+
+    except Exception as exc:
+        status = cs.update(status, current_error)
+        du.exception_logger(LOGGER, calstring, exc, throw_exceptions)
+
+    return status
+
+
+def calibrate_delays_and_weights(
+    msname, cal, refant='102', throw_exceptions=True, bad_antennas=None,
+    bad_uvrange='2~27'
+):
+    raise NotImplementedError('Interpolation not implemented in this routine.')
+    status = 0
+    current_error = cs.UNKNOWN_ERR
+    calstring = 'initialization'
+
+    try:
+        # Remove files that we will create so that things will fail if casa
+        # doesn't write a table.
+        tables_to_remove = [
+            '{0}_{1}_kcal'.format(msname, cal.name),
+            '{0}_{1}_2kcal'.format(msname, cal.name),
+            '{0}_{1}_gacal'.format(msname, cal.name),
+            '{0}_{1}_gpcal'.format(msname, cal.name),
+            '{0}_{1}_bcal'.format(msname, cal.name),
+            '{0}_{1}_2gcal'.format(msname, cal.name)
+        ]
+        for path in tables_to_remove:
+            if os.path.exists(path):
+                shutil.rmtree(path)
+
+        calstring = "flagging of ms data"
+        current_error = (
+            cs.FLAGGING_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_DELAY_P1 |
+            cs.INV_DELAY_P2 |
+            cs.INV_GAINCALTIME |
+            cs.INV_DELAYCALTIME
+        )
+
+        # Reset flags in the measurement set
+        dc.reset_flags(msname, datacolumn='data')
+        dc.reset_flags(msname, datacolumn='model')
+        dc.reset_flags(msname, datacolumn='corrected')
+
+        current_error = (
+            cs.FLAGGING_ERR
+        )
+        error = dc.flag_baselines(msname, uvrange=bad_uvrange)
+        if error > 0:
+            LOGGER.info(
+                'Non-fatal error occured in flagging short baselines of {0}.'
+                .format(msname)
+            )
+        error = dc.flag_zeros(msname)
+        if error > 0:
+            LOGGER.info(
+                'Non-fatal error occured in flagging zeros of {0}.'
+                .format(msname)
+            )
+        if bad_antennas is not None:
+            for ant in bad_antennas:
+                error = dc.flag_antenna(msname, ant)
+                if error > 0:
+                    LOGGER.info(
+                        'Non-fatal error occured in flagging ant {0} of {1}.'
+                        .format(ant, msname)
+                    )
+        flag_pixels(msname)
+        if error > 0:
+            LOGGER.info(
+                'Non-fatal error occured in flagging bad pixels of {0}.'
+                .format(msname)
+            )
+
+        # Antenna-based delay calibration
+        calstring = 'delay calibration'
+        current_error = (
+            cs.DELAY_CAL_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_DELAY_P1 |
+            cs.INV_DELAY_P2 |
+            cs.INV_GAINCALTIME |
+            cs.INV_DELAYCALTIME
+        )
+        error = dc.delay_calibration(
+            msname,
+            cal.name,
+            refant=refant
+        )
+        if error > 0:
+            status = cs.update(status, cs.DELAY_CAL_ERR )
+            LOGGER.info(
+                'Non-fatal error occured in delay calibration of {0}.'
+                .format(msname)
+            )
+        _check_path('{0}_{1}_kcal'.format(msname, cal.name))
+
+        calstring = 'flagging of ms data'
+        current_error = (
+            cs.FLAGGING_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_GAINCALTIME
+        )
+        _bad_times, _times, error = dc.get_bad_times(msname, cal.name, refant)
+        _times, antenna_delays, kcorr, _ant_nos = dp.plot_antenna_delays(
+            msname, cal.name, show=False
+        )
+        error += flag_antennas_using_delays(antenna_delays, kcorr, msname)
+        if error > 0:
+            status = cs.update(status, cs.FLAGGING_ERR)
+            LOGGER.info(
+                'Non-fatal error occured in flagging of bad timebins on {0}'
+                .format(msname)
+            )
+        try:
+            _check_path('{0}_{1}_2kcal'.format(msname, cal.name))
+        except AssertionError:
+            status = cs.update(status, cs.FLAGGING_ERR)
+            LOGGER.info(
+                'Non-fatal error occured in flagging of bad timebins on {0}'
+                .format(msname)
+            )
+
+        # Antenna-based delay calibration
+        calstring = 'delay calibration'
+        current_error = (
+            cs.DELAY_CAL_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_DELAY_P1 |
+            cs.INV_DELAY_P2 |
+            cs.INV_GAINCALTIME |
+            cs.INV_DELAYCALTIME
+        )
+        shutil.rmtree('{0}_{1}_kcal'.format(msname, cal.name))
+        error = dc.delay_calibration(msname, cal.name, refant=refant)
+        if error > 0:
+            status = cs.update(status, cs.DELAY_CAL_ERR )
+            LOGGER.info(
+                'Non-fatal error occured in delay calibration of {0}.'
+                .format(msname)
+            )
+        _check_path('{0}_{1}_kcal'.format(msname, cal.name))
+
+        # Change to delays of even 2 nanoseconds
+        with table(
+            '{0}_{1}_kcal'.format(msname, cal.name),
+            readonly=False
+        ) as tb:
+            fparam = np.array(tb.FPARAM[:])
+            tb.putcol('FPARAM', np.round(fparam/2)*2)
+
+        calstring = 'bandpass and gain calibration'
+        current_error = (
+            cs.GAIN_BP_CAL_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_GAINCALTIME
+        )
+        error = dc.gain_calibration_system_health(
+            msname,
+            cal.name,
+            'inf',
+            'inf',
+            refant
+        )
+        if error > 0:
+            status = cs.update(status, cs.GAIN_BP_CAL_ERR)
+            LOGGER.info(
+                'Non-fatal error occured in gain/bandpass calibration of {0}.'
+                .format(msname)
+            )
+        for fname in [
+            '{0}_{1}_bcal'.format(msname, cal.name),
+            '{0}_{1}_gpcal'.format(msname, cal.name),
+            '{0}_{1}_gacal'.format(msname, cal.name),
+            '{0}_{1}_2gcal'.format(msname, cal.name)
+        ]:
+            _check_path(fname)
+        
+        # Combine bandpass solutions and delay solutions
+        with table('{0}_{1}_bacal'.format(msname, cal.name)) as tb:
+            bpass = np.array(tb.CPARAM[:])
+        with table('{0}_{1}_bpcal'.format(msname, cal.name)) as tb:
+            bpass *= np.array(tb.CPARAM[:])
+        with table(
+            '{0}_{1}_bcal'.format(msname, cal.name),
+            readonly=False
+        ) as tb:
+            tb.putcol('CPARAM', bpass)
 
     except Exception as exc:
         status = cs.update(status, current_error)
@@ -1004,15 +1448,24 @@ def get_files_for_cal(
     """Returns a dictionary containing the filenames for each calibrator pass.
     """
     calsources = pandas.read_csv(caltable, header=0)
-    files = sorted(glob.glob('{0}/corr{1}/{2}.hdf5'.format(hdf5dir, refcorr, date_specifier)))
+    files = sorted(
+        glob.glob(
+            '{0}/corr{1}/{2}.hdf5'.format(
+            hdf5dir,
+            refcorr,
+            date_specifier
+            )
+        )
+    )
     datetimes = [f.split('/')[-1][:19] for f in files]
-    assert len(np.unique(datetimes)) == len(datetimes)
+    if len(np.unique(datetimes)) != len(datetimes):
+        print('Multiple files exist for the same time.')
     dates = np.unique([dt[:10] for dt in datetimes])
 
     filenames = dict()
     for date in dates:
         filenames[date] = dict()
-        for index, row in calsources.iterrows():
+        for _index, row in calsources.iterrows():
             cal = du.src(
                 row['source'],
                 ra=Angle(row['ra']),
@@ -1021,9 +1474,15 @@ def get_files_for_cal(
             )
 
             midnight = Time('{0}T00:00:00'.format(date))
-            delta_lst = (Angle(row['ra'])-midnight.sidereal_time(
-                'apparent', longitude=ct.OVRO_LON*u.rad)).to_value(u.rad)%(2*np.pi)
-            transit_time = midnight + delta_lst/(2*np.pi)*ct.SECONDS_PER_SIDEREAL_DAY*u.s
+            delta_lst = (
+                Angle(row['ra'])-midnight.sidereal_time(
+                    'apparent',
+                    longitude=ct.OVRO_LON*u.rad
+                )
+            ).to_value(u.rad)%(2*np.pi)
+            transit_time = (
+                midnight + delta_lst/(2*np.pi)*ct.SECONDS_PER_SIDEREAL_DAY*u.s
+            )
             assert transit_time.isot[:10]==date
 
             # Get the filenames for each calibrator transit
@@ -1034,15 +1493,22 @@ def get_files_for_cal(
                 transitstart = transit_time-duration/2
                 transitend = transit_time+duration/2
 
-                # For any of these conditions, the file contains data that we want
+                # For any of these conditions,
+                # the file contains data that we want
                 if (filestart < transitstart) and (fileend > transitend):
                     transit_files += [dt]
                 elif (filestart > transitstart) and (fileend < transitend):
                     transit_files += [dt]
-                elif (fileend > transitstart) and (fileend-transitstart < duration):
+                elif (fileend > transitstart) and \
+                    (fileend-transitstart < duration):
                     transit_files += [dt]
-                elif (filestart < transitend) and (transitend-filestart) < duration:
+                elif (filestart < transitend) and \
+                    (transitend-filestart) < duration:
                     transit_files += [dt]
 
-            filenames[date][cal.name] = {'cal': cal, 'transit_time': transit_time, 'files': transit_files}
+            filenames[date][cal.name] = {
+                'cal': cal,
+                'transit_time': transit_time,
+                'files': transit_files
+            }
     return filenames
