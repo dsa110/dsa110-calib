@@ -1128,19 +1128,20 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
 
     uvw_m = calc_uvw_blt(blen, time[:UV.Nbls].mjd, 'HADEC',
                          np.zeros(UV.Nbls)*u.rad, np.ones(UV.Nbls)*pt_dec)
-    uvw_z = calc_uvw_blt(blen, time[:UV.Nbls].mjd, 'HADEC',
-                         np.zeros(UV.Nbls)*u.rad, np.ones(UV.Nbls)*zenith_dec)
-    dw = (uvw_z[:, -1] - uvw_m[:, -1])*u.m
-    phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis])
-                         .to_value(u.dimensionless_unscaled))
-    UV.uvw_array = np.tile(uvw_z[np.newaxis, :, :], (UV.Ntimes, 1, 1)
-                       ).reshape(-1, 3)
-    UV.data_array = (UV.data_array.reshape(UV.Ntimes, UV.Nbls, UV.Nspws,
-                                           UV.Nfreqs, UV.Npols)
-                     /phase_model[np.newaxis, ..., np.newaxis]).reshape(
-        UV.Nblts, UV.Nspws, UV.Nfreqs, UV.Npols)
 
     # Use antenna positions since CASA uvws are slightly off from pyuvdatas
+    # uvw_z = calc_uvw_blt(blen, time[:UV.Nbls].mjd, 'HADEC',
+    #                      np.zeros(UV.Nbls)*u.rad, np.ones(UV.Nbls)*zenith_dec)
+    # dw = (uvw_z[:, -1] - uvw_m[:, -1])*u.m
+    # phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis])
+    #                      .to_value(u.dimensionless_unscaled))
+    # UV.uvw_array = np.tile(uvw_z[np.newaxis, :, :], (UV.Ntimes, 1, 1)
+    #                    ).reshape(-1, 3)
+    # UV.data_array = (UV.data_array.reshape(
+    #     UV.Ntimes, UV.Nbls, UV.Nspws,UV.Nfreqs, UV.Npols
+    # )/phase_model[np.newaxis, ..., np.newaxis]).reshape(
+    #     UV.Nblts, UV.Nspws, UV.Nfreqs, UV.Npols
+    # )
     # UV.phase(ra.to_value(u.rad), dec.to_value(u.rad), use_ant_pos=True)
     # Below is the manual calibration which can be used instead. 
     # Currently using because casa uvws are more accurate than pyuvdatas
@@ -1215,6 +1216,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         tb.putcol('POSITION', antenna_positions)
 
     addImagingColumns('{0}.ms'.format(msname))
+    #if flux is not None:
     with table('{0}.ms'.format(msname), readonly=False) as tb:
         tb.putcol('MODEL_DATA', model)
         tb.putcol('CORRECTED_DATA', tb.getcol('DATA')[:])
