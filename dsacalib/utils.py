@@ -212,23 +212,23 @@ def mask_bad_bins(vis, axis, thresh=6.0, medfilt=False, nmed=129):
     avg_axis = 1 if axis == 2 else 2
 
     # Average over time (or frequency) first.
-    vis_avg = np.abs(np.mean(vis, axis=avg_axis))
+    vis_avg = np.abs(np.mean(vis, axis=avg_axis, keepdims=True))
     # Median filter over frequency (or time) and remove the median trend or
     # remove the median.
     if medfilt:
         vis_avg_mf = median_filter(vis_avg.real, size=(1, nmed, 1))
         vis_avg -= vis_avg_mf
     else:
-        vis_avg -= np.median(vis_avg, axis=1)
+        vis_avg -= np.median(vis_avg, axis=1, keepdims=True)
     # Calculate the standard deviation along the frequency (or time) axis.
     vis_std = np.std(vis_avg, axis=1, keepdims=True)
     # Get good channels.
     good_bins = np.abs(vis_avg) < thresh*vis_std
-    fraction_flagged = 1-good_bins.sum(axis=1)/good_bins.shape[1]
-    if avg_axis == 1:
-        good_bins = good_bins[:, np.newaxis, :, :]
-    else:
-        good_bins = good_bins[:, :, np.newaxis, :]
+    fraction_flagged = (1-good_bins.sum(axis=axis)/good_bins.shape[axis]).squeeze()
+#     if avg_axis == 1:
+#         good_bins = good_bins[:, np.newaxis, :, :]
+#     else:
+#         good_bins = good_bins[:, :, np.newaxis, :]
     return good_bins, fraction_flagged
 
 def mask_bad_pixels(vis, thresh=6.0, mask=None):
@@ -263,7 +263,7 @@ def mask_bad_pixels(vis, thresh=6.0, mask=None):
     vis = vis-np.median(vis, axis=1, keepdims=True)
     if mask is not None:
         vis = vis*mask.reshape(nbls, -1, npol)
-    std = np.std(vis, axis=1, keepdims=True)
+    std = np.std(np.abs(vis), axis=1, keepdims=True)
     good_pixels = np.abs(vis) < thresh*std
     fraction_flagged = 1 - good_pixels.sum(1)/good_pixels.shape[1]
     good_pixels = good_pixels.reshape(nbls, nt, nf, npol)
