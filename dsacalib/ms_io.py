@@ -1168,12 +1168,12 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     ascending = np.median(np.diff(freq)) > 0
     if ascending:
         assert np.all(np.diff(freq) > 0)
-        if UV.channel_width < 0:
-            UV.channel_width *= -1
     else:
         assert np.all(np.diff(freq) < 0)
-        if UV.channel_width > 0:
-            UV.channel_width *= -1
+        UV.freq_array = UV.freq_array[:, ::-1]
+        UV.data_array = UV.data_array[:, :, ::-1, :]
+        freq = UV.freq_array.squeeze()
+    UV.channel_width = np.abs(UV.channel_width)
     # Are there missing channels?
     if not np.all(np.diff(freq)-UV.channel_width < 1e-5):
         # There are missing channels!
