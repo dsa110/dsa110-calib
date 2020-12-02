@@ -343,7 +343,7 @@ if __name__=="__main__":
             'nthreads': 1,
             'task_fn': assess_file,
             'queue': ASSESS_Q,
-            'outqueue': CALIB_Q,
+            'outqueue': None,
             'processes': []
         },
         'calibrate': {
