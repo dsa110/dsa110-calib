@@ -413,7 +413,10 @@ def reshape_calibration_data(vals, flags, ant1, ant2, baseline, time, spw):
         ant1 and ant2 for unique baselines, same length as the baseline axis of
         the output `vals`.
     """
-    nbl = len(np.unique(baseline))
+    if len(np.unique(ant1))==len(np.unique(ant2)):
+        nbl = len(np.unique(baseline))
+    else:
+        nbl = max([len(np.unique(ant1)), len(np.unique(ant2))])
     nspw = len(np.unique(spw))
     ntime = len(time)//nbl//nspw
     nfreq = vals.shape[-2]
@@ -564,7 +567,7 @@ def caltable_to_etcd(msname, calname, caltime, status,
         amps = amps*mask
         
         phase, tphase, flags, ant1, ant2 = read_caltable(
-            '{0}_{1}_gacal'.format(msname, calname),
+            '{0}_{1}_gpcal'.format(msname, calname),
             cparam=True
         )
         mask = np.ones(flags.shape)
@@ -608,7 +611,7 @@ def caltable_to_etcd(msname, calname, caltime, status,
             cs.INV_GAINAMP_P1 |
             cs.INV_GAINAMP_P2 |
             cs.INV_GAINPHASE_P1 |
-            cs.INV_GAINPHASE_P2 |
+            pcs.INV_GAINPHASE_P2 |
             cs.INV_GAINCALTIME
         )
 
@@ -640,7 +643,7 @@ def caltable_to_etcd(msname, calname, caltime, status,
             cs.DELAY_TBL_ERR |
             cs.INV_DELAY_P1 |
             cs.INV_DELAY_P2 |
-            cs.INV_DELAYCAL_TIME
+            cs.INV_DELAYCALTIME
         )
         antenna_order_delays = np.zeros(0, dtype=np.int)
 
@@ -694,7 +697,7 @@ def caltable_to_etcd(msname, calname, caltime, status,
         }
         required_keys = dict({
             'ant_num': [cs.INV_ANTNUM, 0],
-            'time': [cs.INV_TIME, 0.],
+            'time': [cs.INV_DELAYCALTIME, 0.],
             'pol': [cs.INV_POL, ['B', 'A']],
             'calsource': [cs.INV_CALSOURCE, 'Unknown'],
             'sim': [cs.INV_SIM, False],
@@ -714,7 +717,9 @@ def caltable_to_etcd(msname, calname, caltime, status,
                 status = cs.update(status, cs.INV_POL)
                 dd['pol'] = ['B', 'A']
         if antnum==23:
+#            print(dd)
             de.put_dict('/mon/cal/{0}'.format(antnum+1), dd)
+
 
 def get_antenna_gains(gains, ant1, ant2, refant=0):
     """Calculates antenna gains, g_i, from CASA table of G_ij=g_i g_j*.
@@ -900,7 +905,6 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
 #                         )
 #                         weights[i, j, idx, k] = fr(idx) + 1j*fi(idx)
     weights[np.isnan(weights)] = 0.
-    # weights = np.conjugate(weights)
     # Flag bad antennas
     flags = np.tile(antenna_flags[ np.newaxis, :, np.newaxis, :],
                     (ncorr, 1, 48, 1))
