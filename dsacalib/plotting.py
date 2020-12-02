@@ -5,7 +5,9 @@ the calibration solutions for DSA-110.
 
 Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 """
-
+import os
+import glob
+import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import astropy.units as u
@@ -14,7 +16,6 @@ import casatools as cc
 from casacore.tables import table
 from dsacalib.ms_io import read_caltable, extract_vis_from_ms
 import dsacalib.constants as ct
-import os
 
 def plot_dyn_spec(vis, fobs, mjd, bname, normalize=False, outname=None,
                   show=True, nx=None):
@@ -1002,3 +1003,104 @@ def summary_plot(msname, calname, npol, plabels, antennas):
         ax[i, 0, 1].set_ylabel('delay (ns)')
     fig.suptitle('{0}'.format(msname))
     return fig
+
+def plot_current_beamformer_solutions(
+    filenames,
+    calname,
+    date,
+    corrlist=np.arange(1, 16+1),
+    antennas_to_plot=None,
+    antennas=None,
+    outname=None,
+    show=True
+):
+    """Plots the phase difference between the two polarizations.
+    
+    After applying beamformer weights.
+    """
+    if antennas_to_plot is None:
+        antennas_to_plot = np.array(
+            [13, 14, 15, 16, 17, 18, 19, 20,
+             24, 25, 26, 27, 28, 29, 30, 31,
+             32, 33, 34, 35
+            ])
+    if antennas is None:
+        antennas = np.concatenate((np.array(
+            [24, 25, 26, 27, 28, 29, 30, 31, 32,
+             33, 34, 35, 20, 19, 18, 17, 16, 15,
+             14, 13, 100, 101, 102, 116, 103]),
+            np.arange(36, 36+39)))
+    gaindir = '/home/user/beamformer_weights/'
+    hdf5dir = '/mnt/data/dsa110/'
+    # Should be generalized to different times, baselines
+    visdata_corr = np.zeros(
+        (len(filenames)*280, 325, 16, 48, 2),
+        dtype=np.complex
+    )
+    for corridx, corr in enumerate(corrlist):
+        visdata = np.zeros(
+            (len(filenames), 91000, 1, 48, 2),
+            dtype=np.complex
+        )
+        for i, filename in enumerate(filenames):
+            files = sorted(glob.glob(
+                '{0}/corr{1:02d}/{2}.hdf5'.format(
+                    hdf5dir,
+                    corr,
+                    filename
+                )
+            ))
+            with h5py.File(files[0], 'r') as f:
+                visdata[i, ...] = np.array(f['Data']['visdata'][:])
+                ant1 = np.array(f['Header']['ant_1_array'][:])
+                ant2 = np.array(f['Header']['ant_2_array'][:])
+        visdata = visdata.reshape(-1, 325, 48, 2)
+        ant1 = ant1.reshape(-1, 325)[0, :]
+        ant2 = ant2.reshape(-1, 325)[0, :]
+        with open(
+            '{0}/beamformer_weights_corr{1:02d}.dat'.format(
+                gaindir,
+                corr),
+            'rb'
+        ) as f:
+            data = np.fromfile(f, '<f4')
+        gains = data[64:].reshape(64, 48, 2, 2)
+        gains = gains[..., 0]+1.0j*gains[..., 1]
+        my_gains = np.zeros((325, 48, 2), dtype=np.complex)
+        for i in range(325):
+            idx1 = np.where(antennas==ant1[i]+1)[0][0]
+            idx2 = np.where(antennas==ant2[i]+1)[0][0]
+            my_gains[i, ...] = np.conjugate(gains[idx1, ...])*gains[idx2, ...] 
+        visdata_corr[:, :, corridx, ...] = visdata*my_gains[np.newaxis, :, :, :]
+    visdata_corr = visdata_corr.reshape((-1, 325, 16*48, 2))
+
+    fig, ax = plt.subplots(5, 4, figsize=(25, 12), sharex=True, sharey=True)
+    for axi in ax[-1, :]:
+        axi.set_xlabel('freq channel')
+    for axi in ax[:, 0]:
+        axi.set_ylabel('time bin')
+    ax = ax.flatten()
+    for i, ant in enumerate(antennas_to_plot-1):
+        idx = np.where((ant1==23) & (ant2==ant))[0][0]
+        ax[i].imshow(
+            np.angle(
+                visdata_corr[:, idx, :, 0]/visdata_corr[:, idx, :, 1]
+            ),
+            aspect='auto',
+            origin='lower',
+            interpolation='none',
+            cmap=plt.get_cmap('RdBu'),
+            vmin=-np.pi,
+            vmax=np.pi
+        )
+        ax[i].set_title(
+            '24-{0}, {1:.2f}'.format(
+                ant+1,
+                np.angle(np.mean(visdata_corr[:, idx, :, 0]/visdata_corr[:, idx, :, 1]))
+            )
+        )
+    fig.suptitle('{0} {1}'.format(date, calname))
+    if outname is not None:
+        plt.savefig('{0}_beamformerweights.png'.format(outname))
+    if not show:
+        plt.close()
