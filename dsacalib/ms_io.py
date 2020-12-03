@@ -716,9 +716,9 @@ def caltable_to_etcd(msname, calname, caltime, status,
                       'etcd')
                 status = cs.update(status, cs.INV_POL)
                 dd['pol'] = ['B', 'A']
-        if antnum==23:
-#            print(dd)
-            de.put_dict('/mon/cal/{0}'.format(antnum+1), dd)
+#         if antnum==23:
+# #            print(dd)
+        de.put_dict('/mon/cal/{0}'.format(antnum+1), dd)
 
 
 def get_antenna_gains(gains, ant1, ant2, refant=0):
