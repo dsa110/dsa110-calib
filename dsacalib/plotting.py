@@ -1044,16 +1044,17 @@ def plot_current_beamformer_solutions(
         )
         for i, filename in enumerate(filenames):
             files = sorted(glob.glob(
-                '{0}/corr{1:02d}/{2}.hdf5'.format(
+                '{0}/corr{1:02d}/{2}??.hdf5'.format(
                     hdf5dir,
                     corr,
-                    filename
+                    filename[:-2]
                 )
             ))
-            with h5py.File(files[0], 'r') as f:
-                visdata[i, ...] = np.array(f['Data']['visdata'][:])
-                ant1 = np.array(f['Header']['ant_1_array'][:])
-                ant2 = np.array(f['Header']['ant_2_array'][:])
+            if len(files) > 0:
+                with h5py.File(files[0], 'r') as f:
+                    visdata[i, ...] = np.array(f['Data']['visdata'][:])
+                    ant1 = np.array(f['Header']['ant_1_array'][:])
+                    ant2 = np.array(f['Header']['ant_2_array'][:])
         visdata = visdata.reshape(-1, 325, 48, 2)
         ant1 = ant1.reshape(-1, 325)[0, :]
         ant2 = ant2.reshape(-1, 325)[0, :]
