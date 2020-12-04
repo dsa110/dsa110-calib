@@ -46,7 +46,7 @@ def calibrate_file(etcd_dict):
         # Parameters that are mostly constant
         refcorr = '01'
         filelength = 15*u.min
-        msdir = '/mnt/data/dsa110/msfiles/'
+        msdir = '/mnt/data/dsa110/calibration/'
         msname = '{0}/{1}_{2}'.format(msdir, date, calname)
         date_specifier = '{0}*'.format(date)
 
@@ -147,7 +147,7 @@ if __name__=="__main__":
     ETCD.add_watch('/cmd/cal', calibrate_file)
     while True:
         ETCD.put_dict(
-            '/mon/cal/calibration_process',
+            '/mon/cal/calibrate_process',
             {
                 "alive": True,
                 "cadence": 60
