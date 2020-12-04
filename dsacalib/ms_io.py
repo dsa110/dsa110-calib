@@ -1007,7 +1007,7 @@ def write_beamformer_solutions(
         yaml.dump(calibration_dictionary, file)
     return flags
 
-def convert_calibrator_pass_to_ms(cal, date, files, duration, msdir='/mnt/data/dsa110/msfiles/', hdf5dir='/mnt/data/dsa110/'):
+def convert_calibrator_pass_to_ms(cal, date, files, duration, msdir='/mnt/data/dsa110/calibration/', hdf5dir='/mnt/data/dsa110/correlator/'):
     """Converts hdf5 files near a calibrator pass to a CASA ms.
     """
     msname = '{0}/{1}_{2}'.format(msdir, date, cal.name)
