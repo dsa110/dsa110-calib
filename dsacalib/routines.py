@@ -1296,7 +1296,7 @@ def cal_in_datetime(dt, transit_time, duration=5*u.min, filelength=15*u.min):
 
 def get_files_for_cal(
     caltable, refcorr='01', duration=5*u.min, filelength=15*u.min,
-    hdf5dir='/mnt/data/dsa110/', date_specifier='*'):
+    hdf5dir='/mnt/data/dsa110/correlator/', date_specifier='*'):
     """Returns a dictionary containing the filenames for each calibrator pass.
     """
     calsources = pandas.read_csv(caltable, header=0)
