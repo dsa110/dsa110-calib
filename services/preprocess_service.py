@@ -55,7 +55,7 @@ def populate_queue(etcd_dict):
     cmd = etcd_dict['cmd']
     val = etcd_dict['val']
     if cmd == 'rsync':
-        rsync_string = '{0}:{1} /mnt/data/dsa110/{0}/'.format(
+        rsync_string = '{0}:{1} /mnt/data/dsa110/correlator/{0}/'.format(
             val['hostname'],
             val['filename']
         )
@@ -91,7 +91,7 @@ def gather_worker(inqueue, outqueue):
     while nfiles < NCORR and time.time() < end:
         if not inqueue.empty():
             fname = inqueue.get()
-            corrid = int(fname.split('/')[4].strip('corr'))
+            corrid = int(fname.split('/')[5].strip('corr'))
             # 21 is currently replacing 4
             if corrid==21:
                 filelist[4-1] = fname

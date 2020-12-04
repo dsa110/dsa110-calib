@@ -1012,7 +1012,9 @@ def plot_current_beamformer_solutions(
     antennas_to_plot=None,
     antennas=None,
     outname=None,
-    show=True
+    show=True,
+    gaindir='/home/user/beamformer_weights/',
+    hdf5dir='/mnt/data/dsa110/correlator/'
 ):
     """Plots the phase difference between the two polarizations.
     
@@ -1030,8 +1032,6 @@ def plot_current_beamformer_solutions(
              33, 34, 35, 20, 19, 18, 17, 16, 15,
              14, 13, 100, 101, 102, 116, 103]),
             np.arange(36, 36+39)))
-    gaindir = '/home/user/beamformer_weights/'
-    hdf5dir = '/mnt/data/dsa110/'
     # Should be generalized to different times, baselines
     visdata_corr = np.zeros(
         (len(filenames)*280, 325, 16, 48, 2),
