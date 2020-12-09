@@ -476,7 +476,7 @@ def pb_resp_uniform_ill(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.65):
           (np.pi*dis[:, np.newaxis]*dish_dia/lam))**2
     return pb
 
-def pb_resp(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.65):
+def pb_resp(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.34):
     """Computes the primary beam response towards a direction on the sky.
 
     Assumes tapered illumination of the disk. Returns a value between 0 and 1
@@ -509,6 +509,6 @@ def pb_resp(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.65):
         dis = dis[:, np.newaxis] # prepare for broadcasting
 
     lam = 0.299792458/freq
-    arg = dis*dish_dia/lam
+    arg = 1.2*dis*dish_dia/lam
     pb = (np.cos(np.pi*arg)/(1-4*arg**2))**2
     return pb
