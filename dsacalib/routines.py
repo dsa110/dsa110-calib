@@ -640,7 +640,7 @@ def calculate_sefd(
     autocorr_gains_off = np.zeros((nant, npol))
     ant_gains = np.zeros((nant, npol))
     sefds = np.zeros((nant, npol))
-
+    hwhms = np.zeros((nant, npol))
     expected_transit_time = ((
         cal.ra-Time(
             time[0],
@@ -719,6 +719,7 @@ def calculate_sefd(
                 sefds[i, j] = (
                     autocorr_gains_off[i, j]/ant_gains[i, j]- max_flux/2
                 )
+                hwhms[i, j] = hwhm
             if showplots:
                 ax[i].plot(
                     time-time[0],
@@ -745,7 +746,7 @@ def calculate_sefd(
         max_gain = np.nanmax(ant_gains_on)
         ax[0].set_ylim(-0.1*max_gain, 1.1*max_gain)
 
-    return antenna_order+1, sefds, ant_gains, ant_transit_time, fref
+    return antenna_order+1, sefds, ant_gains, ant_transit_time, fref, hwhms
 
 def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
     """Calibrate dsa10 data.
