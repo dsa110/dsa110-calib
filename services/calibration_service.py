@@ -4,21 +4,23 @@
 import warnings
 # make sure warnings do not spam syslog
 warnings.filterwarnings("ignore")
-import matplotlib
+import datetime # pylint: disable=wrong-import-position
+import time # pylint: disable=wrong-import-position
+import matplotlib # pylint: disable=wrong-import-position
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from pkg_resources import resource_filename
-import time
-import numpy as np
-import astropy.units as u
-import dsautils.dsa_store as ds
-import dsautils.dsa_syslog as dsl
-from dsacalib.preprocess import first_true 
-from dsacalib.utils import exception_logger
-from dsacalib.routines import get_files_for_cal, calibrate_measurement_set
-from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd
-from dsacalib.plotting import summary_plot, plot_current_beamformer_solutions
+import matplotlib.pyplot as plt # pylint: disable=wrong-import-position
+from matplotlib.backends.backend_pdf import PdfPages # pylint: disable=wrong-import-position
+from pkg_resources import resource_filename # pylint: disable=wrong-import-position
+import numpy as np # pylint: disable=wrong-import-position
+import astropy.units as u # pylint: disable=wrong-import-position
+from astropy.time import Time # pylint: disable=wrong-import-position
+import dsautils.dsa_store as ds # pylint: disable=wrong-import-position
+import dsautils.dsa_syslog as dsl # pylint: disable=wrong-import-position
+from dsacalib.preprocess import first_true # pylint: disable=wrong-import-position
+from dsacalib.utils import exception_logger # pylint: disable=wrong-import-position
+from dsacalib.routines import get_files_for_cal, calibrate_measurement_set # pylint: disable=wrong-import-position
+from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd # pylint: disable=wrong-import-position
+from dsacalib.plotting import summary_plot, plot_current_beamformer_solutions # pylint: disable=wrong-import-position
 
 # Logger
 LOGGER = dsl.DsaSyslogger()
@@ -150,7 +152,8 @@ if __name__=="__main__":
             '/mon/cal/calibrate_process',
             {
                 "alive": True,
-                "cadence": 60
+                "cadence": 60,
+                "time": Time(datetime.datetime.utcnow()).isot
             }
         )
         time.sleep(60)
