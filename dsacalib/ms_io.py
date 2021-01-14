@@ -777,7 +777,7 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
                 sign*1.0j*np.angle(gains[idx_phase])))**(-1)
     return antennas, antenna_gains
 
-def write_beamformer_weights(msname, calname, antennas, outdir,
+def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
                              corr_list, antenna_flags):
     """Writes weights for the beamformer.
 
@@ -834,7 +834,7 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
 
     gains, time, flags, ant1, ant2 = read_caltable(
         '{0}_{1}_gacal'.format(msname, calname), True)
-    caltime = Time(np.median(time), format='mjd', precision=0)
+    # caltime = Time(np.median(time), format='mjd', precision=0)
     gains[flags] = np.nan
     gains = np.nanmean(gains, axis=1)
     phases, _, flags, ant1p, ant2p = read_caltable(
@@ -910,6 +910,7 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
                     (ncorr, 1, 48, 1))
     weights[flags] = 0.
     
+    caltime.precision = 0
     filenames = []
     for i, corr_idx in enumerate(corr_list):
         wcorr = weights[i, ...].view(np.float32).flatten()
@@ -918,7 +919,7 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
         fname2 = '{0}_{1}_{2}'.format(
             fname,
             calname,
-            caltime.isot.split('.')[0]
+            caltime.isot
         )
         if os.path.exists('{0}/{1}.dat'.format(outdir, fname)):
             os.unlink('{0}/{1}.dat'.format(outdir, fname))
@@ -973,6 +974,7 @@ def write_beamformer_solutions(
     corr_list, eastings, fobs, weights_files = write_beamformer_weights(
         msname,
         calname,
+        caltime,
         antennas,
         outdir,
         corr_list,
