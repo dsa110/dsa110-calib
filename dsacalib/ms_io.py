@@ -11,12 +11,12 @@ Routines to interact with CASA measurement sets and calibration tables.
 
 # Always import scipy before importing casatools.
 import shutil
-from scipy.interpolate import interp1d
 import os
+import glob
+#from scipy.interpolate import interp1d
 import numpy as np
 from pkg_resources import resource_filename
 import yaml
-import glob
 import scipy # pylint: disable=unused-import
 import casatools as cc
 from casatasks import importuvfits, virtualconcat
@@ -31,11 +31,11 @@ import astropy.constants as c
 from dsacalib import constants as ct
 import dsacalib.utils as du
 from dsacalib.fringestopping import calc_uvw, amplitude_sky_model
-from antpos.utils import get_itrf
-from astropy.utils import iers
+from antpos.utils import get_itrf # pylint: disable=wrong-import-order
+from astropy.utils import iers # pylint: disable=wrong-import-order
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=wrong-import-position
+from astropy.time import Time # pylint: disable=wrong-import-position wrong-import-order
 
 de = dsa_store.DsaStore()
 LOGGER = dsl.DsaSyslogger()
@@ -309,54 +309,11 @@ def extract_vis_from_ms(msname, data='data'):
 
     time, vals, flags, ant1, ant2 = reshape_calibration_data(
         vals, flags, ant1, ant2, baseline, time, spw)
-    
+
     with table('{0}.ms/FIELD'.format(msname)) as tb:
         pt_dec =tb.PHASE_DIR[:][0][0][1]
 
     return vals, time/ct.SECONDS_PER_DAY, fobs, flags, ant1, ant2, pt_dec
-
-# def extract_vis_from_ms_old(msname, nbls, data='data'):
-#     """ Extracts visibilities from a CASA measurement set.
-
-#     Parameters
-#     ----------
-#     ms_name : str
-#         The name of the measurement set.  Will open `ms_name`.ms.
-#     nbls : int
-#         The number of baselines in the measurement set.
-
-#     Returns
-#     -------
-#     vis_uncal : ndarray
-#         The 'observed' visibilities from the measurement set.  Dimensions
-#         (baseline, time, freq, polarization).
-#     vis_cal : ndarray
-#         The 'corrected' visibilities from the measurement set.  Dimensions
-#         (baseline, time, freq, polarization).
-#     time : array
-#         The time of each subintegration, in MJD.
-#     freq : array
-#         The frequency of each channel, in GHz.
-#     flags : ndarray
-#         The flags for the visibility data, same dimensions as `vis_uncal` and
-#         `vis_cal`. `flags` is 1 (or ``True``) where the data is flagged
-#         (invalid) and 0 (or ``False``) otherwise.
-#     """
-#     error = 0
-#     ms = cc.ms()
-#     error += not ms.open('{0}.ms'.format(msname))
-#     axis_info = ms.getdata(['axis_info'])['axis_info']
-#     freq = axis_info['freq_axis']['chan_freq'].squeeze()/1e9
-#     time = ms.getdata(['time'])['time'].reshape(-1, nbls)[..., 0]
-#     time = time/ct.SECONDS_PER_DAY
-#     vis = ms.getdata([data])[data]
-#     flags = ms.getdata(["flag"])['flag']
-#     vis = vis.reshape(vis.shape[0], vis.shape[1], -1, nbls).T
-#     flags = flags.reshape(flags.shape[0], flags.shape[1], -1, nbls).T
-#     error += not ms.close()
-#     if error > 0:
-#         print('{0} errors occured during calibration'.format(error))
-#     return vis, time, freq, flags
 
 def read_caltable(tablename, cparam=False):
     """Requires that each spw has the same number of frequency channels.
@@ -475,58 +432,6 @@ def reshape_calibration_data(vals, flags, ant1, ant2, baseline, time, spw):
             ant2 = ant2.reshape(nspw, ntime, nbl)[0, 0, :]
     return time, vals, flags, ant1, ant2
 
-# def read_caltable_old(tablename, nbls, cparam=False):
-#     """Extracts calibration solution from a CASA calibration table.
-
-#     Parameters
-#     ----------
-#     tablename : str
-#         The full path to the CASA calibration table.
-#     nbls : int
-#         The number of baselines or antennas in the CASA calibration solutions.
-#         This can be calculated from the number of antennas, nant:
-
-#             For delay calibration, nbls=nant
-#             For antenna-based gain/bandpass calibration, nbls=nant
-#             For baseline-based gain/bandpass calibration,
-#             nbls=(nant*(nant+1))//2
-
-#     cparam : boolean
-#         Whether the parameter of interest is complex (set to ``True``) or a
-#         float (set to ``False``).  For delay calibration, set to ``False``. For
-#         gain/bandpass calibration, set to ``True``.  Defaults ``False``.
-
-#     Returns
-#     -------
-#     time : array
-#         The times at which each solution is calculated in MJD. Dimensions
-#         (time, baselines). If no column 'TIME' is in the calibration table,
-#         ``None`` is returned.
-#     vals : ndarray
-#         The calibration solutions. Dimensions may be (polarization, time,
-#         baselines) or (polarization, 1, baselines) (for delay or gain
-#         calibration) or (polarization,frequency,baselines) (for bandpass cal).
-#     flags : ndarray
-#         Flags corresponding to the calibration solutions.  Same dimensions as
-#         `vals`. A value of 1 or ``True`` if the data is flagged (invalid), 0 or
-#         ``False`` otherwise.
-#     """
-#     param_type = 'CPARAM' if cparam else 'FPARAM'
-#     tb = cc.table()
-#     print('Opening table {0} as type {1}'.format(tablename, param_type))
-#     tb.open(tablename)
-#     if 'TIME' in tb.colnames():
-#         time = (tb.getcol('TIME').reshape(-1, nbls)*u.s).to_value(u.d)
-#     else:
-#         time = None
-#     vals = tb.getcol(param_type)
-#     vals = vals.reshape(vals.shape[0], -1, nbls)
-#     flags = tb.getcol('FLAG')
-#     flags = flags.reshape(flags.shape[0], -1, nbls)
-#     tb.close()
-
-#     return time, vals, flags
-
 def caltable_to_etcd(msname, calname, caltime, status,
                      pols=None):
     r"""Copies calibration values from delay and gain tables to etcd.
@@ -565,8 +470,8 @@ def caltable_to_etcd(msname, calname, caltime, status,
         mask = np.ones(flags.shape)
         mask[flags == 1] = np.nan
         amps = amps*mask
-        
-        phase, tphase, flags, ant1, ant2 = read_caltable(
+
+        phase, _tphase, flags, ant1, ant2 = read_caltable(
             '{0}_{1}_gpcal'.format(msname, calname),
             cparam=True
         )
@@ -600,7 +505,7 @@ def caltable_to_etcd(msname, calname, caltime, status,
         tamp = np.median(tamp)
         gaincaltime_offset = (tamp-caltime)*ct.SECONDS_PER_DAY
 
-    except Exception as e:
+    except Exception as exc:
         tamp = np.nan
         amps = np.ones((0, len(pols)))*np.nan
         gaincaltime_offset = 0.
@@ -611,9 +516,10 @@ def caltable_to_etcd(msname, calname, caltime, status,
             cs.INV_GAINAMP_P1 |
             cs.INV_GAINAMP_P2 |
             cs.INV_GAINPHASE_P1 |
-            pcs.INV_GAINPHASE_P2 |
+            cs.INV_GAINPHASE_P2 |
             cs.INV_GAINCALTIME
         )
+        du.exception_logger(LOGGER, 'caltable_to_etcd', exc, throw=False)
 
     # Delays for each antenna.
     try:
@@ -634,7 +540,7 @@ def caltable_to_etcd(msname, calname, caltime, status,
         tdel = np.median(tdel)
         delaycaltime_offset = (tdel-caltime)*ct.SECONDS_PER_DAY
 
-    except Exception:
+    except Exception as exc:
         tdel = np.nan
         delays = np.ones((0, len(pols)))*np.nan
         delaycaltime_offset = 0.
@@ -646,6 +552,7 @@ def caltable_to_etcd(msname, calname, caltime, status,
             cs.INV_DELAYCALTIME
         )
         antenna_order_delays = np.zeros(0, dtype=np.int)
+        du.exception_logger(LOGGER, 'caltable_to_etcd', exc, throw=False)
 
     antenna_order = np.unique(
         np.array([antenna_order_amps,
@@ -814,8 +721,11 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
         for i, corr_id in enumerate(corr_list):
             ch0 = params['ch0']['corr{0:02d}'.format(corr_id)]
             fobs_corr = fobs[ch0:ch0+nchan_spw]
-            fweights[i, :] = fobs_corr.reshape(fweights.shape[1], -1).mean(axis=1)
-    
+            fweights[i, :] = fobs_corr.reshape(
+                fweights.shape[1],
+                -1
+            ).mean(axis=1)
+
     antpos_df = get_itrf()
     blen = np.zeros((len(antennas), 3))
     for i, ant in enumerate(antennas):
@@ -828,13 +738,16 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
     with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
         fobs = np.array(tb.CHAN_FREQ[:])/1e9
     fobs = fobs.reshape(fweights.size, -1).mean(axis=1)
-    f_reversed = not np.all(np.abs(fobs-fweights.ravel())/fweights.ravel() < 1e-5)
+    f_reversed = not np.all(
+        np.abs(fobs-fweights.ravel())/fweights.ravel() < 1e-5
+    )
     if f_reversed:
-        assert np.all(np.abs(fobs[::-1]-fweights.ravel())/fweights.ravel() < 1e-5)
+        assert np.all(
+            np.abs(fobs[::-1]-fweights.ravel())/fweights.ravel() < 1e-5
+        )
 
-    gains, time, flags, ant1, ant2 = read_caltable(
+    gains, _time, flags, ant1, ant2 = read_caltable(
         '{0}_{1}_gacal'.format(msname, calname), True)
-    # caltime = Time(np.median(time), format='mjd', precision=0)
     gains[flags] = np.nan
     gains = np.nanmean(gains, axis=1)
     phases, _, flags, ant1p, ant2p = read_caltable(
@@ -850,11 +763,11 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
     bgains[flags] = np.nan
     bgains = np.nanmean(bgains, axis=1)
     bantenna, bgains = get_antenna_gains(bgains, ant1, ant2)
-    assert(np.all(bantenna == gantenna))
-    
+    assert np.all(bantenna == gantenna)
+
     nantenna = gains.shape[0]
     npol = gains.shape[-1]
-    
+
     gains = gains*bgains
     print(gains.shape)
     gains = gains.reshape(nantenna, -1, npol)
@@ -877,7 +790,7 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
         if antid+1 in antennas:
             idx = np.where(antennas==antid+1)[0][0]
             weights[:, idx, ...] = gains[i, ...]
-    
+
 #     # interpolate over missing values
 #     med = np.nanmedian(weights, axis=2, keepdims=True)
 #     std = np.nanstd(weights.real, axis=2, keepdims=True)+\
@@ -909,14 +822,13 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
     flags = np.tile(antenna_flags[ np.newaxis, :, np.newaxis, :],
                     (ncorr, 1, 48, 1))
     weights[flags] = 0.
-    
-    caltime.precision = 0
+
     filenames = []
     for i, corr_idx in enumerate(corr_list):
         wcorr = weights[i, ...].view(np.float32).flatten()
         wcorr = np.concatenate([bu, wcorr], axis=0)
         fname = 'beamformer_weights_corr{0:02d}'.format(corr_idx)
-        fname2 = '{0}_{1}_{2}'.format(
+        fname = '{0}_{1}_{2}'.format(
             fname,
             calname,
             caltime.isot
@@ -925,11 +837,7 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
             os.unlink('{0}/{1}.dat'.format(outdir, fname))
         with open('{0}/{1}.dat'.format(outdir, fname), 'wb') as f:
             f.write(bytes(wcorr))
-        os.link(
-            '{0}/{1}.dat'.format(outdir, fname),
-            '{0}/{1}.dat'.format(outdir, fname2)
-        )
-        filenames += ['{0}.dat'.format(fname2)]
+        filenames += ['{0}.dat'.format(fname)]
     return corr_list, bu, fweights, filenames
 
 def get_delays(antennas, msname, calname, applied_delays):
@@ -937,14 +845,16 @@ def get_delays(antennas, msname, calname, applied_delays):
 
     delays and applied_delays are in units of nanoseconds.
     """
-    delays, time, flags, ant1, ant2 = read_caltable('{0}_{1}_kcal'.format(msname, calname))
+    delays, _time, flags, ant1, _ant2 = read_caltable(
+        '{0}_{1}_kcal'.format(msname, calname)
+    )
     delays[flags] = np.nan
     ant1 = list(ant1)
     idx = [ant1.index(ant-1) for ant in antennas]
     delays = delays[idx]
     delays = delays.squeeze() + applied_delays
     delays = delays - np.nanmin(delays)
-    
+
     delays = (np.rint(delays/2)*2)
     flags = np.isnan(delays)
     delays[flags] = 0
@@ -955,7 +865,8 @@ def write_beamformer_solutions(
     corr_list=np.arange(1, 17),
     outdir='/home/user/beamformer_weights/',
     flagged_antennas=None):
-
+    """Writes beamformer solutions to disk.
+    """
     delays, flags = get_delays(antennas, msname, calname, applied_delays)
     for ant in flagged_antennas:
         delays[antennas==ant, ...] = 0
@@ -971,7 +882,8 @@ def write_beamformer_solutions(
         delays = delays-np.min(delays[~flags])
     delays[flags]=0
 
-    corr_list, eastings, fobs, weights_files = write_beamformer_weights(
+    caltime.precision = 0
+    corr_list, eastings, _fobs, weights_files = write_beamformer_weights(
         msname,
         calname,
         caltime,
@@ -980,7 +892,7 @@ def write_beamformer_solutions(
         corr_list,
         flags
     )
-        
+
     calibration_dictionary = {
         'cal_solutions':
         {
@@ -989,7 +901,12 @@ def write_beamformer_solutions(
             'antenna_order': [int(ant) for ant in antennas],
             'corr_order': [int(corr) for corr in corr_list],
             'pol_order': ['B', 'A'],
-            'delays': [[int(delay[0]//2), int(delay[1]//2)] for delay in delays],
+            'delays': [
+                [
+                    int(delay[0]//2),
+                    int(delay[1]//2)
+                ] for delay in delays
+            ],
             'eastings': [float(easting) for easting in eastings],
             'weights_axis0': 'antenna',
             'weights_axis1': 'frequency',
@@ -1002,14 +919,21 @@ def write_beamformer_solutions(
         '{0}/beamformer_weights_{1}_{2}.yaml'.format(
             outdir,
             calname,
-            caltime.isot.split('.')[0]
+            caltime.isot
         ),
         'w'
     ) as file:
         yaml.dump(calibration_dictionary, file)
     return flags
 
-def convert_calibrator_pass_to_ms(cal, date, files, duration, msdir='/mnt/data/dsa110/calibration/', hdf5dir='/mnt/data/dsa110/correlator/'):
+def convert_calibrator_pass_to_ms(
+    cal,
+    date,
+    files,
+    duration,
+    msdir='/mnt/data/dsa110/calibration/',
+    hdf5dir='/mnt/data/dsa110/correlator/'
+):
     """Converts hdf5 files near a calibrator pass to a CASA ms.
     """
     msname = '{0}/{1}_{2}'.format(msdir, date, cal.name)
@@ -1035,7 +959,14 @@ def convert_calibrator_pass_to_ms(cal, date, files, duration, msdir='/mnt/data/d
         for filename in files:
             try:
                 uvh5_to_ms(
-                    sorted(glob.glob('{0}/corr??/{1}*.hdf5'.format(hdf5dir, filename[:-4]))),
+                    sorted(
+                        glob.glob(
+                            '{0}/corr??/{1}*.hdf5'.format(
+                                hdf5dir,
+                                filename[:-4]
+                            )
+                        )
+                    ),
                     '{0}/{1}'.format(msdir, filename),
                     ra=cal.ra,
                     dec=cal.dec,
@@ -1046,9 +977,11 @@ def convert_calibrator_pass_to_ms(cal, date, files, duration, msdir='/mnt/data/d
             except (ValueError, IndexError):
                 pass
         if os.path.exists('{0}.ms'.format(msname)):
-            for root, dirs, files in os.walk('{0}.ms'.format(msname),
-                                             topdown=False):
-                for name in files:
+            for root, _dirs, walkfiles in os.walk(
+                '{0}.ms'.format(msname),
+                topdown=False
+            ):
+                for name in walkfiles:
                     os.unlink(os.path.join(root, name))
             shutil.rmtree('{0}.ms'.format(msname))
         if len(msnames) > 1:
@@ -1085,7 +1018,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         Duration of data to extract. If None, will extract the entire file.
     """
     print(fname)
-    zenith_dec = 0.6503903199825691*u.rad
+    # zenith_dec = 0.6503903199825691*u.rad
     UV = UVData()
 
     # Read in the data
@@ -1106,9 +1039,9 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     if dt is not None:
         extract_times(UV, ra, dt)
     time = Time(UV.time_array, format='jd')
-    
-    # Set antenna positions 
-    # This should already be done by the writer but for some reason they 
+
+    # Set antenna positions
+    # This should already be done by the writer but for some reason they
     # are being converted to ICRS
     df_itrf = get_itrf(height=UV.telescope_location_lat_lon_alt[-1])
     if len(df_itrf['x_m']) != UV.antenna_positions.shape[0]:
@@ -1149,7 +1082,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     #     UV.Nblts, UV.Nspws, UV.Nfreqs, UV.Npols
     # )
     # UV.phase(ra.to_value(u.rad), dec.to_value(u.rad), use_ant_pos=True)
-    # Below is the manual calibration which can be used instead. 
+    # Below is the manual calibration which can be used instead.
     # Currently using because casa uvws are more accurate than pyuvdatas
     blen = np.tile(blen[np.newaxis, :, :], (UV.Ntimes, 1, 1)).reshape(-1, 3)
     uvw = calc_uvw_blt(blen, time.mjd, 'RADEC', ra.to(u.rad), dec.to(u.rad))
@@ -1260,3 +1193,45 @@ def extract_times(UV, ra, dt):
     UV.Nblts = int(idxmax-idxmin)
     assert UV.data_array.shape[0]==UV.Nblts
     UV.Ntimes = UV.Nblts//UV.Nbls
+
+def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None):
+    """Averages written beamformer solutions.
+    """
+    if corridxs is None:
+        corridxs = [
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+        ]
+    written_files = []
+    for corr in corridxs:
+        gains = np.ones((len(fnames), 12352), dtype='<f4')*np.nan
+        for i, fname in enumerate(fnames):
+            if os.path.exists(
+                '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
+                outdir,
+                corr,
+                fname
+                )
+            ):
+                with open(
+                    '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
+                        outdir,
+                        corr,
+                        fname
+                    ),
+                    'rb'
+                ) as f:
+                    gains[i, ...] = np.fromfile(f, '<f4')
+            else:
+                LOGGER.info(
+                    '{0} not found during beamformer weight averaging'.format(
+                    '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
+                    outdir,
+                    corr,
+                    fname
+                )))
+        gains = np.nanmean(gains, axis=0)
+        fnameout = 'beamformer_weights_corr{0:02d}_{1}'.format(corr, ttime.isot)
+        with open('{0}/{1}.dat'.format(outdir, fnameout), 'wb') as f:
+            f.write(bytes(gains))
+        written_files += ['{0}.dat'.format(fnameout)]
+    return written_files
