@@ -8,7 +8,6 @@ import glob
 import numpy as np
 from scipy.optimize import curve_fit
 import matplotlib.pyplot as plt
-import astropy.units as u
 from astropy.coordinates import Angle
 import pandas
 import scipy # pylint: disable=unused-import
@@ -23,7 +22,8 @@ import dsacalib.plotting as dp
 import dsacalib.fringestopping as df
 import dsacalib.constants as ct
 from dsacalib.ms_io import extract_vis_from_ms
-from astropy.utils import iers
+import astropy.units as u # pylint: disable=wrong-import-order
+from astropy.utils import iers # pylint: disable=wrong-import-order
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
 from astropy.time import Time # pylint: disable=wrong-import-position
@@ -317,13 +317,12 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
             cs.INV_GAINPHASE_P2 |
             cs.INV_GAINCALTIME
         )
-        error = dc.gain_calibration_system_health(
+        error = dc.gain_calibration(
             msname,
             cal.name,
             blbased=True,
             refant=refant,
-            tga='30s',
-            tgp='30s'
+            forsystemhealth=True
         )
         if error > 0:
             status = cs.update(status, ['gain_bp_cal_err'])
@@ -788,12 +787,11 @@ def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
     bad_times, times, _error = dc.get_bad_times(msname, cal.name, refant)
     dc.flag_badtimes(msname, times, bad_times, nant)
 
-    dc.gain_calibration_system_health(
+    dc.gain_calibration(
         msname,
         cal.name,
         refant=refant,
-        tga="10s",
-        tgp="inf"
+        forsystemhealth=True
     )
     for tbl in ['gacal', 'gpcal', 'bcal']:
         _check_path('{0}_{1}_{2}'.format(msname, cal.name, tbl))
@@ -1013,14 +1011,11 @@ def flag_antennas_using_delays(
 #             cs.INV_GAINPHASE_P2 |
 #             cs.INV_GAINCALTIME
 #         )
-#         error = dc.gain_calibration_system_health(
+#         error = dc.gain_calibration(
 #             msname,
 #             cal.name,
-#             'inf',
-#             'inf',
 #             refant,
-#             combine_spw=combine_spw,
-#             nspw=nspw
+#             forsystemhealth=True
 #         )
 #         if error > 0:
 #             status = cs.update(status, cs.GAIN_BP_CAL_ERR)
@@ -1048,6 +1043,11 @@ def calibrate_measurement_set(
     bad_uvrange='2~27m', keepdelays=False, forsystemhealth=False,
     interp_thresh=1.5, interp_polyorder=7, blbased=False
 ):
+    """Calibrates the measurement set.
+    
+    Calibration can be done with the aim of monitoring system health, obtaining
+    beamformer weights, or obtaining delays.
+    """
     status = 0
     current_error = cs.UNKNOWN_ERR
     calstring = 'initialization'
@@ -1213,7 +1213,7 @@ def calibrate_measurement_set(
             cs.INV_GAINPHASE_P2 |
             cs.INV_GAINCALTIME
         )
-        
+
         error = dc.gain_calibration(
             msname,
             cal.name,
@@ -1255,7 +1255,7 @@ def calibrate_measurement_set(
             bpass *= np.array(tb.CPARAM[:])
         if not forsystemhealth:
             with table('{0}_{1}_bkcal'.format(msname, cal.name)) as tb:
-                  bpass = np.array(tb.CPARAM[:])
+                bpass = np.array(tb.CPARAM[:])
         with table(
             '{0}_{1}_bcal'.format(msname, cal.name),
             readonly=False
