@@ -1229,7 +1229,7 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None):
                     corr,
                     fname
                 )))
-        gains = np.nanmean(gains, axis=0)
+        gains = np.nanmedian(gains, axis=0)
         fnameout = 'beamformer_weights_corr{0:02d}_{1}'.format(corr, ttime.isot)
         with open('{0}/{1}.dat'.format(outdir, fnameout), 'wb') as f:
             f.write(bytes(gains))
