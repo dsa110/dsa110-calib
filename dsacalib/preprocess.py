@@ -1,3 +1,7 @@
+"""Functions used in preprocessing of hdf5 files.
+
+Prepares hdf5 files written by dsa-meridian-fs for conversion to ms.
+"""
 import re
 import os
 import subprocess
