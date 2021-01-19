@@ -848,6 +848,7 @@ def get_delays(antennas, msname, calname, applied_delays):
     delays, _time, flags, ant1, _ant2 = read_caltable(
         '{0}_{1}_kcal'.format(msname, calname)
     )
+    print('delays: {0}'.format(delays.shape))
     delays[flags] = np.nan
     ant1 = list(ant1)
     idx = [ant1.index(ant-1) for ant in antennas]
