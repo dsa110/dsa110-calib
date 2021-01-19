@@ -1048,6 +1048,7 @@ def calibrate_measurement_set(
     Calibration can be done with the aim of monitoring system health, obtaining
     beamformer weights, or obtaining delays.
     """
+    print('entered calibration')
     status = 0
     current_error = cs.UNKNOWN_ERR
     calstring = 'initialization'
@@ -1055,6 +1056,7 @@ def calibrate_measurement_set(
     try:
         # Remove files that we will create so that things will fail if casa
         # doesn't write a table.
+        print('removing files')
         tables_to_remove = [
             '{0}_{1}_kcal'.format(msname, cal.name),
             '{0}_{1}_bkcal'.format(msname, cal.name),
@@ -1069,7 +1071,7 @@ def calibrate_measurement_set(
         for path in tables_to_remove:
             if os.path.exists(path):
                 shutil.rmtree(path)
-
+        print('flagging of ms data')
         calstring = "flagging of ms data"
         current_error = (
             cs.FLAGGING_ERR |
@@ -1082,12 +1084,12 @@ def calibrate_measurement_set(
             cs.INV_GAINCALTIME |
             cs.INV_DELAYCALTIME
         )
-
+        print('resetting flags')
         # Reset flags in the measurement set
         dc.reset_flags(msname, datacolumn='data')
         dc.reset_flags(msname, datacolumn='model')
         dc.reset_flags(msname, datacolumn='corrected')
-
+        print('flagging baselines')
         current_error = (
             cs.FLAGGING_ERR
         )
@@ -1097,12 +1099,14 @@ def calibrate_measurement_set(
                 'Non-fatal error occured in flagging short baselines of {0}.'
                 .format(msname)
             )
+        print('flagging zeros')
         error = dc.flag_zeros(msname)
         if error > 0:
             LOGGER.info(
                 'Non-fatal error occured in flagging zeros of {0}.'
                 .format(msname)
             )
+        print('flagging antennas')
         if bad_antennas is not None:
             for ant in bad_antennas:
                 error = dc.flag_antenna(msname, ant)
@@ -1111,13 +1115,14 @@ def calibrate_measurement_set(
                         'Non-fatal error occured in flagging ant {0} of {1}.'
                         .format(ant, msname)
                     )
+        print('flagging rfi')
         flag_pixels(msname)
         if error > 0:
             LOGGER.info(
                 'Non-fatal error occured in flagging bad pixels of {0}.'
                 .format(msname)
             )
-
+        print('delay cal')
         # Antenna-based delay calibration
         calstring = 'delay calibration'
         current_error = (
@@ -1143,7 +1148,7 @@ def calibrate_measurement_set(
                 .format(msname)
             )
         _check_path('{0}_{1}_kcal'.format(msname, cal.name))
-
+        print('flagging based on delay cal')
         calstring = 'flagging of ms data'
         current_error = (
             cs.FLAGGING_ERR |
@@ -1171,7 +1176,7 @@ def calibrate_measurement_set(
                 'Non-fatal error occured in flagging of bad timebins on {0}'
                 .format(msname)
             )
-
+        print('delay cal again')
         # Antenna-based delay calibration
         calstring = 'delay calibration'
         current_error = (
@@ -1203,7 +1208,7 @@ def calibrate_measurement_set(
 #             ) as tb:
 #                 fparam = np.array(tb.FPARAM[:])
 #                 tb.putcol('FPARAM', np.round(fparam/2)*2)
-
+        print('bandpass and gain cal')
         calstring = 'bandpass and gain calibration'
         current_error = (
             cs.GAIN_BP_CAL_ERR |
@@ -1247,7 +1252,7 @@ def calibrate_measurement_set(
             ]
         for fname in fnames:
             _check_path(fname)
-
+        print('combining bandpass and delay solns')
         # Combine bandpass solutions and delay solutions
         with table('{0}_{1}_bacal'.format(msname, cal.name)) as tb:
             bpass = np.array(tb.CPARAM[:])
@@ -1268,7 +1273,7 @@ def calibrate_measurement_set(
     except Exception as exc:
         status = cs.update(status, current_error)
         du.exception_logger(LOGGER, calstring, exc, throw_exceptions)
-
+    print('end of cal routine')
     return status
 
 def cal_in_datetime(dt, transit_time, duration=5*u.min, filelength=15*u.min):
