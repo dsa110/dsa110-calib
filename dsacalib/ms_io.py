@@ -818,9 +818,13 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
 #                         )
 #                         weights[i, j, idx, k] = fr(idx) + 1j*fi(idx)
     weights[np.isnan(weights)] = 0.
+    # Divide by the first antenna
+    weights = weights/weights[:, [0], ...]
+    weights[np.isnan(weights)] = 0.
     # Flag bad antennas
     flags = np.tile(antenna_flags[ np.newaxis, :, np.newaxis, :],
                     (ncorr, 1, 48, 1))
+
     weights[flags] = 0.
 
     filenames = []
@@ -869,9 +873,10 @@ def write_beamformer_solutions(
     """Writes beamformer solutions to disk.
     """
     delays, flags = get_delays(antennas, msname, calname, applied_delays)
-    for ant in flagged_antennas:
-        delays[antennas==ant, ...] = 0
-        flags[antennas==ant, ...] = 1
+    if flagged_antennas is not None:
+        for ant in flagged_antennas:
+            delays[antennas==ant, ...] = 0
+            flags[antennas==ant, ...] = 1
     delays = delays-np.min(delays[~flags])
     while not np.all(delays[~flags] < 1024):
         if np.sum(delays[~flags] > 1024) < np.nansum(delays[~flags] < 1024):
@@ -881,7 +886,7 @@ def write_beamformer_solutions(
         argflag = np.where(~flags.flatten())[0][argflag]
         flags[np.unravel_index(argflag, flags.shape)] = 1
         delays = delays-np.min(delays[~flags])
-    delays[flags]=0
+    delays[flags] = 0
 
     caltime.precision = 0
     corr_list, eastings, _fobs, weights_files = write_beamformer_weights(
