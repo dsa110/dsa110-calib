@@ -1041,7 +1041,7 @@ def flag_antennas_using_delays(
 def calibrate_measurement_set(
     msname, cal, refant, throw_exceptions=True, bad_antennas=None,
     bad_uvrange='2~27m', keepdelays=False, forsystemhealth=False,
-    interp_thresh=1.5, interp_polyorder=7, blbased=False
+    interp_thresh=1.5, interp_polyorder=7, blbased=False, manual_flags = None
 ):
     """Calibrates the measurement set.
     
@@ -1115,6 +1115,9 @@ def calibrate_measurement_set(
                         'Non-fatal error occured in flagging ant {0} of {1}.'
                         .format(ant, msname)
                     )
+        if manual_flags is not None:
+            for entry in manual_flags:
+                dc.flag_manual(msname, entry[0], entry[1])
         print('flagging rfi')
         flag_pixels(msname)
         if error > 0:
