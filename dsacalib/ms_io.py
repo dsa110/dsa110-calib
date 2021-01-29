@@ -819,7 +819,8 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
 #                         weights[i, j, idx, k] = fr(idx) + 1j*fi(idx)
     weights[np.isnan(weights)] = 0.
     # Divide by the first antenna
-    weights = weights/weights[:, [0], ...]
+    print(weights.shape)
+    weights = weights/weights[:, 0, ..., 0][:, np.newaxis, :, np.newaxis]
     weights[np.isnan(weights)] = 0.
     # Flag bad antennas
     flags = np.tile(antenna_flags[ np.newaxis, :, np.newaxis, :],
