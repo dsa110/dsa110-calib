@@ -34,10 +34,10 @@ install:
     - cd dsa110-pyutils
     - pip install .
     - cd ..
-    - git clone https://github.com/dsa110/dsa110-meridian-fs
-    - cd dsa110-meridian-fs
     - python setup.py install
     - cd ..
+    - git clone https://github.com/dsa110/dsa110-meridian-fs
+    - cd dsa110-meridian-fs
     - python setup.py install
 
 before_script:
