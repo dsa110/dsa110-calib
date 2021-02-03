@@ -49,7 +49,7 @@ before_script:
   - git config --global user.name "Travis-CI"
 
 script:
-  - coverage run -m pytest
+  - coverage run -m pytest tests/
 
 after_success:
   - coverage report
