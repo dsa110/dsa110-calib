@@ -14,11 +14,17 @@ def test_siderealtime():
     assert st > 0
 
 def test_src():
+    tol = 1e-8
     ss = utils.src('test', '0d0m0.00s', '3h0m0.00s')
     assert ss.name == 'test'
-    assert ss.ra.to_value(u.rad) == 0.
-    assert ss.dec.to_value(u.rad) == np.pi/4
+    assert np.abs(ss.ra.to_value(u.rad) - 0.) < tol
+    assert np.abs(ss.dec.to_value(u.rad) - np.pi/4) < tol
     ss = utils.src('test', 0.*u.deg, 45.*u.deg)
     assert ss.name == 'test'
-    assert ss.ra.to_value(u.rad) == 0.
-    assert ss.dec.to_value(u.rad) == np.pi/4
+    assert np.abs(ss.ra.to_value(u.rad) - 0.) < tol
+    assert np.abs(ss.dec.to_value(u.rad) - np.pi/4) < tol
+
+def test_todeg():
+    tol = 1e-8
+    assert np.abs(utils.to_deg('0d0m0.00s').to_value(u.rad) - 0.) < 1e-8
+    assert np.abs(utils.to_deg('3h0m0.00s').to_value(u.rad) - np.pi/4) < 1e-8

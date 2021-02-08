@@ -9,10 +9,9 @@ Vendantham.
 Routines to interact w/ fits visibilities recorded by DSA-10.
 """
 
-# To do:
-# Replace to_deg w/ astropy versions
+# TODO: Replace to_deg w/ astropy versions
 
-# Always import scipy before importing casatools.
+import warnings
 import numpy as np
 from dsacalib import constants as ct
 from dsacalib.utils import get_autobl_indices
@@ -24,6 +23,12 @@ from astropy.utils import iers
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
 from astropy.time import Time # pylint: disable=wrong-import-position
+
+warnings.warn(
+    "the fits_io module is deprecated and will be removed in v2.0.0",
+    DeprecationWarning,
+    stacklevel=2
+)
 
 def read_psrfits_file(fl, source, dur=50*u.min, antenna_order=None,
                       antpos=None, utc_start=None, autocorrs=False,
@@ -75,13 +80,19 @@ def read_psrfits_file(fl, source, dur=50*u.min, antenna_order=None,
         The start time of the extracted data in MJD.
     tstop : float
         The stop time of the extracted data in MJD.
+    tsamp : float
+        The sampling time in seconds.
     vis : ndarray
         The requested visibilities, dimensions (baseline, time, frequency,
         polarization).
     mjd : array
         The midpoint MJD of each subintegration in the visibilities.
+    lst : array
+        The midpoint LST of each subintegration in the visibilities.
     transit_idx : int
         The index of the meridian passing in the time axis of the visibilities.
+    antenna_order : list
+        The antenna indices, in the order that they are in in the visibilities.
     """
     if antpos is None:
         antpos = '{0}/antpos_ITRF.txt'.format(ct.PKG_DATA_PATH)
@@ -197,6 +208,10 @@ def get_header_info(f, antpos=None, verbose=False, antenna_order=None,
         The stop time. If `dsa10` is set to ``True``, `tstart` is the stop time
         in MJD. If `dsa10` is set to ``False``, `tstart` is the stop time in
         seconds past the utc start time of the correlator run.
+    tsamp : float
+        The sampling time in seconds.
+    aname : list
+        The antenna names, in the order they are in in the visibilities.
     """
     if antpos is None:
         antpos = '{0}/antpos_ITRF.txt'.format(ct.PKG_DATA_PATH)

@@ -10,8 +10,7 @@ Routines to interact w/ fits visibilities recorded by DSA-10, hdf5 visibilities
 recorded by DSA-110, and visibility in CASA measurement sets.
 """
 
-# To do:
-# Replace to_deg w/ astropy versions
+# TODO: Update source class
 
 # Always import scipy before importing casatools.
 import traceback
@@ -19,6 +18,7 @@ from scipy.ndimage.filters import median_filter
 import numpy as np
 from antpos.utils import get_itrf
 import astropy.units as u
+from astropy.coordinates import Angle
 from dsacalib import constants as ct
 
 def exception_logger(logger, task, exception, throw):
@@ -30,7 +30,7 @@ def exception_logger(logger, task, exception, throw):
         The logger used for within the reduction pipeline.
     task : str
         A short description of where in the pipeline the error occured.
-    e : Exception
+    exception : Exception
         The exception that occured.
     throw : boolean
         If set to True, the exception is raised after the traceback is written
@@ -106,14 +106,7 @@ def to_deg(string):
     deg : astropy quantity
         The angle in degrees.
     """
-    if 'h' in string:
-        h, m, s = string.strip('s').strip('s').replace('h', 'm').split('m')
-        deg = (float(h)+(float(m)+float(s)/60)/60)*15*u.deg
-    else:
-        sign = -1 if '-' in string else 1
-        d, m, s = string.strip('+-s').strip('s').replace('d', 'm').split('m')
-        deg = (float(d)+(float(m)+float(s)/60)/60)*u.deg*sign
-    return deg
+    return Angle(string).to(u.deg)
 
 def get_autobl_indices(nant, casa=False):
     """Returns a list of the indices containing the autocorrelations.
@@ -208,6 +201,8 @@ def mask_bad_bins(vis, axis, thresh=6.0, medfilt=False, nmed=129):
           The fraction of data flagged for each baseline/polarization pair.
           Dimensions (baselines, polarization).
     """
+    # TODO: Update medfilt to use the correct axis
+    assert not medfilt
     assert axis in (1, 2)
     avg_axis = 1 if axis == 2 else 2
 
@@ -224,11 +219,9 @@ def mask_bad_bins(vis, axis, thresh=6.0, medfilt=False, nmed=129):
     vis_std = np.std(vis_avg, axis=1, keepdims=True)
     # Get good channels.
     good_bins = np.abs(vis_avg) < thresh*vis_std
-    fraction_flagged = (1-good_bins.sum(axis=axis)/good_bins.shape[axis]).squeeze()
-#     if avg_axis == 1:
-#         good_bins = good_bins[:, np.newaxis, :, :]
-#     else:
-#         good_bins = good_bins[:, :, np.newaxis, :]
+    fraction_flagged = (
+        1-good_bins.sum(axis=axis)/good_bins.shape[axis]
+    ).squeeze()
     return good_bins, fraction_flagged
 
 def mask_bad_pixels(vis, thresh=6.0, mask=None):
