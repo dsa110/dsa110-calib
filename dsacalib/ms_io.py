@@ -55,6 +55,12 @@ def T3_initialize_ms(paramfile, msname, tstart, sourcename, ra, dec):
         `msdir` is defined in `paramfile`.
     tstart : astropy.time.Time object
         The start time of the observation.
+    sourcename : str
+        The name of the source or field.
+    ra : astropy quantity
+        The right ascension of the pointing, units deg or equivalent.
+    dec : astropy quantity
+        The declination of the pointing, units deg or equivalent.
     """
     yamlf = open(paramfile)
     params = yaml.load(yamlf, Loader=yaml.FullLoader)['T3corr']
@@ -742,7 +748,6 @@ def caltable_to_etcd(
                 dd['pol'] = ['B', 'A']
         de.put_dict('/mon/cal/{0}'.format(antnum+1), dd)
 
-
 def get_antenna_gains(gains, ant1, ant2, refant=0):
     """Calculates antenna gains, g_i, from CASA table of G_ij=g_i g_j*.
 
@@ -832,7 +837,9 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
     corr_list : list
         The indices of the correlator machines to write beamformer weights for.
         For now, these must be ordered so that the frequencies are contiguous
-        and they are in the same order or the reverse order as in the ms.
+        and they are in the same order or the reverse order as in the ms. The
+        bandwidth of each correlator is pulled from dsa110-meridian-fs package
+        data.
     antenna_flags : ndarray(bool)
         Dimensions (antennas, pols). True where flagged, False otherwise.
 
@@ -1039,7 +1046,38 @@ def write_beamformer_solutions(
     flagged_antennas=None):
     """Writes beamformer solutions to disk.
 
-    
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set used for calibration.
+    calname : str
+        The name of the calibrator source used for calibration. Will open
+        tables that start with `msname`_`calname`
+    caltime : astropy.time.Time object
+        The transit time of the calibrator.
+    antennas : list
+        The antenna names for which to write beamformer solutions, in order.
+    applied_delays : ndarray
+        The currently applied delays at the time of the calibration, in ns.
+        Dimensions (antenna, pol). The antenna axis should be in the order
+        specified by antennas.
+    corr_list : list
+        The indices of the correlator machines to write beamformer weights for.
+        For now, these must be ordered so that the frequencies are contiguous
+        and they are in the same order or the reverse order as in the ms. The
+        bandwidth of each correlator is pulled from dsa110-meridian-fs package
+        data.
+    flagged_antennas : list
+        A list of antennas to flag in the beamformer solutions. These antennas
+        will be given beamformer weights of 0, and delays of 0.
+    outdir : str
+        The directory to write the beamformer weights in.
+
+    Returns
+    -------
+    flags : ndarray(boolean)
+        Dimensions (antennas, pols). True where the data is flagged, and should
+        not be used. Compiled from the ms flags as well as `flagged_antennas`.
     """
     delays, flags = get_delays(antennas, msname, calname, applied_delays)
     if flagged_antennas is not None:
@@ -1102,14 +1140,29 @@ def write_beamformer_solutions(
     return flags
 
 def convert_calibrator_pass_to_ms(
-    cal,
-    date,
-    files,
-    duration,
-    msdir='/mnt/data/dsa110/calibration/',
+    cal, date, files, duration, msdir='/mnt/data/dsa110/calibration/',
     hdf5dir='/mnt/data/dsa110/correlator/'
 ):
-    """Converts hdf5 files near a calibrator pass to a CASA ms.
+    r"""Converts hdf5 files near a calibrator pass to a CASA ms.
+
+    Parameters
+    ----------
+    cal : dsacalib.utils.src instance
+        The calibrator source.
+    date : str
+        The date (to day precision) of the calibrator pass. e.g. '2020-10-06'.
+    files : list
+        The hdf5 filenames corresponding to the calibrator pass. These should
+        be date strings to second precision.
+        e.g. ['2020-10-06T12:35:04', '2020-10-06T12:50:04']
+        One ms will be written per filename in `files`. If the length of
+        `files` is greater than 1, the mss created will be virtualconcated into
+        a single ms.
+    duration : astropy quantity
+        Amount of data to extract, unit minutes or equivalent.
+    msdir : str
+        The full path to the directory to place the measurement set in. The ms
+        will be written to `msdir`/`date`\_`cal.name`.ms
     """
     msname = '{0}/{1}_{2}'.format(msdir, date, cal.name)
     if len(files) == 1:
@@ -1183,6 +1236,8 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     ----------
     fname : str
         The full path to the uvh5 data file.
+    msname : str
+        The name of the ms to write. Data will be written to `msname`.ms
     ra : astropy quantity
         The RA at which to phase the data. If None, will phase at the meridian
         of the center of the uvh5 file.
@@ -1190,7 +1245,15 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         The DEC at which to phase the data. If None, will phase at the pointing
         declination.
     dt : astropy quantity
-        Duration of data to extract. If None, will extract the entire file.
+        Duration of data to extract. Default is to extract the entire file.
+    antenna_list : list
+        Antennas for which to extract visibilities from the uvh5 file. Default
+        is to extract all visibilities in the uvh5 file.
+    flux : float
+        The flux of the calibrator in Jy. If included, will write a model of
+        the primary beam response to the calibrator source to the model column
+        of the ms. If not included, a model of a constant response over
+        frequency and time will be written instead of the primary beam model.
     """
     print(fname)
     # zenith_dec = 0.6503903199825691*u.rad
@@ -1258,7 +1321,8 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     # )
     # UV.phase(ra.to_value(u.rad), dec.to_value(u.rad), use_ant_pos=True)
     # Below is the manual calibration which can be used instead.
-    # Currently using because casa uvws are more accurate than pyuvdatas
+    # Currently using because casa uvws are more accurate than pyuvdatas, which
+    # aren't true uvw coordinates.
     blen = np.tile(blen[np.newaxis, :, :], (UV.Ntimes, 1, 1)).reshape(-1, 3)
     uvw = calc_uvw_blt(blen, time.mjd, 'RADEC', ra.to(u.rad), dec.to(u.rad))
     dw = (uvw[:, -1] - np.tile(uvw_m[np.newaxis, :, -1], (UV.Ntimes, 1)
@@ -1336,7 +1400,19 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         tb.putcol('CORRECTED_DATA', tb.getcol('DATA')[:])
 
 def extract_times(UV, ra, dt):
-    """Extracts specified times from the UVData instance.
+    """Extracts data from specified times from an already open UVData instance.
+    
+    This is an alternative to opening the file with the times specified using
+    pyuvdata.UVData.open().
+
+    Parameters
+    ----------
+    UV : pyuvdata.UVData() instance
+        The UVData instance from which to extract data. Modified in-place.
+    ra : float
+        The ra of the source around which to extract data, in radians.
+    dt : astropy quantity
+        The amount of data to extract, units seconds or equivalent.
     """
     lst_min = (ra - (dt*2*np.pi*u.rad/(ct.SECONDS_PER_SIDEREAL_DAY*u.s))/2
               ).to_value(u.rad)%(2*np.pi)
@@ -1371,6 +1447,26 @@ def extract_times(UV, ra, dt):
 
 def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None):
     """Averages written beamformer solutions.
+
+    Parameters
+    ----------
+    fnames : list
+    ttime : astropy.time.Time object
+        A time to use in the filename of the solutions, indicating when they
+        were written or are useful. E.g. the transit time of the most recent
+        source being averaged over.
+    outdir : str
+        The directory in which the beamformer solutions are written, and into
+        which new solutions should be written.
+    corridxs : list
+        The correlator nodes for which to average beamformer solutions.
+        Defaults to 1 through 16 inclusive.
+
+    Returns
+    -------
+    list
+        The names of the written beamformer solutions (one for each correlator
+        node).
     """
     if corridxs is None:
         corridxs = [
