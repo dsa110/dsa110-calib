@@ -40,6 +40,8 @@ def calc_uvw(blen, tobs, src_epoch, src_lon, src_lat, obs='OVRO_MMA'):
     src_lat : astropy quantity
         The latitude of the source or phase-center, in degrees or an equivalent
         unit.
+    obs : string
+        The name of the observatory in CASA.
 
     Returns
     -------
@@ -344,6 +346,10 @@ def divide_visibility_sky_model(vis, blen, sources, tobs, fobs, lst, pt_dec,
         The times for which to calculate the visibility model in MJD.
     fobs: float or arr(float)
         The frequency for which to calculate the model in GHz.
+    lst : fload or ndarray
+        The lsts at which to calculate the visibility model.
+    pt_dec : float
+        The pointing declination in radians.
     return_model: boolean
         If set to ``True``, the visibility model will be returned. Defaults to
         ``False``.
@@ -379,9 +385,6 @@ def complex_sky_model(source, ant_ra, pt_dec, fobs, tobs, blen, dish_dia=4.65,
         each time bin in the observation in radians.
     pt_dec : float
         The pointing declination of the observation in radians.
-    pt_ra : float
-        The pointing (either physically or through fringestopping) right
-        ascension in radians.
     fobs : array
         The observing frequency of the center of each channel in GHz.
     tobs : array
@@ -392,6 +395,10 @@ def complex_sky_model(source, ant_ra, pt_dec, fobs, tobs, blen, dish_dia=4.65,
         The dish diameter in m.  Defaults 4.65.
     spind : float
         The spectral index of the source.  Defaults 0.7.
+    pt_ra : float
+        The pointing (either physically or through fringestopping) right
+        ascension in radians. If None, defaults to the pointing of the antenna,
+        `ant_ra`. In other words, assumes fringestopping on the meridian.
 
     Returns
     -------
@@ -431,6 +438,10 @@ def amplitude_sky_model(source, ant_ra, pt_dec, fobs, dish_dia=4.65,
         The pointing declination of the observation in radians.
     fobs : array
         The observing frequency of the center of each channel in GHz.
+    dish_dia : float
+        The dish diameter in m.  Defaults 4.65.
+    spind : float
+        The spectral index of the source.  Defaults 0.7.
 
     Returns
     -------
@@ -438,10 +449,10 @@ def amplitude_sky_model(source, ant_ra, pt_dec, fobs, dish_dia=4.65,
         The calculated amplitude sky model.
     """
     # Should add spectral index
-    return source.I*(fobs/1.4)**(-spind)*pb_resp(ant_ra, pt_dec,
-                                                 source.ra.to_value(u.rad),
-                                                 source.dec.to_value(u.rad),
-                                                 fobs, dish_dia)
+    return source.I*(fobs/1.4)**(-spind)*pb_resp(
+        ant_ra, pt_dec, source.ra.to_value(u.rad), source.dec.to_value(u.rad),
+        fobs, dish_dia
+    )
 
 def pb_resp_uniform_ill(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.65):
     """Computes the primary beam response towards a direction on the sky.

@@ -21,6 +21,8 @@ LOGGER.app("dsacalib")
 
 # parameters for freq scrunching
 NFREQ = 48
+# Outrigger delays are those estimated by Morgan Catha based on the cable
+# length.
 OUTRIGGER_DELAYS = {
     100:  3.6-1.2,
     101:  3.6-1.2,
@@ -45,11 +47,20 @@ OUTRIGGER_DELAYS = {
 def first_true(iterable, default=False, pred=None):
     """Returns the first true value in the iterable.
 
-    If no true value is found, returns *default*
-
-    If *pred* is not None, returns the first item
+    If no true value is found, returns ``default``
+    If ``pred`` is not None, returns the first item
     for which pred(item) is true.
 
+    Parameters
+    ----------
+    iterable : list
+        The list for which to find the first True item.
+    default :
+        If not False, then this is returned if no true value is found.
+        Defaults False.
+    pred :
+        If not None, then the first item for which pred(item) is True is
+        returned.
     """
     # first_true([a,b,c], x) --> a or b or c or x
     # first_true([a,b], x, f) --> a if f(a) else b if f(b) else x
@@ -57,12 +68,18 @@ def first_true(iterable, default=False, pred=None):
 
 def rsync_file(rsync_string):
     """Rsyncs a file from the correlator machines to dsastorage.
+
+    Parameters
+    ----------
+    rsync_string : str
+        The correlator machine name and the path to the file to rsync,
+        separated by a space.
+        E.g. 'corr06 /home/ubuntu/data/2020-06-24T12:32:06.hdf5'
     """
     fname, fdir = rsync_string.split(' ')
     output = subprocess.run(
         [
             'rsync',
-#            '--dry-run',
             '-avv',
             '--remove-source-files',
             fname,
@@ -86,6 +103,11 @@ def fscrunch_file(fname):
     Leaves file untouched if the number of frequency bins is not divisible
     by the desired number of frequency bins (NFREQ), or is equal to the desired
     number of frequency bins.
+
+    Parameters
+    ----------
+    fname : str
+        The full path to the file to process.
     """
     # Process the file
     # print(fname)
