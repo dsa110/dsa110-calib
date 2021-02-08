@@ -25,6 +25,7 @@ install:
     - pip install casatools==6.0.0.27 --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
     - pip install casatasks==6.0.0.27 --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
     - pip install casadata --index-url https://casa-pip.nrao.edu/repository/pypi-casa-release/simple --no-cache-dir
+    - pip install python-casacore
     - git clone https://github.com/dsa110/dsa110-antpos
     - cd dsa110-antpos
     - pip install -r requirements.txt
@@ -34,18 +35,22 @@ install:
     - cd dsa110-pyutils
     - pip install .
     - cd ..
+    - git clone https://github.com/dsa110/pyuvdata
+    - cd pyuvdata
+    - pip install .
+    - cd ..
+    - python setup.py install
     - git clone https://github.com/dsa110/dsa110-meridian-fs
     - cd dsa110-meridian-fs
     - python setup.py install
     - cd ..
-    - python setup.py install
 
 before_script:
   - git config --global user.email "dana.simard@gmail.com"
   - git config --global user.name "Travis-CI"
 
 script:
-  - coverage run -m pytest
+  - coverage run -m pytest tests/
 
 after_success:
   - coverage report
