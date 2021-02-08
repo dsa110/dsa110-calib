@@ -42,9 +42,63 @@ LOGGER = dsl.DsaSyslogger()
 LOGGER.subsystem("software")
 LOGGER.app("dsacalib")
 
+def T3_initialize_ms(paramfile, msname, tstart, sourcename, ra, dec):
+    """Initialize a ms to write correlated data from the T3 system to.
+    
+    Parameters
+    ----------
+    paramfile : str
+        The full path to a yaml parameter file. See package data for a
+        template.
+    msname : str
+        The name of the measurement set. Will write to `msdir`/`msname`.ms.
+        `msdir` is defined in `paramfile`.
+    tstart : astropy.time.Time object
+        The start time of the observation.
+    """
+    yamlf = open(paramfile)
+    params = yaml.load(yamlf, Loader=yaml.FullLoader)['T3corr']
+    yamlf.close()
+    source = du.src(
+        name=sourcename,
+        ra=ra,
+        dec=dec
+    )
+    ant_itrf = get_itrf().loc[params['antennas']]
+    xx = ant_itrf['dx_m']
+    yy = ant_itrf['dy_m']
+    zz = ant_itrf['dz_m']
+    antenna_names = [str(a) for a in params['antennas']]
+    fobs = params['f0_GHz']+params['deltaf_MHz']*1e-3*params['nfint']*(
+        np.arange(params['nchan']//params['nfint'])+0.5)
+    me = cc.measures()
+    simulate_ms(
+        ofile='{0}/{1}.ms'.format(params['msdir'], msname),
+        tname='OVRO_MMA',
+        anum=antenna_names,
+        xx=xx,
+        yy=yy,
+        zz=zz,
+        diam=4.5,
+        mount='alt-az',
+        pos_obs=me.observatory('OVRO_MMA'),
+        spwname='L_BAND',
+        freq='{0}GHz'.format(fobs[0]),
+        deltafreq='{0}MHz'.format(params['deltaf_MHz']*nfint),
+        freqresolution='{0}MHz'.format(np.abs(params['deltaf_MHz']*nfint)),
+        nchannels=params['nchan']//nfint,
+        integrationtime='{0}s'.format(params['deltat_s']*ntint),
+        obstm=tstart.mjd,
+        dt=0.000429017462010961+7.275957614183426e-12-7.767375791445374e-07,
+        source=source,
+        stoptime='{0}s'.format(params['deltat_s']*params['nsubint']),
+        autocorr=True, 
+        fullpol=True
+    )
+
 def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
                 freq, deltafreq, freqresolution, nchannels, integrationtime,
-                obstm, dt, source, stoptime, autocorr):
+                obstm, dt, source, stoptime, autocorr, fullpol):
     """Simulates a measurement set with cross-correlations only.
 
     WARNING: Not simulating autocorrelations correctly regardless of inclusion
@@ -83,7 +137,7 @@ def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
     source : dsacalib.utils.source instance
         The source observed (or the phase-center).
     stoptime : float
-        The end time of the observation in MJD.
+        The end time of the observation in MJD. DS: should be s?
     autocorr : boolean
         Set to ``True`` if the visibilities include autocorrelations, ``False``
         if the only include crosscorrelations.
@@ -92,18 +146,38 @@ def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
     qa = cc.quanta()
     sm = cc.simulator()
     sm.open(ofile)
-    sm.setconfig(telescopename=tname, x=xx, y=yy, z=zz, dishdiameter=diam,
-                 mount=mount, antname=anum, coordsystem='global',
-                 referencelocation=pos_obs)
-    sm.setspwindow(spwname=spwname, freq=freq, deltafreq=deltafreq,
-                   freqresolution=freqresolution, nchannels=nchannels,
-                   stokes='XX YY')
-    sm.settimes(integrationtime=integrationtime, usehourangle=False,
-                referencetime=me.epoch('utc', qa.quantity(obstm-dt, 'd')))
+    sm.setconfig(
+        telescopename=tname,
+        x=xx,
+        y=yy,
+        z=zz,
+        dishdiameter=diam,
+        mount=mount,
+        antname=anum,
+        coordsystem='global',
+        referencelocation=pos_obs
+    )
+    sm.setspwindow(
+        spwname=spwname,
+        freq=freq,
+        deltafreq=deltafreq,
+        freqresolution=freqresolution,
+        nchannels=nchannels,
+        stokes='XX YY XY YX' if fullpol else 'XX YY'
+    )
+    sm.settimes(
+        integrationtime=integrationtime,
+        usehourangle=False,
+        referencetime=me.epoch('utc', qa.quantity(obstm-dt, 'd'))
+    )
     sm.setfield(
-        sourcename=source.name, sourcedirection=me.direction(
-            source.epoch, qa.quantity(source.ra.to_value(u.rad), 'rad'),
-            qa.quantity(source.dec.to_value(u.rad), 'rad')))
+        sourcename=source.name,
+        sourcedirection=me.direction(
+            source.epoch,
+            qa.quantity(source.ra.to_value(u.rad), 'rad'),
+            qa.quantity(source.dec.to_value(u.rad), 'rad')
+        )
+    )
     sm.setauto(autocorrwt=1.0 if autocorr else 0.0)
     sm.observe(source.name, spwname, starttime='0s', stoptime=stoptime)
     sm.close()
@@ -294,6 +368,29 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
 
 def extract_vis_from_ms(msname, data='data'):
     """Extracts visibilities from a CASA measurement set.
+
+    Parameters
+    ----------
+    msname : str
+        The measurement set. Opens `msname`.ms
+    data : str
+        The visibilities to extract. Can be `data`, `model` or `corrected`.
+
+    Returns
+    -------
+    vals : ndarray
+        The visibilities, dimensions (baseline, time, spw, freq, pol).
+    time : array
+        The time of each integration in days.
+    fobs : array
+        The frequency of each channel in GHz.
+    flags : ndarray
+        Flags for the visibilities, same shape as vals. True if flagged.
+    ant1, ant2 : array
+        The antenna indices for each baselines in the visibilities.
+    pt_dec : float
+        The pointing declination of the array. (Note: Not the phase center, but
+        the physical pointing of the antennas.)
     """
     with table('{0}.ms'.format(msname)) as tb:
         ant1 = np.array(tb.ANTENNA1[:])
@@ -311,12 +408,31 @@ def extract_vis_from_ms(msname, data='data'):
         vals, flags, ant1, ant2, baseline, time, spw)
 
     with table('{0}.ms/FIELD'.format(msname)) as tb:
-        pt_dec =tb.PHASE_DIR[:][0][0][1]
+        pt_dec = tb.PHASE_DIR[:][0][0][1]
 
     return vals, time/ct.SECONDS_PER_DAY, fobs, flags, ant1, ant2, pt_dec
 
 def read_caltable(tablename, cparam=False):
     """Requires that each spw has the same number of frequency channels.
+    
+    Parameters
+    ----------
+    tablename : str
+        The full path to the calibration table.
+    cparam : bool
+        If True, reads the column CPARAM in the calibrtion table. Otherwise
+        reads FPARAM.
+
+    Returns
+    -------
+    vals : ndarray
+        The visibilities, dimensions (baseline, time, spw, freq, pol).
+    time : array
+        The time of each integration in days.
+    flags : ndarray
+        Flags for the visibilities, same shape as vals. True if flagged.
+    ant1, ant2 : array
+        The antenna indices for each baselines in the visibilities.
     """
     with table(tablename) as tb:
         try:
@@ -432,8 +548,9 @@ def reshape_calibration_data(vals, flags, ant1, ant2, baseline, time, spw):
             ant2 = ant2.reshape(nspw, ntime, nbl)[0, 0, :]
     return time, vals, flags, ant1, ant2
 
-def caltable_to_etcd(msname, calname, caltime, status,
-                     pols=None):
+def caltable_to_etcd(
+    msname, calname, caltime, status, pols=None
+):
     r"""Copies calibration values from delay and gain tables to etcd.
 
     The dictionary passed to etcd should look like: {"ant_num": <i>,
@@ -450,10 +567,10 @@ def caltable_to_etcd(msname, calname, caltime, status,
     calname : str
         The calibrator name.  Will open the calibration tables
         `msname`\_`calname`\_kcal and `msname`\_`calname`\_gcal_ant.
-    baseline_cal : boolean
-        Set to ``True`` if the gain table was calculated using baseline-based
-        calibration, ``False`` if the gain table was calculated using
-        antenna-based calibration. Defaults ``False``.
+    caltime : float
+        The time of calibration transit in mjd.
+    status : int
+        The status of the calibration. Decode with dsautils.calstatus.
     pols : list
         The names of the polarizations. If ``None``, will be set to
         ``['B', 'A']``. Defaults ``None``.
@@ -623,8 +740,6 @@ def caltable_to_etcd(msname, calname, caltime, status,
                       'etcd')
                 status = cs.update(status, cs.INV_POL)
                 dd['pol'] = ['B', 'A']
-#         if antnum==23:
-# #            print(dd)
         de.put_dict('/mon/cal/{0}'.format(antnum+1), dd)
 
 
@@ -633,17 +748,32 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
 
     Currently does not support baseline-based gains.
     Refant only used for baseline-based case.
+
+    Parameters
+    ----------
+    gains : ndarray
+        The gains read in from the CASA gain table. 0th axis is baseline or
+        antenna.
+    ant1, ant2 : ndarray
+        The antenna pair for each entry along the 0th axis in gains.
+    refant : int
+        The reference antenna index to use to get antenna gains from baseline
+        gains.
+
+    Returns
+    -------
+    antennas : ndarray
+        The antenna indices.
+    antenna_gains : ndarray
+        Gains for each antenna in `antennas`.
     """
     antennas = np.unique(np.concatenate((ant1, ant2)))
     output_shape = list(gains.shape)
     output_shape[0] = len(antennas)
     antenna_gains = np.zeros(tuple(output_shape), dtype=gains.dtype)
     if np.all(ant2 == ant2[0]):
-        # antenna-based calibration
-        # refant = ant2[0]
-        # gref = np.sqrt(np.abs(gains[ant1==refant]))
         for i, ant in enumerate(antennas):
-            antenna_gains[i] = 1/gains[ant1==ant]#/gref
+            antenna_gains[i] = 1/gains[ant1==ant]
     else:
         assert len(antennas) == 3, ("Baseline-based only supported for trio of"
                                     "antennas")
@@ -703,6 +833,20 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
         The indices of the correlator machines to write beamformer weights for.
         For now, these must be ordered so that the frequencies are contiguous
         and they are in the same order or the reverse order as in the ms.
+    antenna_flags : ndarray(bool)
+        Dimensions (antennas, pols). True where flagged, False otherwise.
+
+    Returns
+    -------
+    corr_list : list
+    bu : array
+        The length of the baselines in the u direction for each antenna
+        relative to antenna 24.
+    fweights : ndarray
+        The frequencies corresponding to the beamformer weights, dimensions
+        (correlator, frequency).
+    filenames : list
+        The names of the file containing the beamformer weights.
     """
     # Get the frequencies we want to write solutions for.
     corr_settings = resource_filename("dsamfs", "data/dsa_parameters.yaml")
@@ -792,6 +936,7 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
             weights[:, idx, ...] = gains[i, ...]
 
 #     # interpolate over missing values
+#     # Not needed anymore because we are interpolating the bandpass solutions
 #     med = np.nanmedian(weights, axis=2, keepdims=True)
 #     std = np.nanstd(weights.real, axis=2, keepdims=True)+\
 #         1j*np.std(weights.imag, axis=2, keepdims=True)
@@ -846,9 +991,30 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
     return corr_list, bu, fweights, filenames
 
 def get_delays(antennas, msname, calname, applied_delays):
-    """Returns the delays that should be set in the correlator.
+    r"""Returns the delays to be set in the correlator.
+    
+    Based on the calibrated delays and the currently applied delays.
+    
+    Parameters
+    ----------
+    antennas : list
+        The antennas to get delays for.
+    msname : str
+        The path to the measurement set containing the calibrator pass.
+    calname : str
+        The name of the calibrator. Will open `msname`\_`calname`\_kcal.
+    applied_delays : ndarray
+        The currently applied delays for every antenna/polarization, in ns.
+        Dimensions (antenna, pol). 
 
-    delays and applied_delays are in units of nanoseconds.
+    Returns
+    -------
+    delays : ndarray
+        The delays to be applied for every antenna/polarization in ns.
+        Dimensions (antenna, pol).
+    flags : ndarray
+        True if that antenna/pol data is flagged in the calibration table.
+        In this case, the delay should be set to 0. Dimensions (antenna, pol).
     """
     delays, _time, flags, ant1, _ant2 = read_caltable(
         '{0}_{1}_kcal'.format(msname, calname)
@@ -872,6 +1038,8 @@ def write_beamformer_solutions(
     outdir='/home/user/beamformer_weights/',
     flagged_antennas=None):
     """Writes beamformer solutions to disk.
+
+    
     """
     delays, flags = get_delays(antennas, msname, calname, applied_delays)
     if flagged_antennas is not None:
