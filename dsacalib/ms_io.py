@@ -18,6 +18,8 @@ import numpy as np
 from pkg_resources import resource_filename
 import yaml
 import scipy # pylint: disable=unused-import
+import astropy.units as u
+import astropy.constants as c
 import casatools as cc
 from casatasks import importuvfits, virtualconcat
 from casacore.tables import addImagingColumns, table
@@ -26,8 +28,6 @@ from dsautils import dsa_store
 import dsautils.dsa_syslog as dsl
 from dsautils import calstatus as cs
 from dsamfs.fringestopping import calc_uvw_blt
-import astropy.units as u
-import astropy.constants as c
 from dsacalib import constants as ct
 import dsacalib.utils as du
 from dsacalib.fringestopping import calc_uvw, amplitude_sky_model
@@ -44,7 +44,7 @@ LOGGER.app("dsacalib")
 
 def T3_initialize_ms(paramfile, msname, tstart, sourcename, ra, dec):
     """Initialize a ms to write correlated data from the T3 system to.
-    
+
     Parameters
     ----------
     paramfile : str
@@ -90,15 +90,17 @@ def T3_initialize_ms(paramfile, msname, tstart, sourcename, ra, dec):
         pos_obs=me.observatory('OVRO_MMA'),
         spwname='L_BAND',
         freq='{0}GHz'.format(fobs[0]),
-        deltafreq='{0}MHz'.format(params['deltaf_MHz']*nfint),
-        freqresolution='{0}MHz'.format(np.abs(params['deltaf_MHz']*nfint)),
-        nchannels=params['nchan']//nfint,
-        integrationtime='{0}s'.format(params['deltat_s']*ntint),
+        deltafreq='{0}MHz'.format(params['deltaf_MHz']*params['nfint']),
+        freqresolution='{0}MHz'.format(
+            np.abs(params['deltaf_MHz']*params['nfint'])
+        ),
+        nchannels=params['nchan']//params['nfint'],
+        integrationtime='{0}s'.format(params['deltat_s']*params['ntint']),
         obstm=tstart.mjd,
         dt=0.000429017462010961+7.275957614183426e-12-7.767375791445374e-07,
         source=source,
         stoptime='{0}s'.format(params['deltat_s']*params['nsubint']),
-        autocorr=True, 
+        autocorr=True,
         fullpol=True
     )
 
@@ -313,9 +315,11 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         'Visibilities not ordered by baseline'
     anum = [str(a) for a in anum]
 
-    simulate_ms('{0}.ms'.format(ofile), tname, anum, xx, yy, zz, diam, mount,
-                pos_obs, spwname, freq, deltafreq, freqresolution, nchannels,
-                integrationtime, obstm, dt, source, stoptime, autocorr)
+    simulate_ms(
+        '{0}.ms'.format(ofile), tname, anum, xx, yy, zz, diam, mount, pos_obs,
+        spwname, freq, deltafreq, freqresolution, nchannels, integrationtime,
+        obstm, dt, source, stoptime, autocorr, fullpol=False
+    )
 
     # Check that the time is correct
     ms = cc.ms()
@@ -330,10 +334,12 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         print('Updating casa time offset to {0}s'.format(
             dt*ct.SECONDS_PER_DAY))
         print('Rerunning simulator')
-        simulate_ms('{0}.ms'.format(ofile), tname, anum, xx, yy, zz, diam,
-                    mount, pos_obs, spwname, freq, deltafreq, freqresolution,
-                    nchannels, integrationtime, obstm, dt, source, stoptime,
-                    autocorr)
+        simulate_ms(
+            '{0}.ms'.format(ofile), tname, anum, xx, yy, zz, diam, mount,
+            pos_obs, spwname, freq, deltafreq, freqresolution, nchannels,
+            integrationtime, obstm, dt, source, stoptime, autocorr,
+            fullpol=False
+        )
 
     # Reopen the measurement set and write the observed visibilities
     ms = cc.ms()
@@ -420,7 +426,7 @@ def extract_vis_from_ms(msname, data='data'):
 
 def read_caltable(tablename, cparam=False):
     """Requires that each spw has the same number of frequency channels.
-    
+
     Parameters
     ----------
     tablename : str
@@ -999,9 +1005,9 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
 
 def get_delays(antennas, msname, calname, applied_delays):
     r"""Returns the delays to be set in the correlator.
-    
+
     Based on the calibrated delays and the currently applied delays.
-    
+
     Parameters
     ----------
     antennas : list
@@ -1012,7 +1018,7 @@ def get_delays(antennas, msname, calname, applied_delays):
         The name of the calibrator. Will open `msname`\_`calname`\_kcal.
     applied_delays : ndarray
         The currently applied delays for every antenna/polarization, in ns.
-        Dimensions (antenna, pol). 
+        Dimensions (antenna, pol).
 
     Returns
     -------
@@ -1401,7 +1407,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
 
 def extract_times(UV, ra, dt):
     """Extracts data from specified times from an already open UVData instance.
-    
+
     This is an alternative to opening the file with the times specified using
     pyuvdata.UVData.open().
 

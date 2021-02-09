@@ -1,10 +1,10 @@
 """A service to create measurement sets and calibrate data.
 """
 
+import os
 import warnings
 # make sure warnings do not spam syslog
 warnings.filterwarnings("ignore")
-import os
 import datetime # pylint: disable=wrong-import-position
 import time # pylint: disable=wrong-import-position
 import yaml # pylint: disable=wrong-import-position
@@ -53,8 +53,12 @@ ANTENNAS = np.concatenate((
 ANTENNAS_NOT_IN_BF = ['103', '101', '100', '116', '102']
 CALTABLE = resource_filename('dsacalib', 'data/calibrator_sources.csv')
 
+# TODO: Etcd watch robust to etcd connection failures.
+
 def calibrate_file(etcd_dict):
     """Generates and calibrates a measurement set.
+    
+    An etcd watch callback function.
     """
     cmd = etcd_dict['cmd']
     val = etcd_dict['val']
@@ -187,7 +191,10 @@ def calibrate_file(etcd_dict):
             # These delays should be placed in the file itself instead
             current_solns = '{0}/beamformer_weights.yaml'.format(BEAMFORMER_DIR)
             with open(current_solns) as file:
-                calibration_params = yaml.load(file,  Loader=yaml.FullLoader)['cal_solutions']
+                calibration_params = yaml.load(
+                    file,
+                    Loader=yaml.FullLoader
+                )['cal_solutions']
 
             applied_delays = np.array(calibration_params['delays'])*2
             print('applied_delays: {0}'.format(applied_delays.shape))
@@ -274,7 +281,7 @@ def calibrate_file(etcd_dict):
                         cal_ttime.isot
                     )
                 ]
-        # Open yaml files 
+        # Open yaml files
         print('opening yaml files')
         if os.path.exists(
             '{0}/beamformer_weights_{1}.yaml'.format(
@@ -283,12 +290,20 @@ def calibrate_file(etcd_dict):
             )
         ):
             with open(
-                '{0}/beamformer_weights_{1}.yaml'.format(BEAMFORMER_DIR, beamformer_names[0])
+                '{0}/beamformer_weights_{1}.yaml'.format(
+                    BEAMFORMER_DIR,
+                    beamformer_names[0]
+                )
             ) as f:
                 latest_solns = yaml.load(f, Loader=yaml.FullLoader)
             for bfname in beamformer_names[1:].copy():
                 try:
-                    with open('{0}/beamformer_weights_{1}.yaml'.format(BEAMFORMER_DIR, bfname)) as f:
+                    with open(
+                        '{0}/beamformer_weights_{1}.yaml'.format(
+                            BEAMFORMER_DIR,
+                            bfname
+                        )
+                    ) as f:
                         solns = yaml.load(f, Loader=yaml.FullLoader)
                     assert solns['cal_solutions']['antenna_order'] == \
                         latest_solns['cal_solutions']['antenna_order']
@@ -343,7 +358,6 @@ def calibrate_file(etcd_dict):
             )
 
 if __name__=="__main__":
-    # try:
     ETCD.add_watch('/cmd/cal', calibrate_file)
     while True:
         ETCD.put_dict(
@@ -355,4 +369,3 @@ if __name__=="__main__":
             }
         )
         time.sleep(60)
-    # except ds.etcd3.exceptions.ConnectionFailedError:
