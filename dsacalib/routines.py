@@ -45,8 +45,9 @@ def _check_path(fname):
     """
     assert os.path.exists(fname), 'File {0} does not exist'.format(fname)
 
-def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
-                       sefd=False):
+def triple_antenna_cal(
+    obs_params, ant_params, throw_exceptions=True, sefd=False
+):
     r"""Calibrate visibilities from 3 antennas.
 
     Assumes visbilities are stored using dsa-10 or dsa-110 fits format.
@@ -182,27 +183,28 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
             cs.INV_GAINCALTIME |
             cs.INV_DELAYCALTIME
         )
-        maskf, _fraction_flagged = du.mask_bad_bins(
-            vis,
-            axis=2,
-            thresh=2.0,
-            medfilt=True,
-            nmed=129
-        )
-        maskt, _fraction_flagged = du.mask_bad_bins(
-            vis,
-            axis=1,
-            thresh=2.0,
-            medfilt=True,
-            nmed=129
-        )
+#         maskf, _fraction_flagged = du.mask_bad_bins(
+#             vis,
+#             axis=2,
+#             thresh=2.0,
+#             # medfilt=True, # currently not supported
+#             nmed=129
+#         )
+#         maskt, _fraction_flagged = du.mask_bad_bins(
+#             vis,
+#             axis=1,
+#             thresh=2.0,
+#             # medfilt=True, # currently not supported
+#             nmed=129
+#         )
         maskp, _fraction_flagged = du.mask_bad_pixels(
             vis,
             thresh=6.0,
-            mask=maskt*maskf
+            #mask=maskt*maskf
         )
-        mask = maskt*maskf*maskp
-        vis *= mask
+#         mask = maskt*maskf*maskp
+#         vis *= mask
+        vis *= maskp
 
         calstring = 'fringestopping'
         current_error = (
@@ -310,7 +312,6 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
             status = cs.update(status, ['flagging_err'])
             LOGGER.info('Non-fatal error occured in flagging of bad timebins')
         _check_path('{0}_{1}_2kcal'.format(msname, cal.name))
-
         calstring = 'baseline-based bandpass and gain calibration'
         current_error = (
             cs.GAIN_BP_CAL_ERR |
@@ -320,12 +321,15 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
             cs.INV_GAINPHASE_P2 |
             cs.INV_GAINCALTIME
         )
-        error = dc.gain_calibration(
+        error = dc.calibrate_gain(
             msname,
             cal.name,
+            '{0}_{1}'.format(msname, cal.name),
+            refant,
+            tga='inf',
+            tgp='inf',
             blbased=True,
-            refant=refant,
-            forsystemhealth=True
+            combined=False
         )
         if error > 0:
             status = cs.update(status, ['gain_bp_cal_err'])
@@ -391,8 +395,8 @@ def triple_antenna_cal(obs_params, ant_params, throw_exceptions=True,
                 readonly=False
             ) as tb:
                 tb.putcol('TIME', np.ones(6)*np.median(mjd)*ct.SECONDS_PER_DAY)
-                tb.putcol('FLAG', flags.T)
-                tb.putcol('CPARAM', gains.T)
+                tb.putcol('FLAG', flags.squeeze(axis=1))
+                tb.putcol('CPARAM', gains.squeeze(axis=1))
             _check_path('{0}_{1}_gcal_ant'.format(msname, cal.name))
 
     except Exception as exc:

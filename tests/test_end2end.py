@@ -38,11 +38,11 @@ def test_3ant(tmpdir):
     status, caltime = dr.triple_antenna_cal(obs_params, ant_params)
     assert status == 0
 
-def test_3ant_sefd():
+def test_3ant_sefd(tmpdir):
     M87 = src('M87', '12h30m49.4233s', '+12d23m28.043s', 138.4870)
     obs_params = {'fname': '{0}/data/{1}_test.fits'.format(
         dsacalib.__path__[0], M87.name),
-                  'msname': '{0}'.format(M87.name),
+                  'msname': '{0}/{1}'.format(tmpdir, M87.name),
                   'cal': M87,
                   'utc_start': Time('2020-04-16T06:09:42')}
     ant_params = {'pt_dec': (12.391123*u.deg).to_value(u.rad),
