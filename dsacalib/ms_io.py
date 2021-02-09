@@ -11,13 +11,15 @@ Routines to interact with CASA measurement sets and calibration tables.
 
 # Always import scipy before importing casatools.
 import shutil
-from scipy.interpolate import interp1d
 import os
+import glob
+#from scipy.interpolate import interp1d
 import numpy as np
 from pkg_resources import resource_filename
 import yaml
-import glob
 import scipy # pylint: disable=unused-import
+import astropy.units as u
+import astropy.constants as c
 import casatools as cc
 from casatasks import importuvfits, virtualconcat
 from casacore.tables import addImagingColumns, table
@@ -26,25 +28,85 @@ from dsautils import dsa_store
 import dsautils.dsa_syslog as dsl
 from dsautils import calstatus as cs
 from dsamfs.fringestopping import calc_uvw_blt
-import astropy.units as u
-import astropy.constants as c
 from dsacalib import constants as ct
 import dsacalib.utils as du
 from dsacalib.fringestopping import calc_uvw, amplitude_sky_model
-from antpos.utils import get_itrf
-from astropy.utils import iers
+from antpos.utils import get_itrf # pylint: disable=wrong-import-order
+from astropy.utils import iers # pylint: disable=wrong-import-order
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=wrong-import-position
+from astropy.time import Time # pylint: disable=wrong-import-position wrong-import-order
 
 de = dsa_store.DsaStore()
 LOGGER = dsl.DsaSyslogger()
 LOGGER.subsystem("software")
 LOGGER.app("dsacalib")
 
+def T3_initialize_ms(paramfile, msname, tstart, sourcename, ra, dec):
+    """Initialize a ms to write correlated data from the T3 system to.
+
+    Parameters
+    ----------
+    paramfile : str
+        The full path to a yaml parameter file. See package data for a
+        template.
+    msname : str
+        The name of the measurement set. Will write to `msdir`/`msname`.ms.
+        `msdir` is defined in `paramfile`.
+    tstart : astropy.time.Time object
+        The start time of the observation.
+    sourcename : str
+        The name of the source or field.
+    ra : astropy quantity
+        The right ascension of the pointing, units deg or equivalent.
+    dec : astropy quantity
+        The declination of the pointing, units deg or equivalent.
+    """
+    yamlf = open(paramfile)
+    params = yaml.load(yamlf, Loader=yaml.FullLoader)['T3corr']
+    yamlf.close()
+    source = du.src(
+        name=sourcename,
+        ra=ra,
+        dec=dec
+    )
+    ant_itrf = get_itrf().loc[params['antennas']]
+    xx = ant_itrf['dx_m']
+    yy = ant_itrf['dy_m']
+    zz = ant_itrf['dz_m']
+    antenna_names = [str(a) for a in params['antennas']]
+    fobs = params['f0_GHz']+params['deltaf_MHz']*1e-3*params['nfint']*(
+        np.arange(params['nchan']//params['nfint'])+0.5)
+    me = cc.measures()
+    simulate_ms(
+        ofile='{0}/{1}.ms'.format(params['msdir'], msname),
+        tname='OVRO_MMA',
+        anum=antenna_names,
+        xx=xx,
+        yy=yy,
+        zz=zz,
+        diam=4.5,
+        mount='alt-az',
+        pos_obs=me.observatory('OVRO_MMA'),
+        spwname='L_BAND',
+        freq='{0}GHz'.format(fobs[0]),
+        deltafreq='{0}MHz'.format(params['deltaf_MHz']*params['nfint']),
+        freqresolution='{0}MHz'.format(
+            np.abs(params['deltaf_MHz']*params['nfint'])
+        ),
+        nchannels=params['nchan']//params['nfint'],
+        integrationtime='{0}s'.format(params['deltat_s']*params['ntint']),
+        obstm=tstart.mjd,
+        dt=0.000429017462010961+7.275957614183426e-12-7.767375791445374e-07,
+        source=source,
+        stoptime='{0}s'.format(params['deltat_s']*params['nsubint']),
+        autocorr=True,
+        fullpol=True
+    )
+
 def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
                 freq, deltafreq, freqresolution, nchannels, integrationtime,
-                obstm, dt, source, stoptime, autocorr):
+                obstm, dt, source, stoptime, autocorr, fullpol):
     """Simulates a measurement set with cross-correlations only.
 
     WARNING: Not simulating autocorrelations correctly regardless of inclusion
@@ -83,7 +145,7 @@ def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
     source : dsacalib.utils.source instance
         The source observed (or the phase-center).
     stoptime : float
-        The end time of the observation in MJD.
+        The end time of the observation in MJD. DS: should be s?
     autocorr : boolean
         Set to ``True`` if the visibilities include autocorrelations, ``False``
         if the only include crosscorrelations.
@@ -92,18 +154,38 @@ def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
     qa = cc.quanta()
     sm = cc.simulator()
     sm.open(ofile)
-    sm.setconfig(telescopename=tname, x=xx, y=yy, z=zz, dishdiameter=diam,
-                 mount=mount, antname=anum, coordsystem='global',
-                 referencelocation=pos_obs)
-    sm.setspwindow(spwname=spwname, freq=freq, deltafreq=deltafreq,
-                   freqresolution=freqresolution, nchannels=nchannels,
-                   stokes='XX YY')
-    sm.settimes(integrationtime=integrationtime, usehourangle=False,
-                referencetime=me.epoch('utc', qa.quantity(obstm-dt, 'd')))
+    sm.setconfig(
+        telescopename=tname,
+        x=xx,
+        y=yy,
+        z=zz,
+        dishdiameter=diam,
+        mount=mount,
+        antname=anum,
+        coordsystem='global',
+        referencelocation=pos_obs
+    )
+    sm.setspwindow(
+        spwname=spwname,
+        freq=freq,
+        deltafreq=deltafreq,
+        freqresolution=freqresolution,
+        nchannels=nchannels,
+        stokes='XX YY XY YX' if fullpol else 'XX YY'
+    )
+    sm.settimes(
+        integrationtime=integrationtime,
+        usehourangle=False,
+        referencetime=me.epoch('utc', qa.quantity(obstm-dt, 'd'))
+    )
     sm.setfield(
-        sourcename=source.name, sourcedirection=me.direction(
-            source.epoch, qa.quantity(source.ra.to_value(u.rad), 'rad'),
-            qa.quantity(source.dec.to_value(u.rad), 'rad')))
+        sourcename=source.name,
+        sourcedirection=me.direction(
+            source.epoch,
+            qa.quantity(source.ra.to_value(u.rad), 'rad'),
+            qa.quantity(source.dec.to_value(u.rad), 'rad')
+        )
+    )
     sm.setauto(autocorrwt=1.0 if autocorr else 0.0)
     sm.observe(source.name, spwname, starttime='0s', stoptime=stoptime)
     sm.close()
@@ -233,9 +315,11 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         'Visibilities not ordered by baseline'
     anum = [str(a) for a in anum]
 
-    simulate_ms('{0}.ms'.format(ofile), tname, anum, xx, yy, zz, diam, mount,
-                pos_obs, spwname, freq, deltafreq, freqresolution, nchannels,
-                integrationtime, obstm, dt, source, stoptime, autocorr)
+    simulate_ms(
+        '{0}.ms'.format(ofile), tname, anum, xx, yy, zz, diam, mount, pos_obs,
+        spwname, freq, deltafreq, freqresolution, nchannels, integrationtime,
+        obstm, dt, source, stoptime, autocorr, fullpol=False
+    )
 
     # Check that the time is correct
     ms = cc.ms()
@@ -250,10 +334,12 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         print('Updating casa time offset to {0}s'.format(
             dt*ct.SECONDS_PER_DAY))
         print('Rerunning simulator')
-        simulate_ms('{0}.ms'.format(ofile), tname, anum, xx, yy, zz, diam,
-                    mount, pos_obs, spwname, freq, deltafreq, freqresolution,
-                    nchannels, integrationtime, obstm, dt, source, stoptime,
-                    autocorr)
+        simulate_ms(
+            '{0}.ms'.format(ofile), tname, anum, xx, yy, zz, diam, mount,
+            pos_obs, spwname, freq, deltafreq, freqresolution, nchannels,
+            integrationtime, obstm, dt, source, stoptime, autocorr,
+            fullpol=False
+        )
 
     # Reopen the measurement set and write the observed visibilities
     ms = cc.ms()
@@ -294,6 +380,29 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
 
 def extract_vis_from_ms(msname, data='data'):
     """Extracts visibilities from a CASA measurement set.
+
+    Parameters
+    ----------
+    msname : str
+        The measurement set. Opens `msname`.ms
+    data : str
+        The visibilities to extract. Can be `data`, `model` or `corrected`.
+
+    Returns
+    -------
+    vals : ndarray
+        The visibilities, dimensions (baseline, time, spw, freq, pol).
+    time : array
+        The time of each integration in days.
+    fobs : array
+        The frequency of each channel in GHz.
+    flags : ndarray
+        Flags for the visibilities, same shape as vals. True if flagged.
+    ant1, ant2 : array
+        The antenna indices for each baselines in the visibilities.
+    pt_dec : float
+        The pointing declination of the array. (Note: Not the phase center, but
+        the physical pointing of the antennas.)
     """
     with table('{0}.ms'.format(msname)) as tb:
         ant1 = np.array(tb.ANTENNA1[:])
@@ -309,57 +418,33 @@ def extract_vis_from_ms(msname, data='data'):
 
     time, vals, flags, ant1, ant2 = reshape_calibration_data(
         vals, flags, ant1, ant2, baseline, time, spw)
-    
+
     with table('{0}.ms/FIELD'.format(msname)) as tb:
-        pt_dec =tb.PHASE_DIR[:][0][0][1]
+        pt_dec = tb.PHASE_DIR[:][0][0][1]
 
     return vals, time/ct.SECONDS_PER_DAY, fobs, flags, ant1, ant2, pt_dec
 
-# def extract_vis_from_ms_old(msname, nbls, data='data'):
-#     """ Extracts visibilities from a CASA measurement set.
-
-#     Parameters
-#     ----------
-#     ms_name : str
-#         The name of the measurement set.  Will open `ms_name`.ms.
-#     nbls : int
-#         The number of baselines in the measurement set.
-
-#     Returns
-#     -------
-#     vis_uncal : ndarray
-#         The 'observed' visibilities from the measurement set.  Dimensions
-#         (baseline, time, freq, polarization).
-#     vis_cal : ndarray
-#         The 'corrected' visibilities from the measurement set.  Dimensions
-#         (baseline, time, freq, polarization).
-#     time : array
-#         The time of each subintegration, in MJD.
-#     freq : array
-#         The frequency of each channel, in GHz.
-#     flags : ndarray
-#         The flags for the visibility data, same dimensions as `vis_uncal` and
-#         `vis_cal`. `flags` is 1 (or ``True``) where the data is flagged
-#         (invalid) and 0 (or ``False``) otherwise.
-#     """
-#     error = 0
-#     ms = cc.ms()
-#     error += not ms.open('{0}.ms'.format(msname))
-#     axis_info = ms.getdata(['axis_info'])['axis_info']
-#     freq = axis_info['freq_axis']['chan_freq'].squeeze()/1e9
-#     time = ms.getdata(['time'])['time'].reshape(-1, nbls)[..., 0]
-#     time = time/ct.SECONDS_PER_DAY
-#     vis = ms.getdata([data])[data]
-#     flags = ms.getdata(["flag"])['flag']
-#     vis = vis.reshape(vis.shape[0], vis.shape[1], -1, nbls).T
-#     flags = flags.reshape(flags.shape[0], flags.shape[1], -1, nbls).T
-#     error += not ms.close()
-#     if error > 0:
-#         print('{0} errors occured during calibration'.format(error))
-#     return vis, time, freq, flags
-
 def read_caltable(tablename, cparam=False):
     """Requires that each spw has the same number of frequency channels.
+
+    Parameters
+    ----------
+    tablename : str
+        The full path to the calibration table.
+    cparam : bool
+        If True, reads the column CPARAM in the calibrtion table. Otherwise
+        reads FPARAM.
+
+    Returns
+    -------
+    vals : ndarray
+        The visibilities, dimensions (baseline, time, spw, freq, pol).
+    time : array
+        The time of each integration in days.
+    flags : ndarray
+        Flags for the visibilities, same shape as vals. True if flagged.
+    ant1, ant2 : array
+        The antenna indices for each baselines in the visibilities.
     """
     with table(tablename) as tb:
         try:
@@ -413,7 +498,10 @@ def reshape_calibration_data(vals, flags, ant1, ant2, baseline, time, spw):
         ant1 and ant2 for unique baselines, same length as the baseline axis of
         the output `vals`.
     """
-    nbl = len(np.unique(baseline))
+    if len(np.unique(ant1))==len(np.unique(ant2)):
+        nbl = len(np.unique(baseline))
+    else:
+        nbl = max([len(np.unique(ant1)), len(np.unique(ant2))])
     nspw = len(np.unique(spw))
     ntime = len(time)//nbl//nspw
     nfreq = vals.shape[-2]
@@ -472,60 +560,9 @@ def reshape_calibration_data(vals, flags, ant1, ant2, baseline, time, spw):
             ant2 = ant2.reshape(nspw, ntime, nbl)[0, 0, :]
     return time, vals, flags, ant1, ant2
 
-# def read_caltable_old(tablename, nbls, cparam=False):
-#     """Extracts calibration solution from a CASA calibration table.
-
-#     Parameters
-#     ----------
-#     tablename : str
-#         The full path to the CASA calibration table.
-#     nbls : int
-#         The number of baselines or antennas in the CASA calibration solutions.
-#         This can be calculated from the number of antennas, nant:
-
-#             For delay calibration, nbls=nant
-#             For antenna-based gain/bandpass calibration, nbls=nant
-#             For baseline-based gain/bandpass calibration,
-#             nbls=(nant*(nant+1))//2
-
-#     cparam : boolean
-#         Whether the parameter of interest is complex (set to ``True``) or a
-#         float (set to ``False``).  For delay calibration, set to ``False``. For
-#         gain/bandpass calibration, set to ``True``.  Defaults ``False``.
-
-#     Returns
-#     -------
-#     time : array
-#         The times at which each solution is calculated in MJD. Dimensions
-#         (time, baselines). If no column 'TIME' is in the calibration table,
-#         ``None`` is returned.
-#     vals : ndarray
-#         The calibration solutions. Dimensions may be (polarization, time,
-#         baselines) or (polarization, 1, baselines) (for delay or gain
-#         calibration) or (polarization,frequency,baselines) (for bandpass cal).
-#     flags : ndarray
-#         Flags corresponding to the calibration solutions.  Same dimensions as
-#         `vals`. A value of 1 or ``True`` if the data is flagged (invalid), 0 or
-#         ``False`` otherwise.
-#     """
-#     param_type = 'CPARAM' if cparam else 'FPARAM'
-#     tb = cc.table()
-#     print('Opening table {0} as type {1}'.format(tablename, param_type))
-#     tb.open(tablename)
-#     if 'TIME' in tb.colnames():
-#         time = (tb.getcol('TIME').reshape(-1, nbls)*u.s).to_value(u.d)
-#     else:
-#         time = None
-#     vals = tb.getcol(param_type)
-#     vals = vals.reshape(vals.shape[0], -1, nbls)
-#     flags = tb.getcol('FLAG')
-#     flags = flags.reshape(flags.shape[0], -1, nbls)
-#     tb.close()
-
-#     return time, vals, flags
-
-def caltable_to_etcd(msname, calname, caltime, status,
-                     pols=None):
+def caltable_to_etcd(
+    msname, calname, caltime, status, pols=None
+):
     r"""Copies calibration values from delay and gain tables to etcd.
 
     The dictionary passed to etcd should look like: {"ant_num": <i>,
@@ -542,10 +579,10 @@ def caltable_to_etcd(msname, calname, caltime, status,
     calname : str
         The calibrator name.  Will open the calibration tables
         `msname`\_`calname`\_kcal and `msname`\_`calname`\_gcal_ant.
-    baseline_cal : boolean
-        Set to ``True`` if the gain table was calculated using baseline-based
-        calibration, ``False`` if the gain table was calculated using
-        antenna-based calibration. Defaults ``False``.
+    caltime : float
+        The time of calibration transit in mjd.
+    status : int
+        The status of the calibration. Decode with dsautils.calstatus.
     pols : list
         The names of the polarizations. If ``None``, will be set to
         ``['B', 'A']``. Defaults ``None``.
@@ -562,9 +599,9 @@ def caltable_to_etcd(msname, calname, caltime, status,
         mask = np.ones(flags.shape)
         mask[flags == 1] = np.nan
         amps = amps*mask
-        
-        phase, tphase, flags, ant1, ant2 = read_caltable(
-            '{0}_{1}_gacal'.format(msname, calname),
+
+        phase, _tphase, flags, ant1, ant2 = read_caltable(
+            '{0}_{1}_gpcal'.format(msname, calname),
             cparam=True
         )
         mask = np.ones(flags.shape)
@@ -597,7 +634,7 @@ def caltable_to_etcd(msname, calname, caltime, status,
         tamp = np.median(tamp)
         gaincaltime_offset = (tamp-caltime)*ct.SECONDS_PER_DAY
 
-    except Exception as e:
+    except Exception as exc:
         tamp = np.nan
         amps = np.ones((0, len(pols)))*np.nan
         gaincaltime_offset = 0.
@@ -611,6 +648,7 @@ def caltable_to_etcd(msname, calname, caltime, status,
             cs.INV_GAINPHASE_P2 |
             cs.INV_GAINCALTIME
         )
+        du.exception_logger(LOGGER, 'caltable_to_etcd', exc, throw=False)
 
     # Delays for each antenna.
     try:
@@ -631,7 +669,7 @@ def caltable_to_etcd(msname, calname, caltime, status,
         tdel = np.median(tdel)
         delaycaltime_offset = (tdel-caltime)*ct.SECONDS_PER_DAY
 
-    except Exception:
+    except Exception as exc:
         tdel = np.nan
         delays = np.ones((0, len(pols)))*np.nan
         delaycaltime_offset = 0.
@@ -640,9 +678,10 @@ def caltable_to_etcd(msname, calname, caltime, status,
             cs.DELAY_TBL_ERR |
             cs.INV_DELAY_P1 |
             cs.INV_DELAY_P2 |
-            cs.INV_DELAYCAL_TIME
+            cs.INV_DELAYCALTIME
         )
         antenna_order_delays = np.zeros(0, dtype=np.int)
+        du.exception_logger(LOGGER, 'caltable_to_etcd', exc, throw=False)
 
     antenna_order = np.unique(
         np.array([antenna_order_amps,
@@ -694,7 +733,7 @@ def caltable_to_etcd(msname, calname, caltime, status,
         }
         required_keys = dict({
             'ant_num': [cs.INV_ANTNUM, 0],
-            'time': [cs.INV_TIME, 0.],
+            'time': [cs.INV_DELAYCALTIME, 0.],
             'pol': [cs.INV_POL, ['B', 'A']],
             'calsource': [cs.INV_CALSOURCE, 'Unknown'],
             'sim': [cs.INV_SIM, False],
@@ -713,25 +752,39 @@ def caltable_to_etcd(msname, calname, caltime, status,
                       'etcd')
                 status = cs.update(status, cs.INV_POL)
                 dd['pol'] = ['B', 'A']
-        if antnum==23:
-            de.put_dict('/mon/cal/{0}'.format(antnum+1), dd)
+        de.put_dict('/mon/cal/{0}'.format(antnum+1), dd)
 
 def get_antenna_gains(gains, ant1, ant2, refant=0):
     """Calculates antenna gains, g_i, from CASA table of G_ij=g_i g_j*.
 
     Currently does not support baseline-based gains.
     Refant only used for baseline-based case.
+
+    Parameters
+    ----------
+    gains : ndarray
+        The gains read in from the CASA gain table. 0th axis is baseline or
+        antenna.
+    ant1, ant2 : ndarray
+        The antenna pair for each entry along the 0th axis in gains.
+    refant : int
+        The reference antenna index to use to get antenna gains from baseline
+        gains.
+
+    Returns
+    -------
+    antennas : ndarray
+        The antenna indices.
+    antenna_gains : ndarray
+        Gains for each antenna in `antennas`.
     """
     antennas = np.unique(np.concatenate((ant1, ant2)))
     output_shape = list(gains.shape)
     output_shape[0] = len(antennas)
     antenna_gains = np.zeros(tuple(output_shape), dtype=gains.dtype)
     if np.all(ant2 == ant2[0]):
-        # antenna-based calibration
-        # refant = ant2[0]
-        # gref = np.sqrt(np.abs(gains[ant1==refant]))
         for i, ant in enumerate(antennas):
-            antenna_gains[i] = 1/gains[ant1==ant]#/gref
+            antenna_gains[i] = 1/gains[ant1==ant]
     else:
         assert len(antennas) == 3, ("Baseline-based only supported for trio of"
                                     "antennas")
@@ -772,7 +825,7 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
                 sign*1.0j*np.angle(gains[idx_phase])))**(-1)
     return antennas, antenna_gains
 
-def write_beamformer_weights(msname, calname, antennas, outdir,
+def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
                              corr_list, antenna_flags):
     """Writes weights for the beamformer.
 
@@ -790,7 +843,23 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
     corr_list : list
         The indices of the correlator machines to write beamformer weights for.
         For now, these must be ordered so that the frequencies are contiguous
-        and they are in the same order or the reverse order as in the ms.
+        and they are in the same order or the reverse order as in the ms. The
+        bandwidth of each correlator is pulled from dsa110-meridian-fs package
+        data.
+    antenna_flags : ndarray(bool)
+        Dimensions (antennas, pols). True where flagged, False otherwise.
+
+    Returns
+    -------
+    corr_list : list
+    bu : array
+        The length of the baselines in the u direction for each antenna
+        relative to antenna 24.
+    fweights : ndarray
+        The frequencies corresponding to the beamformer weights, dimensions
+        (correlator, frequency).
+    filenames : list
+        The names of the file containing the beamformer weights.
     """
     # Get the frequencies we want to write solutions for.
     corr_settings = resource_filename("dsamfs", "data/dsa_parameters.yaml")
@@ -809,8 +878,11 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
         for i, corr_id in enumerate(corr_list):
             ch0 = params['ch0']['corr{0:02d}'.format(corr_id)]
             fobs_corr = fobs[ch0:ch0+nchan_spw]
-            fweights[i, :] = fobs_corr.reshape(fweights.shape[1], -1).mean(axis=1)
-    
+            fweights[i, :] = fobs_corr.reshape(
+                fweights.shape[1],
+                -1
+            ).mean(axis=1)
+
     antpos_df = get_itrf()
     blen = np.zeros((len(antennas), 3))
     for i, ant in enumerate(antennas):
@@ -823,13 +895,16 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
     with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
         fobs = np.array(tb.CHAN_FREQ[:])/1e9
     fobs = fobs.reshape(fweights.size, -1).mean(axis=1)
-    f_reversed = not np.all(np.abs(fobs-fweights.ravel())/fweights.ravel() < 1e-5)
+    f_reversed = not np.all(
+        np.abs(fobs-fweights.ravel())/fweights.ravel() < 1e-5
+    )
     if f_reversed:
-        assert np.all(np.abs(fobs[::-1]-fweights.ravel())/fweights.ravel() < 1e-5)
+        assert np.all(
+            np.abs(fobs[::-1]-fweights.ravel())/fweights.ravel() < 1e-5
+        )
 
-    gains, time, flags, ant1, ant2 = read_caltable(
+    gains, _time, flags, ant1, ant2 = read_caltable(
         '{0}_{1}_gacal'.format(msname, calname), True)
-    caltime = Time(np.median(time), format='mjd', precision=0)
     gains[flags] = np.nan
     gains = np.nanmean(gains, axis=1)
     phases, _, flags, ant1p, ant2p = read_caltable(
@@ -845,11 +920,11 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
     bgains[flags] = np.nan
     bgains = np.nanmean(bgains, axis=1)
     bantenna, bgains = get_antenna_gains(bgains, ant1, ant2)
-    assert(np.all(bantenna == gantenna))
-    
+    assert np.all(bantenna == gantenna)
+
     nantenna = gains.shape[0]
     npol = gains.shape[-1]
-    
+
     gains = gains*bgains
     print(gains.shape)
     gains = gains.reshape(nantenna, -1, npol)
@@ -872,8 +947,9 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
         if antid+1 in antennas:
             idx = np.where(antennas==antid+1)[0][0]
             weights[:, idx, ...] = gains[i, ...]
-    
+
 #     # interpolate over missing values
+#     # Not needed anymore because we are interpolating the bandpass solutions
 #     med = np.nanmedian(weights, axis=2, keepdims=True)
 #     std = np.nanstd(weights.real, axis=2, keepdims=True)+\
 #         1j*np.std(weights.imag, axis=2, keepdims=True)
@@ -900,46 +976,70 @@ def write_beamformer_weights(msname, calname, antennas, outdir,
 #                         )
 #                         weights[i, j, idx, k] = fr(idx) + 1j*fi(idx)
     weights[np.isnan(weights)] = 0.
-    # weights = np.conjugate(weights)
+    # Divide by the first antenna
+    print(weights.shape)
+    weights = weights/weights[:, 0, ..., 0][:, np.newaxis, :, np.newaxis]
+    weights[np.isnan(weights)] = 0.
     # Flag bad antennas
     flags = np.tile(antenna_flags[ np.newaxis, :, np.newaxis, :],
                     (ncorr, 1, 48, 1))
+
     weights[flags] = 0.
-    
+
     filenames = []
     for i, corr_idx in enumerate(corr_list):
         wcorr = weights[i, ...].view(np.float32).flatten()
         wcorr = np.concatenate([bu, wcorr], axis=0)
         fname = 'beamformer_weights_corr{0:02d}'.format(corr_idx)
-        fname2 = '{0}_{1}_{2}'.format(
+        fname = '{0}_{1}_{2}'.format(
             fname,
             calname,
-            caltime.isot.split('.')[0]
+            caltime.isot
         )
         if os.path.exists('{0}/{1}.dat'.format(outdir, fname)):
             os.unlink('{0}/{1}.dat'.format(outdir, fname))
         with open('{0}/{1}.dat'.format(outdir, fname), 'wb') as f:
             f.write(bytes(wcorr))
-        os.link(
-            '{0}/{1}.dat'.format(outdir, fname),
-            '{0}/{1}.dat'.format(outdir, fname2)
-        )
-        filenames += ['{0}.dat'.format(fname2)]
+        filenames += ['{0}.dat'.format(fname)]
     return corr_list, bu, fweights, filenames
 
 def get_delays(antennas, msname, calname, applied_delays):
-    """Returns the delays that should be set in the correlator.
+    r"""Returns the delays to be set in the correlator.
 
-    delays and applied_delays are in units of nanoseconds.
+    Based on the calibrated delays and the currently applied delays.
+
+    Parameters
+    ----------
+    antennas : list
+        The antennas to get delays for.
+    msname : str
+        The path to the measurement set containing the calibrator pass.
+    calname : str
+        The name of the calibrator. Will open `msname`\_`calname`\_kcal.
+    applied_delays : ndarray
+        The currently applied delays for every antenna/polarization, in ns.
+        Dimensions (antenna, pol).
+
+    Returns
+    -------
+    delays : ndarray
+        The delays to be applied for every antenna/polarization in ns.
+        Dimensions (antenna, pol).
+    flags : ndarray
+        True if that antenna/pol data is flagged in the calibration table.
+        In this case, the delay should be set to 0. Dimensions (antenna, pol).
     """
-    delays, time, flags, ant1, ant2 = read_caltable('{0}_{1}_kcal'.format(msname, calname))
+    delays, _time, flags, ant1, _ant2 = read_caltable(
+        '{0}_{1}_kcal'.format(msname, calname)
+    )
+    print('delays: {0}'.format(delays.shape))
     delays[flags] = np.nan
     ant1 = list(ant1)
     idx = [ant1.index(ant-1) for ant in antennas]
     delays = delays[idx]
     delays = delays.squeeze() + applied_delays
     delays = delays - np.nanmin(delays)
-    
+
     delays = (np.rint(delays/2)*2)
     flags = np.isnan(delays)
     delays[flags] = 0
@@ -950,11 +1050,46 @@ def write_beamformer_solutions(
     corr_list=np.arange(1, 17),
     outdir='/home/user/beamformer_weights/',
     flagged_antennas=None):
+    """Writes beamformer solutions to disk.
 
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set used for calibration.
+    calname : str
+        The name of the calibrator source used for calibration. Will open
+        tables that start with `msname`_`calname`
+    caltime : astropy.time.Time object
+        The transit time of the calibrator.
+    antennas : list
+        The antenna names for which to write beamformer solutions, in order.
+    applied_delays : ndarray
+        The currently applied delays at the time of the calibration, in ns.
+        Dimensions (antenna, pol). The antenna axis should be in the order
+        specified by antennas.
+    corr_list : list
+        The indices of the correlator machines to write beamformer weights for.
+        For now, these must be ordered so that the frequencies are contiguous
+        and they are in the same order or the reverse order as in the ms. The
+        bandwidth of each correlator is pulled from dsa110-meridian-fs package
+        data.
+    flagged_antennas : list
+        A list of antennas to flag in the beamformer solutions. These antennas
+        will be given beamformer weights of 0, and delays of 0.
+    outdir : str
+        The directory to write the beamformer weights in.
+
+    Returns
+    -------
+    flags : ndarray(boolean)
+        Dimensions (antennas, pols). True where the data is flagged, and should
+        not be used. Compiled from the ms flags as well as `flagged_antennas`.
+    """
     delays, flags = get_delays(antennas, msname, calname, applied_delays)
-    for ant in flagged_antennas:
-        delays[antennas==ant, ...] = 0
-        flags[antennas==ant, ...] = 1
+    if flagged_antennas is not None:
+        for ant in flagged_antennas:
+            delays[antennas==ant, ...] = 0
+            flags[antennas==ant, ...] = 1
     delays = delays-np.min(delays[~flags])
     while not np.all(delays[~flags] < 1024):
         if np.sum(delays[~flags] > 1024) < np.nansum(delays[~flags] < 1024):
@@ -964,17 +1099,19 @@ def write_beamformer_solutions(
         argflag = np.where(~flags.flatten())[0][argflag]
         flags[np.unravel_index(argflag, flags.shape)] = 1
         delays = delays-np.min(delays[~flags])
-    delays[flags]=0
+    delays[flags] = 0
 
-    corr_list, eastings, fobs, weights_files = write_beamformer_weights(
+    caltime.precision = 0
+    corr_list, eastings, _fobs, weights_files = write_beamformer_weights(
         msname,
         calname,
+        caltime,
         antennas,
         outdir,
         corr_list,
         flags
     )
-        
+
     calibration_dictionary = {
         'cal_solutions':
         {
@@ -983,7 +1120,12 @@ def write_beamformer_solutions(
             'antenna_order': [int(ant) for ant in antennas],
             'corr_order': [int(corr) for corr in corr_list],
             'pol_order': ['B', 'A'],
-            'delays': [[int(delay[0]//2), int(delay[1]//2)] for delay in delays],
+            'delays': [
+                [
+                    int(delay[0]//2),
+                    int(delay[1]//2)
+                ] for delay in delays
+            ],
             'eastings': [float(easting) for easting in eastings],
             'weights_axis0': 'antenna',
             'weights_axis1': 'frequency',
@@ -996,15 +1138,37 @@ def write_beamformer_solutions(
         '{0}/beamformer_weights_{1}_{2}.yaml'.format(
             outdir,
             calname,
-            caltime.isot.split('.')[0]
+            caltime.isot
         ),
         'w'
     ) as file:
         yaml.dump(calibration_dictionary, file)
     return flags
 
-def convert_calibrator_pass_to_ms(cal, date, files, duration, msdir='/mnt/data/dsa110/msfiles/', hdf5dir='/mnt/data/dsa110/'):
-    """Converts hdf5 files near a calibrator pass to a CASA ms.
+def convert_calibrator_pass_to_ms(
+    cal, date, files, duration, msdir='/mnt/data/dsa110/calibration/',
+    hdf5dir='/mnt/data/dsa110/correlator/'
+):
+    r"""Converts hdf5 files near a calibrator pass to a CASA ms.
+
+    Parameters
+    ----------
+    cal : dsacalib.utils.src instance
+        The calibrator source.
+    date : str
+        The date (to day precision) of the calibrator pass. e.g. '2020-10-06'.
+    files : list
+        The hdf5 filenames corresponding to the calibrator pass. These should
+        be date strings to second precision.
+        e.g. ['2020-10-06T12:35:04', '2020-10-06T12:50:04']
+        One ms will be written per filename in `files`. If the length of
+        `files` is greater than 1, the mss created will be virtualconcated into
+        a single ms.
+    duration : astropy quantity
+        Amount of data to extract, unit minutes or equivalent.
+    msdir : str
+        The full path to the directory to place the measurement set in. The ms
+        will be written to `msdir`/`date`\_`cal.name`.ms
     """
     msname = '{0}/{1}_{2}'.format(msdir, date, cal.name)
     if len(files) == 1:
@@ -1029,7 +1193,14 @@ def convert_calibrator_pass_to_ms(cal, date, files, duration, msdir='/mnt/data/d
         for filename in files:
             try:
                 uvh5_to_ms(
-                    sorted(glob.glob('{0}/corr??/{1}*.hdf5'.format(hdf5dir, filename[:-4]))),
+                    sorted(
+                        glob.glob(
+                            '{0}/corr??/{1}*.hdf5'.format(
+                                hdf5dir,
+                                filename[:-4]
+                            )
+                        )
+                    ),
                     '{0}/{1}'.format(msdir, filename),
                     ra=cal.ra,
                     dec=cal.dec,
@@ -1040,9 +1211,11 @@ def convert_calibrator_pass_to_ms(cal, date, files, duration, msdir='/mnt/data/d
             except (ValueError, IndexError):
                 pass
         if os.path.exists('{0}.ms'.format(msname)):
-            for root, dirs, files in os.walk('{0}.ms'.format(msname),
-                                             topdown=False):
-                for name in files:
+            for root, _dirs, walkfiles in os.walk(
+                '{0}.ms'.format(msname),
+                topdown=False
+            ):
+                for name in walkfiles:
                     os.unlink(os.path.join(root, name))
             shutil.rmtree('{0}.ms'.format(msname))
         if len(msnames) > 1:
@@ -1069,6 +1242,8 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     ----------
     fname : str
         The full path to the uvh5 data file.
+    msname : str
+        The name of the ms to write. Data will be written to `msname`.ms
     ra : astropy quantity
         The RA at which to phase the data. If None, will phase at the meridian
         of the center of the uvh5 file.
@@ -1076,10 +1251,18 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         The DEC at which to phase the data. If None, will phase at the pointing
         declination.
     dt : astropy quantity
-        Duration of data to extract. If None, will extract the entire file.
+        Duration of data to extract. Default is to extract the entire file.
+    antenna_list : list
+        Antennas for which to extract visibilities from the uvh5 file. Default
+        is to extract all visibilities in the uvh5 file.
+    flux : float
+        The flux of the calibrator in Jy. If included, will write a model of
+        the primary beam response to the calibrator source to the model column
+        of the ms. If not included, a model of a constant response over
+        frequency and time will be written instead of the primary beam model.
     """
     print(fname)
-    zenith_dec = 0.6503903199825691*u.rad
+    # zenith_dec = 0.6503903199825691*u.rad
     UV = UVData()
 
     # Read in the data
@@ -1100,9 +1283,9 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     if dt is not None:
         extract_times(UV, ra, dt)
     time = Time(UV.time_array, format='jd')
-    
-    # Set antenna positions 
-    # This should already be done by the writer but for some reason they 
+
+    # Set antenna positions
+    # This should already be done by the writer but for some reason they
     # are being converted to ICRS
     df_itrf = get_itrf(height=UV.telescope_location_lat_lon_alt[-1])
     if len(df_itrf['x_m']) != UV.antenna_positions.shape[0]:
@@ -1143,8 +1326,9 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     #     UV.Nblts, UV.Nspws, UV.Nfreqs, UV.Npols
     # )
     # UV.phase(ra.to_value(u.rad), dec.to_value(u.rad), use_ant_pos=True)
-    # Below is the manual calibration which can be used instead. 
-    # Currently using because casa uvws are more accurate than pyuvdatas
+    # Below is the manual calibration which can be used instead.
+    # Currently using because casa uvws are more accurate than pyuvdatas, which
+    # aren't true uvw coordinates.
     blen = np.tile(blen[np.newaxis, :, :], (UV.Ntimes, 1, 1)).reshape(-1, 3)
     uvw = calc_uvw_blt(blen, time.mjd, 'RADEC', ra.to(u.rad), dec.to(u.rad))
     dw = (uvw[:, -1] - np.tile(uvw_m[np.newaxis, :, -1], (UV.Ntimes, 1)
@@ -1222,7 +1406,19 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         tb.putcol('CORRECTED_DATA', tb.getcol('DATA')[:])
 
 def extract_times(UV, ra, dt):
-    """Extracts specified times from the UVData instance.
+    """Extracts data from specified times from an already open UVData instance.
+
+    This is an alternative to opening the file with the times specified using
+    pyuvdata.UVData.open().
+
+    Parameters
+    ----------
+    UV : pyuvdata.UVData() instance
+        The UVData instance from which to extract data. Modified in-place.
+    ra : float
+        The ra of the source around which to extract data, in radians.
+    dt : astropy quantity
+        The amount of data to extract, units seconds or equivalent.
     """
     lst_min = (ra - (dt*2*np.pi*u.rad/(ct.SECONDS_PER_SIDEREAL_DAY*u.s))/2
               ).to_value(u.rad)%(2*np.pi)
@@ -1254,3 +1450,65 @@ def extract_times(UV, ra, dt):
     UV.Nblts = int(idxmax-idxmin)
     assert UV.data_array.shape[0]==UV.Nblts
     UV.Ntimes = UV.Nblts//UV.Nbls
+
+def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None):
+    """Averages written beamformer solutions.
+
+    Parameters
+    ----------
+    fnames : list
+    ttime : astropy.time.Time object
+        A time to use in the filename of the solutions, indicating when they
+        were written or are useful. E.g. the transit time of the most recent
+        source being averaged over.
+    outdir : str
+        The directory in which the beamformer solutions are written, and into
+        which new solutions should be written.
+    corridxs : list
+        The correlator nodes for which to average beamformer solutions.
+        Defaults to 1 through 16 inclusive.
+
+    Returns
+    -------
+    list
+        The names of the written beamformer solutions (one for each correlator
+        node).
+    """
+    if corridxs is None:
+        corridxs = [
+            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
+        ]
+    written_files = []
+    for corr in corridxs:
+        gains = np.ones((len(fnames), 12352), dtype='<f4')*np.nan
+        for i, fname in enumerate(fnames):
+            if os.path.exists(
+                '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
+                outdir,
+                corr,
+                fname
+                )
+            ):
+                with open(
+                    '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
+                        outdir,
+                        corr,
+                        fname
+                    ),
+                    'rb'
+                ) as f:
+                    gains[i, ...] = np.fromfile(f, '<f4')
+            else:
+                LOGGER.info(
+                    '{0} not found during beamformer weight averaging'.format(
+                    '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
+                    outdir,
+                    corr,
+                    fname
+                )))
+        gains = np.nanmedian(gains, axis=0)
+        fnameout = 'beamformer_weights_corr{0:02d}_{1}'.format(corr, ttime.isot)
+        with open('{0}/{1}.dat'.format(outdir, fnameout), 'wb') as f:
+            f.write(bytes(gains))
+        written_files += ['{0}.dat'.format(fnameout)]
+    return written_files
