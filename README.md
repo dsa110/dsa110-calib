@@ -1,5 +1,5 @@
 
-[![Build Status](https://travis-ci.org/dsa110/dsa110-calib.svg?branch=master)](https://travis-ci.org/dsa110/dsa110-calib) 
+[![Build Status](https://travis-ci.org/dsa110/dsa110-calib.svg?branch=main)](https://travis-ci.org/dsa110/dsa110-calib) 
 [![codecov](https://codecov.io/gh/dsa110/dsa110-calib/branch/master/graph/badge.svg)](https://codecov.io/gh/dsa110/dsa110-calib)
 
 # dsa110-calib
