@@ -7,8 +7,6 @@ warnings.filterwarnings("ignore")
 from multiprocessing import Process, Queue
 import time
 from pkg_resources import resource_filename
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 import pandas
 import numpy as np
 from astropy.time import Time
@@ -17,7 +15,7 @@ import astropy.units as u
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
 import dsacalib.constants as ct
-from dsacalib.preprocess import rsync_file, fscrunch_file, first_true 
+from dsacalib.preprocess import rsync_file, fscrunch_file, first_true
 from dsacalib.utils import exception_logger
 
 # Logger
@@ -51,6 +49,8 @@ TSLEEP = 10
 
 def populate_queue(etcd_dict):
     """Populates the fscrunch and rsync queues using etcd.
+
+    Etcd watch callback function.
     """
     cmd = etcd_dict['cmd']
     val = etcd_dict['val']
@@ -62,7 +62,16 @@ def populate_queue(etcd_dict):
         RSYNC_Q.put(rsync_string)
 
 def task_handler(task_fn, inqueue, outqueue=None):
-    """Threaded frequency scrunching.
+    """Handles in and out queues of preprocessing tasks.
+
+    Parameters
+    ----------
+    task_fn : function
+        The function to execute, with a single argument.
+    inqueue : multiprocessing.Queue instance
+        The queue containing the arguments to `task_fn`.
+    outqueue : multiprocessing.Queue instance
+        The queue to write the otuput of `task_fn` to.
     """
     while True:
         if not inqueue.empty():
@@ -82,7 +91,19 @@ def task_handler(task_fn, inqueue, outqueue=None):
             time.sleep(TSLEEP)
 
 def gather_worker(inqueue, outqueue):
+    # TODO: Replace corr 21 with corr 4
     """Gather all files that match a filename.
+
+    Will wait for a maximum of 15 minutes from the time the first file is
+    received.
+
+    Parameters
+    ----------
+    inqueue : multiprocessing.Queue instance
+        The queue containing the filenames, max size of 16 (i.e. one file per
+        corr node).
+    outqueue : multiprocessing.Queue instance
+        The queue in which to place the gathered files (as a list).
     """
     filelist = [None]*NCORR
     nfiles = 0
@@ -104,6 +125,16 @@ def gather_worker(inqueue, outqueue):
 
 def gather_files(inqueue, outqueue):
     """Gather files from all correlators.
+
+    Will wait for a maximum of 15 minutes from the time the first file is
+    received.
+
+    Parameters
+    ----------
+    inqueue : multiprocessing.Queue instance
+        The queue containing the ungathered filenames .
+    outqueue : multiprocessing.Queue instance
+        The queue in which to place the gathered files (as a list).
     """
     gather_queues = [Queue(NCORR) for idx in range(MAX_ASSESS)]
     gather_names = [None]*MAX_ASSESS
@@ -141,10 +172,22 @@ def gather_files(inqueue, outqueue):
             time.sleep(TSLEEP)
 
 def assess_file(inqueue, outqueue, caltime=15*u.min):
-    """Decides on calibration that is necessary.
+    """Decides whether calibration is necessary.
 
     Sends a command to etcd using the monitor point /cmd/cal if the file should
     be calibrated.
+
+    Parameters
+    ----------
+    inqueue : multiprocessing.Queue instance
+        The queue containing the gathered filenames.
+    outqueue : multiprocessing.Queue instance
+        The queue to which the calname and gathered filenames (as a tuple) if
+        the file is appropriate for calibration.
+    caltime : astropy quantity
+        The amount of time around the calibrator to be converted to
+        a measurement set for calibration. Used to assess whether any part of
+        the desired calibrator pass is in a given file.
     """
     caltable = resource_filename(
         'dsacalib',
@@ -156,7 +199,6 @@ def assess_file(inqueue, outqueue, caltime=15*u.min):
             try:
                 flist = inqueue.get()
                 fname = first_true(flist)
-                print(fname)
                 datetime = fname.split('/')[-1][:19]
                 tstart = Time(datetime).sidereal_time(
                     'apparent',
@@ -179,7 +221,7 @@ def assess_file(inqueue, outqueue, caltime=15*u.min):
                     ).to_value(u.rad)%(2*np.pi)
                     if delta_lst_end > np.pi:
                         delta_lst_end -= 2*np.pi
-                    if delta_lst_start < a0 and delta_lst_end > a0:
+                    if delta_lst_start < a0 < delta_lst_end:
                         calname = row['source']
                         print('Calibrating {0}'.format(calname))
                         outqueue.put((calname, flist))
@@ -258,7 +300,7 @@ if __name__=="__main__":
         )
     )]
     processes['assess']['processes'][0].start()
-    
+
     while True:
         for name in processes.keys():
             ETCD.put_dict(
@@ -266,20 +308,21 @@ if __name__=="__main__":
                 {
                     "queue_size": processes[name]['queue'].qsize(),
                     "ntasks_alive": sum([
-                        pinst.is_alive() for pinst in processes[name]['processes']
+                        pinst.is_alive() for pinst in
+                        processes[name]['processes']
                     ]),
                     "ntasks_total": processes[name]['nthreads']
                 }
             )
         while not CALIB_Q.empty():
-            (calname, flist) = CALIB_Q.get()
+            (calname_fromq, flist_fromq) = CALIB_Q.get()
             ETCD.put_dict(
                 '/cmd/cal',
                 {
                     'cmd': 'calibrate',
                     'val': {
-                        'calname': calname,
-                        'flist': flist
+                        'calname': calname_fromq,
+                        'flist': flist_fromq
                     }
                 }
             )
