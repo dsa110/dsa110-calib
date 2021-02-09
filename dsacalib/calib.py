@@ -272,7 +272,7 @@ def gain_calibration(
     error += cb.solve()
     error += cb.close()
 
-    if not forsystemhealth: # and not keepdelays:
+    if not forsystemhealth:
         interpolate_bandpass_solutions(
             msname,
             sourcename,
@@ -908,7 +908,7 @@ def fill_antenna_gains(gains, flags=None):
     return gains
 
 def calibrate_gain(msname, calname, caltable_prefix, refant, tga, tgp,
-                   blbased=False, blbased_bp=False, combined=False):
+                   blbased=False, combined=False):
     """Calculates gain calibration only.
 
     Uses existing solutions for the delay and bandpass.
@@ -930,9 +930,6 @@ def calibrate_gain(msname, calname, caltable_prefix, refant, tga, tgp,
     blbased : boolean
         Set to True if using baseline-based calibration for gains. Defaults
         False.
-    blbased_bp : boolean
-        Set to True if baseline-based calibration was done for bandpass
-        calibration. Defaults False.
     combined : boolean
         Set to True if spectral windows are combined for calibration.
 
@@ -947,16 +944,29 @@ def calibrate_gain(msname, calname, caltable_prefix, refant, tga, tgp,
         spwmap = [-1]
     if blbased:
         gtype = 'M'
+        bptype = 'MF'
     else:
         gtype = 'G'
+        bptype = 'B'
     combine='scan,field,obs'
     caltables = [{'table': '{0}_kcal'.format(caltable_prefix),
                   'type': 'K',
-                  'spwmap': spwmap},
-                 {'table': '{0}_bcal'.format(caltable_prefix),
-                  'type': 'MF' if blbased_bp else 'B',
-                  'spwmap': spwmap}]
+                  'spwmap': spwmap}
+                ]
     error = 0
+    cb = cc.calibrater()
+    error += not cb.open('{0}.ms'.format(msname))
+    error += apply_calibration_tables(cb, caltables)
+    error += not cb.setsolve(type=bptype, combine=combine,
+                             table='{0}_{1}_bcal'.format(msname, calname),
+                             minblperant=1, refant=refant)
+    error += not cb.solve()
+    error += not cb.close()
+    caltables += [
+        {'table': '{0}_bcal'.format(caltable_prefix),
+         'type': bptype,
+         'spwmap': spwmap}
+    ]
     cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
     error += apply_calibration_tables(cb, caltables)
