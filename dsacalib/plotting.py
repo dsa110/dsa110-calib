@@ -5,7 +5,9 @@ the calibration solutions for DSA-110.
 
 Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 """
-
+import os
+import glob
+import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 import astropy.units as u
@@ -14,7 +16,6 @@ import casatools as cc
 from casacore.tables import table
 from dsacalib.ms_io import read_caltable, extract_vis_from_ms
 import dsacalib.constants as ct
-import os
 
 def plot_dyn_spec(vis, fobs, mjd, bname, normalize=False, outname=None,
                   show=True, nx=None):
@@ -116,6 +117,8 @@ def plot_vis_freq(vis, fobs, bname, outname=None, show=True, nx=None):
     amplitude and one for the phases.  If `outname` is passed, these are saved
     as `outname`\_amp_freq.png and `outname`\_phase_freq.png
 
+    Parameters
+    ----------
     vis : ndarray
         The visibilities to plot.  Dimensions (baseline, time, freq,
         polarization).
@@ -303,22 +306,26 @@ def rebin_vis(arr, nb1, nb2):
     arr = arr.reshape(arr.shape[0], -1, nb2).mean(-1)
     return arr
 
-def plot_calibrated_vis(vis, vis_cal, mjd, fobs, bidx, pol=0,
+def plot_calibrated_vis(vis, vis_cal, mjd, fobs, bidx, pol,
                         outname=None, show=True):
     """Plots the calibrated and uncalibrated visibilities for comparison.
 
     Parameters
     ----------
     vis : ndarray
-        The complex, uncalibrated visibilities, with dimensions (time, freq).
+        The complex, uncalibrated visibilities, with dimensions
+        (baseline, time, freq, pol).
     vis_cal : ndarray
-        The complex calibrated visibilities, with dimensions (time, freq).
+        The complex calibrated visibilities, with dimensions
+        (baseline, time, freq, pol).
     mjd : ndarray
         The midpoint time of each subintegration in MJD.
     fobs : ndarray
         The center frequency of each channel in GHz.
+    bidx : int
+        The index along the baseline dimension to plot.
     pol : int
-        The index along the polarization index to plot.  Defaults to ``0``.
+        The index along the polarization dimension to plot.
     outname : str
         The base to use for the name of the png file the plot is saved to.  The
         plot will be saved to `outname`_cal_vis.png if `outname` is provided,
@@ -545,6 +552,12 @@ def plot_antenna_delays(msname, calname, plabels=None, outname=None, show=True):
         The base to use for the name of the png file the plot is saved to.  The
         plot will be saved to `outname`\_antdelays.png.  If `outname` is set to
         ``None``, the plot is not saved.  Defaults ``None``.
+    plabels : list
+        The labels along the polarization axis.  Defaults to ['B', 'A'].
+    outname : string
+        The base to use for the name of the png file the plot is saved to. The
+        plot will be saved to `outname`_antdelays.png if an outname is provided.
+        If `outname` is ``None``, the image is not saved.  Defaults ``None``.
     show : boolean
         If set to ``False`` the plot will be closed after it is generated.
         Defaults ``True``.
@@ -560,6 +573,8 @@ def plot_antenna_delays(msname, calname, plabels=None, outname=None, show=True):
     kcorr : ndarray
         The delay correction calculated using the entire observation time, in
         nanoseconds.  Dimensions (polarization, 1, antenna).
+    antenna_order : list
+        The antenna indices.
     """
     if plabels is None:
         plabels = ['B', 'A']
@@ -607,7 +622,7 @@ def plot_antenna_delays(msname, calname, plabels=None, outname=None, show=True):
 
 def plot_gain_calibration(msname, calname, plabels=None, outname=None,
                           show=True):
-    r"""Plots the gain calibration solutions.
+    r"""Plots the gain calibration solutions from the gacal and gpcal tables.
 
     Parameters
     ----------
@@ -619,16 +634,9 @@ def plot_gain_calibration(msname, calname, plabels=None, outname=None,
         calibration tables.  The tables `msname`\_`calname`\_gacal (assumed to
         contain the gain amplitude soutions) and `msname`\_`calname`\_gpcal
         (assumed to contain the phase amplitude solutions) will be opened.
-    antenna_order : ndarray or list
-        The antennas in their order in the measurement set.
-    bname : list
-        The names of the baselines in the calibration solutions.
-    blbased : boolean
-        Set to ``True`` if the gain solutions are baseline-based, ``False`` if
-        they are antenna-based.  Used to properly parse the gain table.
     plabels : list
         The names of the polarizations in the calibration solutions. Defaults
-        ``['A', 'B']``.
+        to ``['A', 'B']``.
     outname : str
         The base to use for the name of the png file the plot is saved to. The
         plot is saved to `outname`\_gaincal.png if `outname` is not ``None``.
@@ -636,6 +644,18 @@ def plot_gain_calibration(msname, calname, plabels=None, outname=None,
         ``None``.
     show : boolean
         If set to ``False`` the plot is closed after being generated.
+
+    Returns
+    -------
+    time_days : ndarray
+        The times of gain calibration, in days.
+    gain_amp : ndarray
+        The gain amplitudes. Dimensions (antenna or baseline, time, pol).
+    gain_phase : ndarray
+        The gain phases. Dimensions (antenna or baseline, time, pol).
+    labels : ndarray
+        The labels of the antennas or baselines along the 0th axis of the gain
+        solutions.
     """
     if plabels is None:
         plabels = ['A', 'B']
@@ -709,7 +729,7 @@ def plot_gain_calibration(msname, calname, plabels=None, outname=None,
 
 def plot_bandpass(msname, calname,
                   plabels=None, outname=None, show=True):
-    r"""Plots the bandpass calibration solutions.
+    r"""Plots the bandpass calibration solutions in the bcal table.
 
     Parameters
     ----------
@@ -719,14 +739,6 @@ def plot_bandpass(msname, calname,
     calname : str
         The name of the calibrator used in calibration. The calibration table
         `msname`\_`calname`\_bcal is opened.
-    antenna_order : array
-        The antenna names in the order they appear in the calibration table.
-    fobs : array
-        The frequency of each channel in GHz.
-    blbased : boolean
-        Set to ``True`` if baseline-based routines were used to calculate the
-        bandpass solutions, ``False`` if antenna-based routines were used.
-        Defaults ``False``.
     plabels : list
         The labels for the polarizations.  Defaults ``['A', 'B']``.
     outname : str
@@ -736,6 +748,16 @@ def plot_bandpass(msname, calname,
         Defaults ``None``.
     show : boolean
         If set to ``False``, the plot is closed after it is generated.
+
+    Returns
+    -------
+    bpass : ndarray
+        The bandpass solutions, dimensions (antenna or baseline, frequency).
+    fobs : array
+        The frequencies at which the bandpass solutions are calculated, in GHz.
+    labels : ndarray
+        The antenna or baseline labels along the 0th axis of the bandpass
+        solutions.
     """
     if plabels is None:
         plabels = ['A', 'B']
@@ -791,48 +813,97 @@ def plot_bandpass(msname, calname,
     return bpass, fobs, labels
 
 def plot_autocorr(UV):
+    """Plots autocorrelations from UVData object.
+
+    Parameters
+    ----------
+    UV : UVData object
+        The UVData object for which to plot autocorrelations.
+    """
     freq = UV.freq_array.squeeze()
     ant1 = UV.ant_1_array.reshape(UV.Ntimes, -1)[0, :]
     ant2 = UV.ant_2_array.reshape(UV.Ntimes, -1)[0, :]
     time = UV.time_array.reshape(UV.Ntimes, -1)[:, 0]
     vis = UV.data_array.reshape(UV.Ntimes, -1, UV.Nfreqs, UV.Npols)
-    #tdiff = np.diff(time)
-    #assert np.all(tdiff==tdiff[0])
     autocorrs = np.where(ant1==ant2)[0]
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    fig, ax = plt.subplots(len(autocorrs)//len(ccyc)+1, 1,
+    _, ax = plt.subplots(len(autocorrs)//len(ccyc)+1, 1,
                            figsize=(8, 4*len(autocorrs)//len(ccyc)+1),
                            sharex=True, sharey=True)
     for j in range(len(autocorrs)//len(ccyc)+1):
         for i, ac in enumerate(autocorrs[len(ccyc)*j:len(ccyc)*(j+1)]):
-            ax[j].plot(freq.squeeze()/1e9, np.abs(np.nanmean(vis[:, ac, ..., 0],axis=0)), alpha=0.5, 
-                     color = ccyc[i%len(ccyc)], ls='-', label=ant1[ac]+1)
-            ax[j].plot(freq.squeeze()/1e9, np.abs(np.nanmean(vis[:, ac, ..., 1],axis=0)), alpha=0.5, 
-                     color = ccyc[i%len(ccyc)], ls=':')
+            ax[j].plot(
+                freq.squeeze()/1e9,
+                np.abs(np.nanmean(vis[:, ac, ..., 0],axis=0)),
+                alpha=0.5,
+                color = ccyc[i%len(ccyc)],
+                ls='-',
+                label=ant1[ac]+1
+            )
+            ax[j].plot(
+                freq.squeeze()/1e9,
+                np.abs(np.nanmean(vis[:, ac, ..., 1],axis=0)),
+                alpha=0.5,
+                color = ccyc[i%len(ccyc)],
+                ls=':'
+            )
         ax[j].legend()
-        #ax[j].set_xlim(1.325, 1.550)
     ax[-1].set_xlabel('freq (GHz)')
     ax[0].set_yscale('log')
-        #plt.setp(ax[j].get_xticklabels(),visible=True)
     plt.subplots_adjust(hspace=0)
-    
-    fig, ax = plt.subplots(len(autocorrs)//len(ccyc)+1, 1,
-                           figsize=(8, 4*len(autocorrs)//len(ccyc)+1),
-                           sharex=True, sharey=True)
+
+    _, ax = plt.subplots(
+        len(autocorrs)//len(ccyc)+1,
+        1,
+        figsize=(8, 4*len(autocorrs)//len(ccyc)+1),
+        sharex=True,
+        sharey=True
+    )
     for j in range(len(autocorrs)//len(ccyc)+1):
         for i, ac in enumerate(autocorrs[len(ccyc)*j:len(ccyc)*(j+1)]):
-            ax[j].plot((time-time[0])*24*60, np.abs(vis[:, ac, ..., 0].mean(axis=1)), alpha=0.5, 
-                     color = ccyc[i%len(ccyc)], ls='-', label=ant1[ac]+1)
-            ax[j].plot((time-time[0])*24*60, np.abs(vis[:, ac, ..., 1].mean(axis=1)), alpha=0.5, 
-                     color = ccyc[i%len(ccyc)], ls=':')
+            ax[j].plot(
+                (time-time[0])*24*60,
+                np.abs(vis[:, ac, ..., 0].mean(axis=1)),
+                alpha=0.5,
+                color = ccyc[i%len(ccyc)],
+                ls='-',
+                label=ant1[ac]+1
+            )
+            ax[j].plot(
+                (time-time[0])*24*60,
+                np.abs(vis[:, ac, ..., 1].mean(axis=1)),
+                alpha=0.5,
+                color = ccyc[i%len(ccyc)],
+                ls=':'
+            )
         ax[j].legend()
     ax[-1].set_xlabel('time (min)')
     ax[0].set_yscale('log')
-        #plt.setp(ax[j].get_xticklabels(),visible=True)
     plt.subplots_adjust(hspace=0)
-    return autocorrs, freq, time
 
 def summary_plot(msname, calname, npol, plabels, antennas):
+    r"""Generates a summary plot showing the calibration solutions.
+
+    Parameters
+    ----------
+    msname : str
+        The path to the measurement set is ``msname``.ms.
+    calname : str
+        The name of the calibrator. Calibration tables starting with
+        ``msname``\_``calname`` will be opened.
+    npol : int
+        The number of polarization indices. Currently not in use.
+    plabels : list
+        The labels of the polarizations.
+    antennas: list
+        The antennas to plot.
+
+    Returns
+    -------
+    matplotlib.pyplot.figure
+        The handle for the generated figure.
+    """
+    # TODO: remove npol, and assert that plabels and npol have the same shapes
     ny = len(antennas)//10
     if len(antennas)%10 != 0:
         ny += 1
@@ -844,14 +915,14 @@ def summary_plot(msname, calname, npol, plabels, antennas):
     ax = ax.reshape(4, ny, 2).swapaxes(0, 1)
     ax[0, 0, 0].axis('off')
 
-    # Plot kcal 
+    # Plot kcal
     if os.path.exists('{0}_{1}_2kcal'.format(msname, calname)):
         antenna_delays, times, _flags, _ant1, _ant2 = read_caltable(
             '{0}_{1}_2kcal'.format(msname, calname),
             cparam=False
         )
         npol = antenna_delays.shape[-1]
-        kcorr, _tkcorr, _flags, antenna_order, _ant2 = read_caltable(
+        kcorr, _tkcorr, _flags, _antenna_order, _ant2 = read_caltable(
             '{0}_{1}_kcal'.format(msname, calname),
             cparam=False
         )
@@ -877,8 +948,12 @@ def summary_plot(msname, calname, npol, plabels, antennas):
 
     if os.path.exists('{0}_{1}_bcal'.format(
         msname, calname)):
-        bpass, _tbpass, _flags, ant1, ant2 = read_caltable('{0}_{1}_bcal'.format(
-            msname, calname), cparam=True)
+        bpass, _tbpass, _flags, ant1, ant2 = read_caltable(
+            '{0}_{1}_bcal'.format(
+                msname, calname
+            ),
+            cparam=True
+        )
         bpass = bpass.squeeze(axis=1)
         bpass = bpass.reshape(bpass.shape[0], -1, bpass.shape[-1])
         npol = bpass.shape[-1]
@@ -912,13 +987,12 @@ def summary_plot(msname, calname, npol, plabels, antennas):
                     color=ccyc[i%len(ccyc)]
                 )
                 ax[i//10, 1, 0].set_yscale('log')
-    
+
     if os.path.exists('{0}_{1}_2gcal'.format(msname, calname)):
         gain, time, _flags, ant1, ant2 = \
             read_caltable('{0}_{1}_2gcal'.format(msname, calname), cparam=True)
         gain = gain.squeeze(axis=3)
         gain = gain.mean(axis=2)
-        time_days = time.copy()
         t0 = time[0]
         time = ((time-t0)*u.d).to_value(u.min)
 
@@ -949,7 +1023,7 @@ def summary_plot(msname, calname, npol, plabels, antennas):
     else:
         t0 = None
 
-    vis, time, fobs, flags, ant1, ant2, pt_dec = extract_vis_from_ms(msname)
+    vis, time, fobs, _, ant1, ant2, _ = extract_vis_from_ms(msname)
     autocorr_idx = np.where(ant1==ant2)[0]
     vis_autocorr = vis[autocorr_idx, ...]
     vis_time = np.median(
@@ -968,7 +1042,7 @@ def summary_plot(msname, calname, npol, plabels, antennas):
     vis_ant_order = ant1[autocorr_idx]
     for i, ant in enumerate(antennas):
         vis_idx = np.where(vis_ant_order==ant-1)[0]
-        if len(vis_idx > 0):
+        if len(vis_idx) > 0:
             vis_idx = vis_idx[0]
             for pidx in range(npol):
                 ax[i//10, 3, 1].plot(
@@ -1002,3 +1076,223 @@ def summary_plot(msname, calname, npol, plabels, antennas):
         ax[i, 0, 1].set_ylabel('delay (ns)')
     fig.suptitle('{0}'.format(msname))
     return fig
+
+def plot_current_beamformer_solutions(
+    filenames, calname, date, corrlist=np.arange(1, 16+1),
+    antennas_to_plot=None, antennas=None, outname=None, show=True,
+    gaindir='/home/user/beamformer_weights/',
+    hdf5dir='/mnt/data/dsa110/correlator/'
+):
+    r"""Plots the phase difference between the two polarizations.
+
+    Applies the beamformer weights to the given hdf5 files, and then plots the
+    remaining phase difference between the two polarizations for each antenna.
+
+    Parameters
+    ----------
+    filenames : list
+        A list of the hdf5 filenames for which to plot. Each filename should
+        omit the directory and the .hdf5 extension. E.g.
+        `['2020-10-06T15:32:01', '2020-10-06T15:47:01']` would a valid
+        argument to plot data for 30 minutes starting at 2020-10-06T16:32:01.
+    calname : str
+        The name of the source or event that you are plotting. Used in the
+        title of the plot.
+    date : str
+        The date of the source or event that you are plotting. Used in the
+        title of the plot. e.g. '2020-10-06'
+    corrlist : list(int)
+        A list of the correlator indices to plot.  Defaults to correlators 01
+        through 16.
+    antennas_to_plot : array(int)
+        The names of the antennas to plot beamformer solutions for. Defaults to
+        antennas 13 through 35, with 21, 22, 23 omitted.
+    antennas : array(int)
+        The names of the antennas for which beamformer solutions were
+        generated.  Defaults to 24 through 36, 20 through 13 (descending
+        order), then 36 through 74.  Must be 64 long.
+    outname : str
+        The base to use for the name of the png file the plot is saved to. The
+        plot is saved to `outname`\_beamformerweights.png if `outname` is not
+        ``None``. f `outname` is set to ``None, the plot is not saved.
+        Defaults `None``.
+    show : boolean
+        If set to ``False`` the plot is closed after being generated.
+    gaindir : str
+        The full path to the directory in which the beamformer weights are
+        stored.
+    hdf5dir : str
+        The full path to the directory in which the correlated hdf5 files are
+        stored. Files were be searched for in `hdf5dir`/corr??/
+    """
+    if antennas_to_plot is None:
+        antennas_to_plot = np.array(
+            [13, 14, 15, 16, 17, 18, 19, 20,
+             24, 25, 26, 27, 28, 29, 30, 31,
+             32, 33, 34, 35
+            ])
+    if antennas is None:
+        antennas = np.concatenate((np.array(
+            [24, 25, 26, 27, 28, 29, 30, 31, 32,
+             33, 34, 35, 20, 19, 18, 17, 16, 15,
+             14, 13, 100, 101, 102, 116, 103]),
+            np.arange(36, 36+39)))
+    else:
+        assert len(antennas) == 64
+    # Should be generalized to different times, baselines
+    visdata_corr = np.zeros(
+        (len(filenames)*280, 325, 16, 48, 2),
+        dtype=np.complex
+    )
+    for corridx, corr in enumerate(corrlist):
+        visdata = np.zeros(
+            (len(filenames), 91000, 1, 48, 2),
+            dtype=np.complex
+        )
+        for i, filename in enumerate(filenames):
+            files = sorted(glob.glob(
+                '{0}/corr{1:02d}/{2}??.hdf5'.format(
+                    hdf5dir,
+                    corr,
+                    filename[:-2]
+                )
+            ))
+            if len(files) > 0:
+                with h5py.File(files[0], 'r') as f:
+                    visdata[i, ...] = np.array(f['Data']['visdata'][:])
+                    ant1 = np.array(f['Header']['ant_1_array'][:])
+                    ant2 = np.array(f['Header']['ant_2_array'][:])
+        visdata = visdata.reshape(-1, 325, 48, 2)
+        ant1 = ant1.reshape(-1, 325)[0, :]
+        ant2 = ant2.reshape(-1, 325)[0, :]
+        with open(
+            '{0}/beamformer_weights_corr{1:02d}.dat'.format(
+                gaindir,
+                corr),
+            'rb'
+        ) as f:
+            data = np.fromfile(f, '<f4')
+        gains = data[64:].reshape(64, 48, 2, 2)
+        gains = gains[..., 0]+1.0j*gains[..., 1]
+        my_gains = np.zeros((325, 48, 2), dtype=np.complex)
+        for i in range(325):
+            idx1 = np.where(antennas==ant1[i]+1)[0][0]
+            idx2 = np.where(antennas==ant2[i]+1)[0][0]
+            my_gains[i, ...] = np.conjugate(gains[idx1, ...])*gains[idx2, ...]
+        visdata_corr[:, :, corridx, ...] = (
+            visdata*my_gains[np.newaxis, :, :, :]
+        )
+    visdata_corr = visdata_corr.reshape((-1, 325, 16*48, 2))
+
+    fig, ax = plt.subplots(5, 4, figsize=(25, 12), sharex=True, sharey=True)
+    for axi in ax[-1, :]:
+        axi.set_xlabel('freq channel')
+    for axi in ax[:, 0]:
+        axi.set_ylabel('time bin')
+    ax = ax.flatten()
+    for i, ant in enumerate(antennas_to_plot-1):
+        idx = np.where((ant1==23) & (ant2==ant))[0][0]
+        ax[i].imshow(
+            np.angle(
+                visdata_corr[:, idx, :, 0]/visdata_corr[:, idx, :, 1]
+            ),
+            aspect='auto',
+            origin='lower',
+            interpolation='none',
+            cmap=plt.get_cmap('RdBu'),
+            vmin=-np.pi,
+            vmax=np.pi
+        )
+        ax[i].set_title(
+            '24-{0}, {1:.2f}'.format(
+                ant+1,
+                np.angle(
+                    np.mean(
+                        visdata_corr[:, idx, :, 0]/visdata_corr[:, idx, :, 1]
+                    )
+                )
+            )
+        )
+    fig.suptitle('{0} {1}'.format(date, calname))
+    if outname is not None:
+        plt.savefig('{0}_beamformerweights.png'.format(outname))
+    if not show:
+        plt.close()
+
+def plot_bandpass_phases(
+    filenames, antennas, refant=24, outname=None, show=True,
+    msdir='/mnt/data/dsa110/calibration/'
+):
+    r"""Plot the bandpass phase observed over multiple calibrators.
+
+    Parameters:
+    -----------
+    filenames : dict
+        The details of the calibrator passes to plot.
+    antennas : list
+        The antenna names (as ints) to plot.
+    refant : int
+        The reference antenna to plot phases against.
+    outname : str
+        The base to use for the name of the png file the plot is saved to. The
+        plot is saved to `outname`\_phase.png if `outname` is not ``None``. If
+        `outname` is set to ``None, the plot is not saved. Defaults `None``.
+    show : boolean
+        If set to ``False`` the plot is closed after being generated.
+    """
+    nentries = 0
+    for date in filenames.keys():
+        nentries += len(filenames[date].keys())
+    gains = [None]*nentries
+    calnames = [None]*nentries
+    gshape = None
+
+    i = 0
+    for date in filenames.keys():
+        for cal in filenames[date].keys():
+            calnames[i] = cal
+            msname = '{0}/{1}_{2}'.format(msdir, date, cal)
+            if os.path.exists('{0}_{1}_bpcal'.format(msname, cal)):
+                with table('{0}_{1}_bpcal'.format(msname, cal)) as tb:
+                    gains[i] = np.array(tb.CPARAM[:])
+                gshape = gains[i].shape
+            i += 1
+    for i, gain in enumerate(gains):
+        if gain is None:
+            gains[i] = np.zeros(gshape, dtype=np.complex64)
+    gains = np.array(gains)
+    nx = 4
+    ny = len(antennas)//nx
+    if len(antennas)%nx > 0:
+        ny += 1
+    _, ax = plt.subplots(
+        ny,
+        nx,
+        figsize=(3*nx, 3*ny),
+        sharex=True,
+        sharey=True
+    )
+    ax[0, 0].set_yticks(np.arange(nentries))
+    for axi in ax[0, :]:
+        axi.set_yticklabels(calnames)
+    ax = ax.flatten()
+    for i in np.arange(len(antennas)):
+        ax[i].imshow(
+            np.angle(gains[:, antennas[i]-1, :, 0]/gains[:, refant-1, :, 0]),
+            vmin=-np.pi,
+            vmax=np.pi,
+            aspect='auto',
+            origin='lower',
+            interpolation='None',
+            cmap=plt.get_cmap('RdBu')
+        )
+        ax[i].annotate(
+            '{0}'.format(antennas[i]),
+            (0, 1),
+            xycoords='axes fraction'
+        )
+        ax[i].set_xlabel('Frequency channel')
+    if outname is not None:
+        plt.savefig('{0}_phases.png'.format(outname))
+    if not show:
+        plt.close()

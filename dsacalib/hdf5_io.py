@@ -18,8 +18,9 @@ iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
 from astropy.time import Time # pylint: disable=wrong-import-position
 
-def read_hdf5_file(fl, source=None, dur=50*u.min, autocorrs=True, badants=None,
-                   quiet=True):
+def read_hdf5_file(
+    fl, source=None, dur=50*u.min, autocorrs=True, badants=None, quiet=True
+):
     """Reads visibilities from a hdf5 file written by dsa110-fringestopping.
 
     Parameters
@@ -163,8 +164,9 @@ def read_hdf5_file(fl, source=None, dur=50*u.min, autocorrs=True, badants=None,
     return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx, \
         antenna_order, tsamp
 
-def initialize_hdf5_file(fhdf, fobs, antenna_order, t0, nbls, nchan, npol,
-                         nant):
+def initialize_hdf5_file(
+    fhdf, fobs, antenna_order, t0, nbls, nchan, npol, nant
+):
     """Initializes the hdf5 file for the fringestopped visibilities.
 
     Parameters
