@@ -42,7 +42,7 @@ de = dsa_store.DsaStore()
 CONF = dsc.Conf()
 CORR_PARAMS = CONF.get('corr')
 
-def T3_initialize_ms(paramfile, msname, tstart, sourcename, ra, dec):
+def T3_initialize_ms(paramfile, msname, tstart, sourcename, ra, dec, ntint, nfint):
     """Initialize a ms to write correlated data from the T3 system to.
 
     Parameters
@@ -75,34 +75,42 @@ def T3_initialize_ms(paramfile, msname, tstart, sourcename, ra, dec):
     yy = ant_itrf['dy_m']
     zz = ant_itrf['dz_m']
     antenna_names = [str(a) for a in params['antennas']]
-    fobs = params['f0_GHz']+params['deltaf_MHz']*1e-3*params['nfint']*(
-        np.arange(params['nchan']//params['nfint'])+0.5)
+    fobs = params['f0_GHz']+params['deltaf_MHz']*1e-3*nfint*(
+        np.arange(params['nchan']//nfint)+0.5)
     me = cc.measures()
-    simulate_ms(
-        ofile='{0}/{1}.ms'.format(params['msdir'], msname),
-        tname='OVRO_MMA',
-        anum=antenna_names,
-        xx=xx,
-        yy=yy,
-        zz=zz,
-        diam=4.5,
-        mount='alt-az',
-        pos_obs=me.observatory('OVRO_MMA'),
-        spwname='L_BAND',
-        freq='{0}GHz'.format(fobs[0]),
-        deltafreq='{0}MHz'.format(params['deltaf_MHz']*params['nfint']),
-        freqresolution='{0}MHz'.format(
-            np.abs(params['deltaf_MHz']*params['nfint'])
-        ),
-        nchannels=params['nchan']//params['nfint'],
-        integrationtime='{0}s'.format(params['deltat_s']*params['ntint']),
-        obstm=tstart.mjd,
-        dt=0.000429017462010961+7.275957614183426e-12-7.767375791445374e-07,
-        source=source,
-        stoptime='{0}s'.format(params['deltat_s']*params['nsubint']),
-        autocorr=True,
-        fullpol=True
-    )
+    filenames = []
+    for corr, ch0 in params['ch0'].items():
+        fobs_corr = fobs[ch0//nfint:(ch0+params['nchan_corr'])//nfint]
+        simulate_ms(
+            ofile='{0}/{1}_{2}.ms'.format(params['msdir'], msname, corr),
+            tname='OVRO_MMA',
+            anum=antenna_names,
+            xx=xx,
+            yy=yy,
+            zz=zz,
+            diam=4.5,
+            mount='alt-az',
+            pos_obs=me.observatory('OVRO_MMA'),
+            spwname='L_BAND',
+            freq='{0}GHz'.format(fobs_corr[0]),
+            deltafreq='{0}MHz'.format(params['deltaf_MHz']*nfint),
+            freqresolution='{0}MHz'.format(
+                np.abs(params['deltaf_MHz']*nfint)
+            ),
+            nchannels=params['nchan_corr']//nfint,
+            integrationtime='{0}s'.format(params['deltat_s']*ntint),
+            obstm=tstart.mjd,
+            dt=0.0004282407317077741,
+            source=source,
+            stoptime='{0}s'.format(params['deltat_s']*params['nsubint']),
+            autocorr=True,
+            fullpol=True
+        )
+        filenames += ['{0}/{1}_{2}.ms'.format(params['msdir'], msname, corr)]
+    virtualconcat(
+        filenames,
+        '{0}/{1}.ms'.format(params['msdir'], msname)
+    )   
 
 def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
                 freq, deltafreq, freqresolution, nchannels, integrationtime,
