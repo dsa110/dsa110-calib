@@ -42,6 +42,76 @@ de = dsa_store.DsaStore()
 CONF = dsc.Conf()
 CORR_PARAMS = CONF.get('corr')
 
+def T3_initialize_ms(paramfile, msname, tstart, sourcename, ra, dec, ntint, nfint):
+    """Initialize a ms to write correlated data from the T3 system to.
+
+    Parameters
+    ----------
+    paramfile : str
+        The full path to a yaml parameter file. See package data for a
+        template.
+    msname : str
+        The name of the measurement set. Will write to `msdir`/`msname`.ms.
+        `msdir` is defined in `paramfile`.
+    tstart : astropy.time.Time object
+        The start time of the observation.
+    sourcename : str
+        The name of the source or field.
+    ra : astropy quantity
+        The right ascension of the pointing, units deg or equivalent.
+    dec : astropy quantity
+        The declination of the pointing, units deg or equivalent.
+    """
+    yamlf = open(paramfile)
+    params = yaml.load(yamlf, Loader=yaml.FullLoader)['T3corr']
+    yamlf.close()
+    source = du.src(
+        name=sourcename,
+        ra=ra,
+        dec=dec
+    )
+    ant_itrf = get_itrf().loc[params['antennas']]
+    xx = ant_itrf['dx_m']
+    yy = ant_itrf['dy_m']
+    zz = ant_itrf['dz_m']
+    antenna_names = [str(a) for a in params['antennas']]
+    fobs = params['f0_GHz']+params['deltaf_MHz']*1e-3*nfint*(
+        np.arange(params['nchan']//nfint)+0.5)
+    me = cc.measures()
+    filenames = []
+    for corr, ch0 in params['ch0'].items():
+        fobs_corr = fobs[ch0//nfint:(ch0+params['nchan_corr'])//nfint]
+        simulate_ms(
+            ofile='{0}/{1}_{2}.ms'.format(params['msdir'], msname, corr),
+            tname='OVRO_MMA',
+            anum=antenna_names,
+            xx=xx,
+            yy=yy,
+            zz=zz,
+            diam=4.5,
+            mount='alt-az',
+            pos_obs=me.observatory('OVRO_MMA'),
+            spwname='L_BAND',
+            freq='{0}GHz'.format(fobs_corr[0]),
+            deltafreq='{0}MHz'.format(params['deltaf_MHz']*nfint),
+            freqresolution='{0}MHz'.format(
+                np.abs(params['deltaf_MHz']*nfint)
+            ),
+            nchannels=params['nchan_corr']//nfint,
+            integrationtime='{0}s'.format(params['deltat_s']*ntint),
+            obstm=tstart.mjd,
+            dt=0.0004282407317077741,
+            source=source,
+            stoptime='{0}s'.format(params['deltat_s']*params['nsubint']),
+            autocorr=True,
+            fullpol=True
+        )
+        filenames += ['{0}/{1}_{2}.ms'.format(params['msdir'], msname, corr)]
+    virtualconcat(
+        filenames,
+        '{0}/{1}.ms'.format(params['msdir'], msname)
+    )   
+
 def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
                 freq, deltafreq, freqresolution, nchannels, integrationtime,
                 obstm, dt, source, stoptime, autocorr, fullpol):
