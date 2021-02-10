@@ -1,0 +1,54 @@
+T3corr:
+    msdir: '/home/simard/dsa_calib/'
+    npol: 4
+    pols: 'XX YY XY YX'
+    nchan: 8192 # native
+    nchan_corr: 384
+    f0_GHz: 1.53
+    deltaf_MHz: -0.030517578125 # native
+    nfint: 16
+    deltat_s: 0.000032768 # native
+    nsubint: 122880 # native
+    ntint: 8192
+    antennas:
+      - 24
+      - 25
+      - 26
+      - 27
+      - 28
+      - 29
+      - 30
+      - 31
+      - 32
+      - 33
+      - 34
+      - 35
+      - 19
+      - 17
+      - 20
+      - 18
+      - 15
+      - 16
+      - 14
+      - 13
+      - 116
+      - 102
+      - 101
+      - 100
+    ch0:
+      corr01: 1024
+      corr02: 1408
+      corr03: 1792
+      corr04: 2176
+      corr05: 2560
+      corr06: 2944
+      corr07: 3328
+      corr08: 3712
+      corr09: 4096
+      corr10: 4480
+      corr11: 4864
+      corr12: 5248
+      corr13: 5632
+      corr14: 6016
+      corr15: 6400
+      corr16: 6784
