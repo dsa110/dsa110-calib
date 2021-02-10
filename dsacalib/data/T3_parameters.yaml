@@ -1,15 +1,13 @@
 T3corr:
-    msdir: '/home/simard/dsa_calib/'
+    msdir: '/mnt/data/dsa110/other/junk/'
     npol: 4
     pols: 'XX YY XY YX'
     nchan: 8192 # native
     nchan_corr: 384
     f0_GHz: 1.53
     deltaf_MHz: -0.030517578125 # native
-    nfint: 16
     deltat_s: 0.000032768 # native
     nsubint: 122880 # native
-    ntint: 8192
     antennas:
       - 24
       - 25

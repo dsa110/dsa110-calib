@@ -42,76 +42,6 @@ de = dsa_store.DsaStore()
 CONF = dsc.Conf()
 CORR_PARAMS = CONF.get('corr')
 
-def T3_initialize_ms(paramfile, msname, tstart, sourcename, ra, dec, ntint, nfint):
-    """Initialize a ms to write correlated data from the T3 system to.
-
-    Parameters
-    ----------
-    paramfile : str
-        The full path to a yaml parameter file. See package data for a
-        template.
-    msname : str
-        The name of the measurement set. Will write to `msdir`/`msname`.ms.
-        `msdir` is defined in `paramfile`.
-    tstart : astropy.time.Time object
-        The start time of the observation.
-    sourcename : str
-        The name of the source or field.
-    ra : astropy quantity
-        The right ascension of the pointing, units deg or equivalent.
-    dec : astropy quantity
-        The declination of the pointing, units deg or equivalent.
-    """
-    yamlf = open(paramfile)
-    params = yaml.load(yamlf, Loader=yaml.FullLoader)['T3corr']
-    yamlf.close()
-    source = du.src(
-        name=sourcename,
-        ra=ra,
-        dec=dec
-    )
-    ant_itrf = get_itrf().loc[params['antennas']]
-    xx = ant_itrf['dx_m']
-    yy = ant_itrf['dy_m']
-    zz = ant_itrf['dz_m']
-    antenna_names = [str(a) for a in params['antennas']]
-    fobs = params['f0_GHz']+params['deltaf_MHz']*1e-3*nfint*(
-        np.arange(params['nchan']//nfint)+0.5)
-    me = cc.measures()
-    filenames = []
-    for corr, ch0 in params['ch0'].items():
-        fobs_corr = fobs[ch0//nfint:(ch0+params['nchan_corr'])//nfint]
-        simulate_ms(
-            ofile='{0}/{1}_{2}.ms'.format(params['msdir'], msname, corr),
-            tname='OVRO_MMA',
-            anum=antenna_names,
-            xx=xx,
-            yy=yy,
-            zz=zz,
-            diam=4.5,
-            mount='alt-az',
-            pos_obs=me.observatory('OVRO_MMA'),
-            spwname='L_BAND',
-            freq='{0}GHz'.format(fobs_corr[0]),
-            deltafreq='{0}MHz'.format(params['deltaf_MHz']*nfint),
-            freqresolution='{0}MHz'.format(
-                np.abs(params['deltaf_MHz']*nfint)
-            ),
-            nchannels=params['nchan_corr']//nfint,
-            integrationtime='{0}s'.format(params['deltat_s']*ntint),
-            obstm=tstart.mjd,
-            dt=0.0004282407317077741,
-            source=source,
-            stoptime='{0}s'.format(params['deltat_s']*params['nsubint']),
-            autocorr=True,
-            fullpol=True
-        )
-        filenames += ['{0}/{1}_{2}.ms'.format(params['msdir'], msname, corr)]
-    virtualconcat(
-        filenames,
-        '{0}/{1}.ms'.format(params['msdir'], msname)
-    )   
-
 def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
                 freq, deltafreq, freqresolution, nchannels, integrationtime,
                 obstm, dt, source, stoptime, autocorr, fullpol):
@@ -386,7 +316,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         'Measurement set start time does not agree with input tstart'
     print('Visibilities writing to ms {0}.ms'.format(ofile))
 
-def extract_vis_from_ms(msname, data='data'):
+def extract_vis_from_ms(msname, data='data', swapaxes=True):
     """Extracts visibilities from a CASA measurement set.
 
     Parameters
@@ -411,6 +341,10 @@ def extract_vis_from_ms(msname, data='data'):
     pt_dec : float
         The pointing declination of the array. (Note: Not the phase center, but
         the physical pointing of the antennas.)
+    spw : array
+        The spectral window indices.
+    orig_shape : list
+        The order of the first three axes in the ms.
     """
     with table('{0}.ms'.format(msname)) as tb:
         ant1 = np.array(tb.ANTENNA1[:])
@@ -424,13 +358,14 @@ def extract_vis_from_ms(msname, data='data'):
 
     baseline = 2048*(ant1+1)+(ant2+1)+2**16
 
-    time, vals, flags, ant1, ant2 = reshape_calibration_data(
-        vals, flags, ant1, ant2, baseline, time, spw)
+    time, vals, flags, ant1, ant2, spw, orig_shape = reshape_calibration_data(
+        vals, flags, ant1, ant2, baseline, time, spw, swapaxes)
 
     with table('{0}.ms/FIELD'.format(msname)) as tb:
         pt_dec = tb.PHASE_DIR[:][0][0][1]
 
-    return vals, time/ct.SECONDS_PER_DAY, fobs, flags, ant1, ant2, pt_dec
+    return vals, time/ct.SECONDS_PER_DAY, fobs, flags, ant1, ant2, pt_dec, \
+        spw, orig_shape
 
 def read_caltable(tablename, cparam=False):
     """Requires that each spw has the same number of frequency channels.
@@ -469,12 +404,14 @@ def read_caltable(tablename, cparam=False):
         ant2 = np.array(tb.ANTENNA2[:])
     baseline = 2048*(ant1+1)+(ant2+1)+2**16
 
-    time, vals, flags, ant1, ant2 = reshape_calibration_data(
+    time, vals, flags, ant1, ant2, _, _ = reshape_calibration_data(
         vals, flags, ant1, ant2, baseline, time, spw)
 
     return vals, time/ct.SECONDS_PER_DAY, flags, ant1, ant2
 
-def reshape_calibration_data(vals, flags, ant1, ant2, baseline, time, spw):
+def reshape_calibration_data(
+    vals, flags, ant1, ant2, baseline, time, spw, swapaxes=True
+):
     """Reshape calibration or measurement set data.
 
     Reshapes the 0th axis of the input data `vals` and `flags` from a
@@ -505,6 +442,8 @@ def reshape_calibration_data(vals, flags, ant1, ant2, baseline, time, spw):
     ant1, ant2 : array
         ant1 and ant2 for unique baselines, same length as the baseline axis of
         the output `vals`.
+    orig_shape : list
+        The original order of the time, baseline and spw axes in the ms.
     """
     if len(np.unique(ant1))==len(np.unique(ant2)):
         nbl = len(np.unique(baseline))
@@ -516,57 +455,80 @@ def reshape_calibration_data(vals, flags, ant1, ant2, baseline, time, spw):
     npol = vals.shape[-1]
     if np.all(baseline[:ntime*nspw] == baseline[0]):
         if np.all(time[:nspw] == time[0]):
+            orig_shape = ['baseline', 'time', 'spw']
             # baseline, time, spw
             time = time.reshape(nbl, ntime, nspw)[0, :, 0]
             vals = vals.reshape(nbl, ntime, nspw, nfreq, npol)
             flags = flags.reshape(nbl, ntime, nspw, nfreq, npol)
             ant1 = ant1.reshape(nbl, ntime, nspw)[:, 0, 0]
             ant2 = ant2.reshape(nbl, ntime, nspw)[:, 0, 0]
+            spw = spw.reshape(nbl, ntime, nspw)[0, 0, :]
         else:
             # baseline, spw, time
+            orig_shape = ['baseline', 'spw', 'time']
             assert np.all(spw[:ntime] == spw[0])
             time = time.reshape(nbl, nspw, ntime)[0, 0, :]
-            vals = vals.reshape(nbl, nspw, ntime, nfreq, npol).swapaxes(1, 2)
-            flags = flags.reshape(nbl, nspw, ntime, nfreq, npol).swapaxes(1, 2)
+            vals = vals.reshape(nbl, nspw, ntime, nfreq, npol)
+            flags = flags.reshape(nbl, nspw, ntime, nfreq, npol)
+            if swapaxes:
+                vals = vals.swapaxes(1, 2)
+                flags = flags.swapaxes(1, 2)
             ant1 = ant1.reshape(nbl, nspw, ntime)[:, 0, 0]
             ant2 = ant2.reshape(nbl, nspw, ntime)[:, 0, 0]
+            spw = spw.reshape(nbl, nspw, ntime)[0, :, 0]
     elif np.all(time[:nspw*nbl] == time[0]):
         if np.all(baseline[:nspw] == baseline[0]):
             # time, baseline, spw
+            orig_shape = ['time', 'baseline', 'spw']
             time = time.reshape(ntime, nbl, nspw)[:, 0, 0]
-            vals = vals.reshape(ntime, nbl, nspw, nfreq, npol).swapaxes(0, 1)
-            flags = flags.reshape(ntime, nbl, nspw, nfreq, npol).swapaxes(0, 1)
+            vals = vals.reshape(ntime, nbl, nspw, nfreq, npol)
+            flags = flags.reshape(ntime, nbl, nspw, nfreq, npol)
+            if swapaxes:
+                vals = vals.swapaxes(0, 1)
+                flags = flags.swapaxes(0, 1)
             ant1 = ant1.reshape(ntime, nbl, nspw)[0, :, 0]
             ant2 = ant2.reshape(ntime, nbl, nspw)[0, :, 0]
+            spw = spw.reshape(ntime, nbl, nspw)[0, 0, :]
         else:
+            orig_shape = ['time', 'spw', 'baseline']
             assert np.all(spw[:nbl] == spw[0])
             time = time.reshape(ntime, nspw, nbl)[:, 0, 0]
-            vals = vals.reshape(ntime, nspw, nbl, nfreq, npol).swapaxes(
-                1, 2).swapaxes(0, 1)
-            flags = flags.reshape(ntime, nspw, nbl, nfreq, npol).swapaxes(
-                1, 2).swapaxes(0, 1)
+            vals = vals.reshape(ntime, nspw, nbl, nfreq, npol)
+            flags = flags.reshape(ntime, nspw, nbl, nfreq, npol)
+            if swapaxes:
+                vals = vals.swapaxes(1, 2).swapaxes(0, 1)
+                flags = flags.swapaxes(1, 2).swapaxes(0, 1)
             ant1 = ant1.reshape(ntime, nspw, nbl)[0, 0, :]
             ant2 = ant2.reshape(ntime, nspw, nbl)[0, 0, :]
+            spw = spw.reshape(ntime, nspw, nbl)[0, :, 0]
     else:
         assert np.all(spw[:nbl*ntime] == spw[0])
         if np.all(baseline[:ntime] == baseline[0]):
             # spw, baseline, time
+            orig_shape = ['spw', 'baseline', 'time']
             time = time.reshape(nspw, nbl, ntime)[0, 0, :]
-            vals = vals.reshape(nspw, nbl, ntime, nfreq, npol).swapaxes(
-                0, 1).swapaxes(1, 2)
-            flags = flags.reshape(nspw, nbl, ntime, nfreq, npol).swapaxes(
-                0, 1).swapaxes(1, 2)
+            vals = vals.reshape(nspw, nbl, ntime, nfreq, npol)
+            flags = flags.reshape(nspw, nbl, ntime, nfreq, npol)
+            if swapaxes:
+                vals = vals.swapaxes(0, 1).swapaxes(1, 2)
+                flags = flags.swapaxes(0, 1).swapaxes(1, 2)
             ant1 = ant1.reshape(nspw, nbl, ntime)[0, :, 0]
             ant2 = ant2.reshape(nspw, nbl, ntime)[0, :, 0]
+            spw = spw.reshape(nspw, nbl, ntime)[:, 0, 0]
         else:
             assert np.all(time[:nbl] == time[0])
             # spw, time, bl
+            orig_shape = ['spw', 'time', 'baseline']
             time = time.reshape(nspw, ntime, nbl)[0, :, 0]
-            vals = vals.reshape(nspw, ntime, nbl, nfreq, npol).swapaxes(0, 2)
-            flags = flags.reshape(nspw, ntime, nbl, nfreq, npol).swapaxes(0, 2)
+            vals = vals.reshape(nspw, ntime, nbl, nfreq, npol)
+            flags = flags.reshape(nspw, ntime, nbl, nfreq, npol)
+            if swapaxes:
+                vals = vals.swapaxes(0, 2)
+                flags = flags.swapaxes(0, 2)
             ant1 = ant1.reshape(nspw, ntime, nbl)[0, 0, :]
             ant2 = ant2.reshape(nspw, ntime, nbl)[0, 0, :]
-    return time, vals, flags, ant1, ant2
+            spw = spw.reshape(nspw, ntime, nbl)[:, 0, 0]
+    return time, vals, flags, ant1, ant2, spw, orig_shape
 
 def caltable_to_etcd(
     msname, calname, caltime, status, pols=None, logger=None

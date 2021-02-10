@@ -1023,7 +1023,7 @@ def summary_plot(msname, calname, npol, plabels, antennas):
     else:
         t0 = None
 
-    vis, time, fobs, _, ant1, ant2, _ = extract_vis_from_ms(msname)
+    vis, time, fobs, _, ant1, ant2, _, _, _ = extract_vis_from_ms(msname)
     autocorr_idx = np.where(ant1==ant2)[0]
     vis_autocorr = vis[autocorr_idx, ...]
     vis_time = np.median(
