@@ -677,7 +677,7 @@ def calculate_sefd(
     # Get the visibilities (for autocorrs)
     dc.apply_delay_bp_cal(msname, calname_delaycal, msnamecal=msname_delaycal,
                          blbased=baseline_cal)
-    vis, tvis, fvis, flag, ant1, ant2, pt_dec = dmsio.extract_vis_from_ms(
+    vis, tvis, fvis, flag, ant1, ant2, pt_dec, _, _ = dmsio.extract_vis_from_ms(
         msname, 'CORRECTED_DATA')
     mask = (1-flag).astype(float)
     mask[mask < 0.5] = np.nan
@@ -916,7 +916,7 @@ def flag_pixels(msname, thresh=6.0):
         thresh*stddev + mean will be flagged.
     """
     # Flag RFI - only for single spw
-    vis, _time, _fobs, flags, _ant1, _ant2, _pt_dec = extract_vis_from_ms(
+    vis, _, _, flags, _, _, _, _, _ = extract_vis_from_ms(
         msname
     )
     good_pixels, _fraction_flagged = du.mask_bad_pixels(
