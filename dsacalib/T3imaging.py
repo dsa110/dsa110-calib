@@ -14,6 +14,7 @@ import dsacalib.utils as du
 from dsacalib.ms_io import simulate_ms
 
 # TODO: create a single DEDISPERSION table for the MMS 
+# TODO: combine applied_dm with dispersion_measure to only read file once
 def T3_dedisperse_ms(
     paramfile, msname, dispersion_measure, ref_freq=1.405*u.GHz
 ):
