@@ -69,7 +69,7 @@ def disperse(msname, dispersion_measure, ref_freq=1.405*u.GHz):
     # Jit provides a very moderate speed up of ~6 percent
     disperse_worker(data, dispersion_bins)
 
-    # Write out the data to th ems
+    # Write out the data to the ms
     data = data.reshape(-1, data.shape[3], data.shape[4])
     with table('{0}.ms'.format(msname), readonly=False) as tb:
         tb.putcol('DATA', data)
