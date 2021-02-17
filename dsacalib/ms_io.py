@@ -975,16 +975,18 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
 #                             kind='nearest'
 #                         )
 #                         weights[i, j, idx, k] = fr(idx) + 1j*fi(idx)
-    weights[np.isnan(weights)] = 0.
-    # Divide by the first antenna
-    print(weights.shape)
+#     weights[np.isnan(weights)] = 0.
+    antenna_flags += np.where(count(weights.isnan))
+    # Divide by the first non-flagged antenna
+    # refant = 
+    # print(weights.shape)
     weights = weights/weights[:, 0, ..., 0][:, np.newaxis, :, np.newaxis]
     weights[np.isnan(weights)] = 0.
     # Flag bad antennas
-    flags = np.tile(antenna_flags[ np.newaxis, :, np.newaxis, :],
-                    (ncorr, 1, 48, 1))
+    # flags = np.tile(antenna_flags[ np.newaxis, :, np.newaxis, :],
+    #                 (ncorr, 1, 48, 1))
 
-    weights[flags] = 0.
+    # weights[flags] = 0.
 
     filenames = []
     for i, corr_idx in enumerate(corr_list):
