@@ -990,8 +990,8 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
         )
     )
     weights = (
-        weights/weights[:, idx0[0], ..., idx1[0]][:, np.newaxis, :, np.newaxis]
-    )
+        weights/weights[:, idx0[0], ..., idx1[0]]
+    )[:, np.newaxis, :, np.newaxis]
     weights[np.isnan(weights)] = 0.
 
     filenames = []
@@ -1059,7 +1059,7 @@ def write_beamformer_solutions(
     corr_list=np.arange(1, 17),
     outdir='/home/user/beamformer_weights/',
     flagged_antennas=None,
-    pols=None
+    pols=['B', 'A']
 ):
     """Writes beamformer solutions to disk.
 
