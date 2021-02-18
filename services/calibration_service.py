@@ -159,7 +159,7 @@ def calibrate_file(etcd_dict):
                 filenames[date][calname]['files'],
                 calname,
                 date,
-                corrlist=[1, 2, 3, 21, 5, 6, 7, 8, 9, 10,
+                corrlist=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
                           11, 12, 13, 14, 15, 16],
                 outname=figure_path,
                 show=False

@@ -82,7 +82,7 @@ def rsync_file(rsync_string):
             'rsync',
             '-avv',
             '--remove-source-files',
-            '{0}.sas.pvt'.format(fname),
+            fname,
             fdir
         ],
         check=True,
