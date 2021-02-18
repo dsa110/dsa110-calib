@@ -826,7 +826,7 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
     return antennas, antenna_gains
 
 def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
-                             corr_list, antenna_flags):
+                             corr_list, antenna_flags, tol=0.3):
     """Writes weights for the beamformer.
 
     Parameters
@@ -848,6 +848,10 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
         data.
     antenna_flags : ndarray(bool)
         Dimensions (antennas, pols). True where flagged, False otherwise.
+    tol : float
+        The fraction of data for a single antenna/pol flagged that the
+        can be flagged in the beamformer. If more data than this is flagged as
+        having bad solutions, the entire antenna/pol pair is flagged.
 
     Returns
     -------
@@ -976,17 +980,20 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
 #                         )
 #                         weights[i, j, idx, k] = fr(idx) + 1j*fi(idx)
 #     weights[np.isnan(weights)] = 0.
-    antenna_flags += np.where(count(weights.isnan))
-    # Divide by the first non-flagged antenna
-    # refant = 
-    # print(weights.shape)
-    weights = weights/weights[:, 0, ..., 0][:, np.newaxis, :, np.newaxis]
+    fracflagged = np.sum(np.isnan(weights), axis=1)/np.size(weights, axis=1)
+    antenna_flags_badsolns = fracflagged > tol
     weights[np.isnan(weights)] = 0.
-    # Flag bad antennas
-    # flags = np.tile(antenna_flags[ np.newaxis, :, np.newaxis, :],
-    #                 (ncorr, 1, 48, 1))
 
-    # weights[flags] = 0.
+    # Divide by the first non-flagged antenna
+    idx0, idx1 = np.nonzero(
+        np.logical_not(
+            antenna_flags + antenna_flags_badsolns
+        )
+    )
+    weights = (
+        weights/weights[:, idx0[0], ..., idx1[0]]
+    )[:, np.newaxis, :, np.newaxis]
+    weights[np.isnan(weights)] = 0.
 
     filenames = []
     for i, corr_idx in enumerate(corr_list):
@@ -1003,7 +1010,7 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
         with open('{0}/{1}.dat'.format(outdir, fname), 'wb') as f:
             f.write(bytes(wcorr))
         filenames += ['{0}.dat'.format(fname)]
-    return corr_list, bu, fweights, filenames
+    return corr_list, bu, fweights, filenames, antenna_flags_badsolns
 
 def get_delays(antennas, msname, calname, applied_delays):
     r"""Returns the delays to be set in the correlator.
@@ -1051,7 +1058,9 @@ def write_beamformer_solutions(
     msname, calname, caltime, antennas, applied_delays,
     corr_list=np.arange(1, 17),
     outdir='/home/user/beamformer_weights/',
-    flagged_antennas=None):
+    flagged_antennas=None,
+    pols=['B', 'A']
+):
     """Writes beamformer solutions to disk.
 
     Parameters
@@ -1076,10 +1085,12 @@ def write_beamformer_solutions(
         bandwidth of each correlator is pulled from dsa110-meridian-fs package
         data.
     flagged_antennas : list
-        A list of antennas to flag in the beamformer solutions. These antennas
-        will be given beamformer weights of 0, and delays of 0.
+        A list of antennas to flag in the beamformer solutions. Should include
+        polarizations. e.g. ['24 B', '32 A']
     outdir : str
         The directory to write the beamformer weights in.
+    pols : list
+        The order of the polarizations.
 
     Returns
     -------
@@ -1087,11 +1098,13 @@ def write_beamformer_solutions(
         Dimensions (antennas, pols). True where the data is flagged, and should
         not be used. Compiled from the ms flags as well as `flagged_antennas`.
     """
+    beamformer_flags = {}
     delays, flags = get_delays(antennas, msname, calname, applied_delays)
     if flagged_antennas is not None:
-        for ant in flagged_antennas:
-            delays[antennas==ant, ...] = 0
-            flags[antennas==ant, ...] = 1
+        for item in flagged_antennas:
+            ant, pol = item.split(' ')
+            flags[antennas==ant, pols==pol] = 1
+            beamformer_flags['{0} {1}'.format(ant, pol)] = 'flagged by user'
     delays = delays-np.min(delays[~flags])
     while not np.all(delays[~flags] < 1024):
         if np.sum(delays[~flags] > 1024) < np.nansum(delays[~flags] < 1024):
@@ -1099,12 +1112,17 @@ def write_beamformer_solutions(
         else:
             argflag = np.argmin(delays[~flags])
         argflag = np.where(~flags.flatten())[0][argflag]
+        flag_idxs = np.unravel_index(argflag, flags.shape)
         flags[np.unravel_index(argflag, flags.shape)] = 1
+        beamformer_flags[
+            '{0} {1}'.format(
+                antennas[flag_idxs[0]],
+                pols[flag_idxs[1]]
+            )] = 'delay exceeds snap capabilities'
         delays = delays-np.min(delays[~flags])
-    delays[flags] = 0
 
     caltime.precision = 0
-    corr_list, eastings, _fobs, weights_files = write_beamformer_weights(
+    corr_list, eastings, _fobs, weights_files, flags_badsolns = write_beamformer_weights(
         msname,
         calname,
         caltime,
@@ -1113,6 +1131,13 @@ def write_beamformer_solutions(
         corr_list,
         flags
     )
+    idxant, idxpol = np.nonzero(antenna_flags_badsolns)
+    for i, ant in enumerate(idxant):
+        beamformer_flags[
+            '{0} {1}'.format(
+                antennas[flag_idxs[0]],
+                pols[flag_idxs[1]]
+            )] = 'casa solutions flagged'
 
     calibration_dictionary = {
         'cal_solutions':
@@ -1133,6 +1158,7 @@ def write_beamformer_solutions(
             'weights_axis1': 'frequency',
             'weights_axis2': 'pol',
             'weight_files': weights_files,
+            'flagged_antennas': beamformer_flags
         }
     }
 
