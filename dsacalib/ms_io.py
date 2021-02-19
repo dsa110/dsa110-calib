@@ -990,8 +990,8 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
         )
     )
     weights = (
-        weights/weights[:, idx0[0], ..., idx1[0]]
-    )[:, np.newaxis, :, np.newaxis]
+        weights/weights[:, idx0[0], ..., idx1[0]][:, np.newaxis, :, np.newaxis]
+    )
     weights[np.isnan(weights)] = 0.
 
     filenames = []
@@ -1536,14 +1536,7 @@ def average_beamformer_solutions(
         corridxs = [
             1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
         ]
-    gainshape = (64, 48, 2, 2)
-    gains = np.ones(
-            (len(fnames), len(corridxs), gainshape[0], gainshape[1],
-             gainshape[2], gainshape[3]),
-            dtype='<f4'
-        )*np.nan
     antenna_flags = [None]*len(fnames)
-    eastings = None
     for i, fname in enumerate(fnames):
         tmp_antflags = []
         filepath = '{0}/beamformer_weights_{1}.yaml'.format(outdir, fname)
@@ -1579,6 +1572,8 @@ def average_beamformer_solutions(
                     data = np.fromfile(f, '<f4')
                     eastings = data[:64]
                     gains[i, j, ...] = data[64:].reshape(gainshape)
+                if antenna_flags[i] is not None:
+                    gains[i, antenna_flags[i], ... ] = np.nan
             else:
                 message = \
                     '{0} not found during beamformer weight averaging'.format(
