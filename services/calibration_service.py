@@ -249,7 +249,6 @@ def calibrate_file(etcd_dict):
         if ttime-start_time > 24*u.h:
             start_time = ttime - 24*u.h
         ttime.precision = 0
-<<<<<<< 8aeec9acfb265d91a818fa3aef0d07693eb9b684
         ETCD.put_dict(
             '/mon/cal/calibration',
             {
@@ -269,26 +268,6 @@ def calibrate_file(etcd_dict):
         )
         print('done writing ms')
         LOGGER.info('{0}.ms created'.format(msname))
-=======
-
-#         ETCD.put_dict(
-#             '/mon/cal/calibration',
-#             {
-#                 "transit_time": filenames[date][calname]['transit_time'].mjd,
-#                 "calibration_source": calname,
-#                 "filelist": flist,
-#                 "status": -1
-#             }
-#         )
-#         print('writing ms')
-#         convert_calibrator_pass_to_ms(
-#             cal=filenames[date][calname]['cal'],
-#             date=date,
-#             files=filenames[date][calname]['files'],
-#             duration=CALTIME
-#         )
-#         print('done writing ms')
-#         LOGGER.info('{0}.ms created'.format(msname))
 
         status = calibrate_measurement_set(
             msname,
