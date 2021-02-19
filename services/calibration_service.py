@@ -406,7 +406,7 @@ def calibrate_file(etcd_dict):
         # Plot evolution of the phase over the day
         calibrate_phases(filenames_sorted, REFANT)
         plot_bandpass_phases(
-            filenames_sorted,
+            filenames,
             ANTENNAS_PLOT,
             outname='{0}/figures/{1}'.format(MSDIR, ttime)
         )
