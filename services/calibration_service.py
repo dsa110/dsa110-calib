@@ -168,6 +168,7 @@ def find_bf_solns_to_avg(today, filenames, ttime, start_time):
                 beamformer_names.remove(bfname)
     else:
         beamformer_names = []
+        latest_solns = None
     return beamformer_names, latest_solns
 
 def extract_applied_delays(file):
@@ -372,7 +373,7 @@ def calibrate_file(etcd_dict):
         if len(beamformer_names) > 0:
             print('averaging beamformer weights')
             averaged_files = average_beamformer_solutions(
-                [beamformer_names[0]],
+                beamformer_names,
                 ttime,
                 outdir=BEAMFORMER_DIR,
                 corridxs=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
