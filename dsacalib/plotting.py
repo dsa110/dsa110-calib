@@ -1078,7 +1078,7 @@ def summary_plot(msname, calname, npol, plabels, antennas):
     return fig
 
 def plot_current_beamformer_solutions(
-    filenames, calname, date, corrlist=np.arange(1, 16+1),
+    filenames, calname, date, beamformer_name, corrlist=np.arange(1, 16+1),
     antennas_to_plot=None, antennas=None, outname=None, show=True,
     gaindir='/home/user/beamformer_weights/',
     hdf5dir='/mnt/data/dsa110/correlator/'
@@ -1101,6 +1101,9 @@ def plot_current_beamformer_solutions(
     date : str
         The date of the source or event that you are plotting. Used in the
         title of the plot. e.g. '2020-10-06'
+    beamformer_name : str
+        The title of the beamformer weights.
+        e.g. 'J141120+521209_2021-02-19T12:05:51'
     corrlist : list(int)
         A list of the correlator indices to plot.  Defaults to correlators 01
         through 16.

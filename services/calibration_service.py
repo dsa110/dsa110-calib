@@ -8,6 +8,7 @@ warnings.filterwarnings("ignore")
 import datetime # pylint: disable=wrong-import-position
 import time # pylint: disable=wrong-import-position
 import yaml # pylint: disable=wrong-import-position
+import h5py # pylint: disable=wrong-import-position
 import matplotlib # pylint: disable=wrong-import-position
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt # pylint: disable=wrong-import-position
@@ -50,11 +51,166 @@ ANTENNAS = np.concatenate((
     ANTENNAS_PLOT,
     np.arange(36, 36+39)
 ))
-ANTENNAS_NOT_IN_BF = ['103', '101', '100', '116', '102']
+ANTENNAS_NOT_IN_BF = ['103 A', '103 B', '101 A', '101 B', '100 A', '100 B',
+                      '116 A', '116 B', '102 A', '102 B']
 CALTABLE = resource_filename('dsacalib', 'data/calibrator_sources.csv')
 
-# TODO: Etcd watch robust to etcd connection failures.
+def sort_filenames(filenames):
+    """Sort list of calibrator passes.
+    """
+    filenames_sorted = {}
+    yesterday, today = sorted(filenames.keys())
+    for date in sorted(filenames.keys(), reverse=True):
+        filenames_sorted[date] = {}
+    # What is the order that we will get here
+    # We want the most recent cal to be last
+    times = {
+        cal: filenames[today][cal]['transit_time']
+        for cal in filenames[today].keys()
+    }
+    ordered_times = {
+        k: v for k, v in sorted(
+            times.items(),
+            key=lambda item: item[1],
+            reverse=True
+        )
+    }
+    for cal in ordered_times.keys():
+        filenames_sorted[today][cal] = filenames[today][cal]
+    times = {
+        cal: filenames[yesterday][cal]['transit_time']
+        for cal in filenames[yesterday].keys()
+    }
+    ordered_times = {
+        k: v for k, v in sorted(
+            times.items(),
+            key=lambda item: item[1],
+            reverse=True
+        )
+    }
+    for cal in ordered_times.keys():
+        if cal not in filenames_sorted[today].keys():
+            filenames_sorted[yesterday][cal] = filenames[yesterday][cal]
+    return filenames_sorted
 
+def find_bf_solns_to_avg(today, filenames, ttime, start_time):
+    """Find all previous calibrator passes to average.
+    """
+    # TODO: Just use a glob of the beamformer directory instead since the
+    # names contain the transit pass time and calibrator names.
+    yesterday = (ttime-1*u.d).isot.split('T')[0]
+    filenames_yesterday = get_files_for_cal(
+        CALTABLE,
+        REFCORR,
+        CALTIME,
+        FILELENGTH,
+        date_specifier='{0}*'.format(yesterday),
+    )
+    if yesterday in filenames_yesterday.keys():
+        filenames[yesterday] = filenames_yesterday[yesterday]
+    else:
+        filenames[yesterday] = {}
+    # Get rid of calibrators after the snap start time or without files
+    for date in filenames.keys():
+        for cal in list(filenames[date].keys()):
+            if filenames[date][cal]['transit_time'] < start_time or \
+                len(filenames[date][cal]['files'])==0 or \
+                filenames[date][cal]['transit_time'] > ttime:
+                filenames[date].pop(cal)
+    # Sort the filenames by time
+    assert len(filenames.keys()) < 3
+    filenames = sort_filenames(filenames)
+    # Average beamformer solutions
+    beamformer_names = []
+    for date in filenames.keys():
+        for cal in filenames[date].keys():
+            cal_ttime = filenames[date][cal]['transit_time']
+            cal_ttime.precision = 0
+            beamformer_names += [
+                '{0}_{1}'.format(
+                    cal,
+                    cal_ttime.isot
+                )
+            ]
+    # Open yaml files
+    print('opening yaml files')
+    if os.path.exists(
+        '{0}/beamformer_weights_{1}.yaml'.format(
+            BEAMFORMER_DIR,
+            beamformer_names[0]
+        )
+    ):
+        with open(
+            '{0}/beamformer_weights_{1}.yaml'.format(
+                BEAMFORMER_DIR,
+                beamformer_names[0]
+            )
+        ) as f:
+            latest_solns = yaml.load(f, Loader=yaml.FullLoader)
+        for bfname in beamformer_names[1:].copy():
+            try:
+                with open(
+                    '{0}/beamformer_weights_{1}.yaml'.format(
+                        BEAMFORMER_DIR,
+                        bfname
+                    )
+                ) as f:
+                    solns = yaml.load(f, Loader=yaml.FullLoader)
+                assert solns['cal_solutions']['antenna_order'] == \
+                    latest_solns['cal_solutions']['antenna_order']
+                assert solns['cal_solutions']['corr_order'] == \
+                    latest_solns['cal_solutions']['corr_order']
+                assert solns['cal_solutions']['delays'] == \
+                    latest_solns['cal_solutions']['delays']
+                assert solns['cal_solutions']['eastings'] == \
+                    latest_solns['cal_solutions']['eastings']
+            except (AssertionError, FileNotFoundError):
+                beamformer_names.remove(bfname)
+    else:
+        beamformer_names = []
+    return beamformer_names, latest_solns
+
+def extract_applied_delays(file):
+    """Extracts the current snap delays from the hdf5 file.
+    
+    If delays are not set in the hdf5 file, uses the most recent delays in
+    the beamformer weights directory instead.
+
+    Parameters
+    ----------
+    file : str
+        The full path to the hdf5 file.
+
+    Returns
+    -------
+    ndarray
+        The applied delays in ns.
+    """
+    with h5py.File(file, 'r') as f:
+        if 'applied_delays_ns' in f['Header']['extra_keywords'].keys():
+            delaystring = (
+                f['Header']['extra_keywords']['applied_delays_ns']
+                .value
+            )
+            applied_delays = np.array(
+                delaystring.split(' ')
+            ).astype(np.int).reshape(-1, 2)
+            applied_delays = applied_delays[ANTENNAS-1, :]
+        else:
+            current_solns = '{0}/beamformer_weights.yaml'.format(BEAMFORMER_DIR)
+            with open(current_solns) as file:
+                calibration_params = yaml.load(
+                    file,
+                    Loader=yaml.FullLoader
+                )['cal_solutions']
+            applied_delays = np.array(calibration_params['delays'])*2
+            LOGGER.error(
+                'Error extracting snap delays from uvh5 files. '
+                'Using delays in {0}'.format(current_solns)
+            )
+    return applied_delays
+
+# TODO: Etcd watch robust to etcd connection failures.
 def calibrate_file(etcd_dict):
     """Generates and calibrates a measurement set.
     
@@ -68,12 +224,10 @@ def calibrate_file(etcd_dict):
         date = first_true(flist).split('/')[-1][:-14]
         msname = '{0}/{1}_{2}'.format(MSDIR, date, calname)
         date_specifier = '{0}*'.format(date)
-
         # Get the start time for the snaps
-        # start_time = Time(
-        #    ETCD.get_dict('/mon/snap/1/armed_mjd')['armed_mjd'], format='mjd'
-        # )
-        start_time = Time('2021-01-06T09:00:00')
+        start_time = Time(
+           ETCD.get_dict('/mon/snap/1/armed_mjd')['armed_mjd'], format='mjd'
+        )
         LOGGER.info('Creating {0}.ms'.format(msname))
 
         filenames = get_files_for_cal(
@@ -90,24 +244,24 @@ def calibrate_file(etcd_dict):
             start_time = ttime - 24*u.h
         ttime.precision = 0
 
-        ETCD.put_dict(
-            '/mon/cal/calibration',
-            {
-                "transit_time": filenames[date][calname]['transit_time'].mjd,
-                "calibration_source": calname,
-                "filelist": flist,
-                "status": -1
-            }
-        )
-        print('writing ms')
-        convert_calibrator_pass_to_ms(
-            cal=filenames[date][calname]['cal'],
-            date=date,
-            files=filenames[date][calname]['files'],
-            duration=CALTIME
-        )
-        print('done writing ms')
-        LOGGER.info('{0}.ms created'.format(msname))
+#         ETCD.put_dict(
+#             '/mon/cal/calibration',
+#             {
+#                 "transit_time": filenames[date][calname]['transit_time'].mjd,
+#                 "calibration_source": calname,
+#                 "filelist": flist,
+#                 "status": -1
+#             }
+#         )
+#         print('writing ms')
+#         convert_calibrator_pass_to_ms(
+#             cal=filenames[date][calname]['cal'],
+#             date=date,
+#             files=filenames[date][calname]['files'],
+#             duration=CALTIME
+#         )
+#         print('done writing ms')
+#         LOGGER.info('{0}.ms created'.format(msname))
 
         status = calibrate_measurement_set(
             msname,
@@ -116,7 +270,7 @@ def calibrate_file(etcd_dict):
             bad_antennas=None,
             bad_uvrange='2~27m',
             forsystemhealth=True,
-            throw_exceptions=False
+            throw_exceptions=True
         )
         print('done calibration')
         caltable_to_etcd(
@@ -154,16 +308,18 @@ def calibrate_file(etcd_dict):
                     )
                     pdf.savefig(fig)
                     plt.close()
-            # Index error occured - some files could not be found.
-            plot_current_beamformer_solutions(
-                filenames[date][calname]['files'],
-                calname,
-                date,
-                corrlist=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-                          11, 12, 13, 14, 15, 16],
-                outname=figure_path,
-                show=False
-            )
+# TODO: Get beamformer weight filenames from etcd
+#             # Index error occured - some files could not be found. corr04
+#             plot_current_beamformer_solutions(
+#                 filenames[date][calname]['files'],
+#                 calname,
+#                 date,
+#                 # beamformer name,
+#                 corrlist=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
+#                           11, 12, 13, 14, 15, 16],
+#                 outname=figure_path,
+#                 show=False
+#             )
         except Exception as exc:
             exception_logger(
                 LOGGER,
@@ -188,16 +344,7 @@ def calibrate_file(etcd_dict):
         )
         print('calculating beamformer weights')
         try:
-            # These delays should be placed in the file itself instead
-            current_solns = '{0}/beamformer_weights.yaml'.format(BEAMFORMER_DIR)
-            with open(current_solns) as file:
-                calibration_params = yaml.load(
-                    file,
-                    Loader=yaml.FullLoader
-                )['cal_solutions']
-
-            applied_delays = np.array(calibration_params['delays'])*2
-            print('applied_delays: {0}'.format(applied_delays.shape))
+            applied_delays = extract_applied_delays(flist[0])
             # Write beamformer solutions for one source
             _ = write_beamformer_solutions(
                 msname,
@@ -218,107 +365,14 @@ def calibrate_file(etcd_dict):
         print('getting list of calibrators')
         # Now we want to find all sources in the last 24 hours
         # start by updating our list with calibrators from the day before
-        today = date
-        yesterday = (ttime-1*u.d).isot.split('T')[0]
-        filenames_yesterday = get_files_for_cal(
-            CALTABLE,
-            REFCORR,
-            CALTIME,
-            FILELENGTH,
-            date_specifier='{0}*'.format(yesterday),
-        )
-        filenames[yesterday] = filenames_yesterday[yesterday]
-        # Get rid of calibrators after the snap start time or without files
-        for date in filenames.keys():
-            for cal in list(filenames[date].keys()):
-                if filenames[date][cal]['transit_time'] < start_time or \
-                    len(filenames[date][cal]['files'])==0 or \
-                    filenames[date][cal]['transit_time'] > ttime:
-                    filenames[date].pop(cal)
-        # Sort the filenames by time
-        assert len(filenames.keys()) < 3
-        filenames_sorted = {}
-        for date in sorted(filenames.keys(), reverse=True):
-            filenames_sorted[date] = {}
-        # What is the order that we will get here
-        # We want the most recent cal to be last
-        times = {
-            cal: filenames[today][cal]['transit_time']
-            for cal in filenames[today].keys()
-        }
-        ordered_times = {
-            k: v for k, v in sorted(
-                times.items(),
-                key=lambda item: item[1],
-                reverse=True
-            )
-        }
-        for cal in ordered_times.keys():
-            filenames_sorted[today][cal] = filenames[today][cal]
-        times = {
-            cal: filenames[yesterday][cal]['transit_time']
-            for cal in filenames[yesterday].keys()
-        }
-        ordered_times = {
-            k: v for k, v in sorted(
-                times.items(),
-                key=lambda item: item[1],
-                reverse=True
-            )
-        }
-        for cal in ordered_times.keys():
-            if cal not in filenames_sorted[today].keys():
-                filenames_sorted[yesterday][cal] = filenames[yesterday][cal]
+        beamformer_names, latest_solns = find_bf_solns_to_avg(date, filenames, ttime, start_time)
         # Average beamformer solutions
-        beamformer_names = []
-        for date in filenames_sorted.keys():
-            for cal in filenames_sorted[date].keys():
-                cal_ttime = filenames_sorted[date][cal]['transit_time']
-                cal_ttime.precision = 0
-                beamformer_names += [
-                    '{0}_{1}'.format(
-                        cal,
-                        cal_ttime.isot
-                    )
-                ]
-        # Open yaml files
-        print('opening yaml files')
-        if os.path.exists(
-            '{0}/beamformer_weights_{1}.yaml'.format(
-                BEAMFORMER_DIR,
-                beamformer_names[0]
-            )
-        ):
-            with open(
-                '{0}/beamformer_weights_{1}.yaml'.format(
-                    BEAMFORMER_DIR,
-                    beamformer_names[0]
-                )
-            ) as f:
-                latest_solns = yaml.load(f, Loader=yaml.FullLoader)
-            for bfname in beamformer_names[1:].copy():
-                try:
-                    with open(
-                        '{0}/beamformer_weights_{1}.yaml'.format(
-                            BEAMFORMER_DIR,
-                            bfname
-                        )
-                    ) as f:
-                        solns = yaml.load(f, Loader=yaml.FullLoader)
-                    assert solns['cal_solutions']['antenna_order'] == \
-                        latest_solns['cal_solutions']['antenna_order']
-                    assert solns['cal_solutions']['corr_order'] == \
-                        latest_solns['cal_solutions']['corr_order']
-                    assert solns['cal_solutions']['delays'] == \
-                        latest_solns['cal_solutions']['delays']
-                    assert solns['cal_solutions']['eastings'] == \
-                        latest_solns['cal_solutions']['eastings']
-                except (AssertionError, FileNotFoundError):
-                    beamformer_names.remove(bfname)
-            # Average beamformer solutions
+        # TODO: Implement averaging that takes into account flags
+        # For now, just using the most recent one instead
+        if len(beamformer_names) > 0:
             print('averaging beamformer weights')
             averaged_files = average_beamformer_solutions(
-                beamformer_names,
+                [beamformer_names[0]],
                 ttime,
                 outdir=BEAMFORMER_DIR,
                 corridxs=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
@@ -349,13 +403,13 @@ def calibrate_file(etcd_dict):
                 )
             )
 
-            # Plot evolution of the phase over the day
-            calibrate_phases(filenames_sorted, REFANT)
-            plot_bandpass_phases(
-                filenames_sorted,
-                ANTENNAS_PLOT,
-                outname='{0}/figures/{1}'.format(MSDIR, ttime)
-            )
+        # Plot evolution of the phase over the day
+        calibrate_phases(filenames_sorted, REFANT)
+        plot_bandpass_phases(
+            filenames_sorted,
+            ANTENNAS_PLOT,
+            outname='{0}/figures/{1}'.format(MSDIR, ttime)
+        )
 
 if __name__=="__main__":
     ETCD.add_watch('/cmd/cal', calibrate_file)
