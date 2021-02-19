@@ -980,7 +980,7 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
 #                         )
 #                         weights[i, j, idx, k] = fr(idx) + 1j*fi(idx)
 #     weights[np.isnan(weights)] = 0.
-    fracflagged = np.sum(np.isnan(weights), axis=1)/np.size(weights, axis=1)
+    fracflagged = np.sum(np.sum(np.isnan(weights), axis=2), axis=0)/(weights.shape[0]*weights.shape[2])
     antenna_flags_badsolns = fracflagged > tol
     weights[np.isnan(weights)] = 0.
 
@@ -991,8 +991,8 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
         )
     )
     weights = (
-        weights/weights[:, idx0[0], ..., idx1[0]]
-    )[:, np.newaxis, :, np.newaxis]
+        weights/weights[:, idx0[0], ..., idx1[0]][:, np.newaxis, :, np.newaxis]
+    )
     weights[np.isnan(weights)] = 0.
 
     filenames = []
@@ -1041,17 +1041,18 @@ def get_delays(antennas, msname, calname, applied_delays):
     delays, _time, flags, ant1, _ant2 = read_caltable(
         '{0}_{1}_kcal'.format(msname, calname)
     )
+    delays = delays.squeeze()
+    flags = flags.squeeze()
     print('delays: {0}'.format(delays.shape))
-    delays[flags] = np.nan
+    # delays[flags] = np.nan
     ant1 = list(ant1)
     idx = [ant1.index(ant-1) for ant in antennas]
     delays = delays[idx]
-    delays = delays.squeeze() + applied_delays
+    flags = flags[idx]
+    delays = delays + applied_delays
     delays = delays - np.nanmin(delays)
-
     delays = (np.rint(delays/2)*2)
-    flags = np.isnan(delays)
-    delays[flags] = 0
+    # delays[flags] = 0
     return delays.astype(np.int), flags
 
 def write_beamformer_solutions(
@@ -1100,11 +1101,12 @@ def write_beamformer_solutions(
     """
     beamformer_flags = {}
     delays, flags = get_delays(antennas, msname, calname, applied_delays)
+    print('delay flags:', flags.shape)
     if flagged_antennas is not None:
         for item in flagged_antennas:
             ant, pol = item.split(' ')
             flags[antennas==ant, pols==pol] = 1
-            beamformer_flags['{0} {1}'.format(ant, pol)] = 'flagged by user'
+            beamformer_flags['{0} {1}'.format(ant, pol)] = ['flagged by user']
     delays = delays-np.min(delays[~flags])
     while not np.all(delays[~flags] < 1024):
         if np.sum(delays[~flags] > 1024) < np.nansum(delays[~flags] < 1024):
@@ -1114,11 +1116,10 @@ def write_beamformer_solutions(
         argflag = np.where(~flags.flatten())[0][argflag]
         flag_idxs = np.unravel_index(argflag, flags.shape)
         flags[np.unravel_index(argflag, flags.shape)] = 1
-        beamformer_flags[
-            '{0} {1}'.format(
-                antennas[flag_idxs[0]],
-                pols[flag_idxs[1]]
-            )] = 'delay exceeds snap capabilities'
+        key = '{0} {1}'.format(antennas[flag_idxs[0]], pols[flag_idxs[1]])
+        if key not in beamformer_flags.keys():
+            beamformer_flags[key] = []
+        beamformer_flags[key] += ['delay exceeds snap capabilities']
         delays = delays-np.min(delays[~flags])
 
     caltime.precision = 0
@@ -1131,13 +1132,12 @@ def write_beamformer_solutions(
         corr_list,
         flags
     )
-    idxant, idxpol = np.nonzero(antenna_flags_badsolns)
+    idxant, idxpol = np.nonzero(flags_badsolns)
     for i, ant in enumerate(idxant):
-        beamformer_flags[
-            '{0} {1}'.format(
-                antennas[flag_idxs[0]],
-                pols[flag_idxs[1]]
-            )] = 'casa solutions flagged'
+        key = '{0} {1}'.format(antennas[ant], pols[idxpol[i]])
+        if key not in beamformer_flags.keys():
+            beamformer_flags[key] = []
+        beamformer_flags[key] += ['casa solutions flagged']
 
     calibration_dictionary = {
         'cal_solutions':
@@ -1502,13 +1502,32 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None):
         The names of the written beamformer solutions (one for each correlator
         node).
     """
+    gainshape = (64, 48, 2, 2)
     if corridxs is None:
         corridxs = [
             1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
         ]
+    antenna_flags = [None]*len(fnames)
+    for i, fname in enumerate(fnames):
+        tmp_antflags = []
+        filepath = '{0}/beamformer_weights_{1}.yaml'.format(outdir, fname)
+        if os.path.exists(filepath):
+            with open(filepath) as f:
+                calibration_params = yaml.load(
+                    f, Loader=yaml.FullLoader
+                )['cal_solutions']
+                antenna_order = calibration_params['antenna_order']
+                for key in calibration_params['flagged_antennas']:
+                    antname = int(key.split(' ')[0])
+                    tmp_antflags.append(antenna_order.index(antname))
+            antenna_flags[i] = sorted(tmp_antflags)
     written_files = []
     for corr in corridxs:
-        gains = np.ones((len(fnames), 12352), dtype='<f4')*np.nan
+        gains = np.ones(
+            (len(fnames), gainshape[0], gainshape[1],
+             gainshape[2], gainshape[3]),
+            dtype='<f4'
+        )*np.nan
         for i, fname in enumerate(fnames):
             if os.path.exists(
                 '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
@@ -1525,7 +1544,11 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None):
                     ),
                     'rb'
                 ) as f:
-                    gains[i, ...] = np.fromfile(f, '<f4')
+                    data = np.fromfile(f, '<f4')
+                    eastings = data[:64]
+                    gains[i, ...] = data[64:].reshape(gainshape)
+                if antenna_flags[i] is not None:
+                    gains[i, antenna_flags[i], ... ] = np.nan
             else:
                 LOGGER.info(
                     '{0} not found during beamformer weight averaging'.format(
@@ -1536,7 +1559,9 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None):
                 )))
         gains = np.nanmedian(gains, axis=0)
         fnameout = 'beamformer_weights_corr{0:02d}_{1}'.format(corr, ttime.isot)
+        wcorr = gains.flatten()
+        wcorr = np.concatenate([eastings, wcorr], axis=0)
         with open('{0}/{1}.dat'.format(outdir, fnameout), 'wb') as f:
-            f.write(bytes(gains))
+            f.write(bytes(wcorr))
         written_files += ['{0}.dat'.format(fnameout)]
     return written_files

@@ -131,7 +131,8 @@ def fscrunch_file(fname):
                 (UV.ant_1_array!=UV.ant_2_array) &
                 (UV.ant_1_array==ant-1)
             ] /= phase_model
-            UV.extra_keywords["snap_delays_ns"][ant-1, :] = delay
+            if 'applied_delays_ns' in UV.extra_keywords.keys():
+                UV.extra_keywords['applied_delays_ns'][ant-1, :] += delay
         # Scrunch in frequency by factor of nint
         UV.frequency_average(n_chan_to_avg=nint)
         if os.path.exists(fname.replace('.hdf5', '_favg.hdf5')):
