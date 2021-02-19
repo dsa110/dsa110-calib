@@ -244,24 +244,24 @@ def calibrate_file(etcd_dict):
             start_time = ttime - 24*u.h
         ttime.precision = 0
 
-#         ETCD.put_dict(
-#             '/mon/cal/calibration',
-#             {
-#                 "transit_time": filenames[date][calname]['transit_time'].mjd,
-#                 "calibration_source": calname,
-#                 "filelist": flist,
-#                 "status": -1
-#             }
-#         )
-#         print('writing ms')
-#         convert_calibrator_pass_to_ms(
-#             cal=filenames[date][calname]['cal'],
-#             date=date,
-#             files=filenames[date][calname]['files'],
-#             duration=CALTIME
-#         )
-#         print('done writing ms')
-#         LOGGER.info('{0}.ms created'.format(msname))
+        ETCD.put_dict(
+            '/mon/cal/calibration',
+            {
+                "transit_time": filenames[date][calname]['transit_time'].mjd,
+                "calibration_source": calname,
+                "filelist": flist,
+                "status": -1
+            }
+        )
+        print('writing ms')
+        convert_calibrator_pass_to_ms(
+            cal=filenames[date][calname]['cal'],
+            date=date,
+            files=filenames[date][calname]['files'],
+            duration=CALTIME
+        )
+        print('done writing ms')
+        LOGGER.info('{0}.ms created'.format(msname))
 
         status = calibrate_measurement_set(
             msname,
@@ -392,6 +392,13 @@ def calibrate_file(etcd_dict):
             ) as file:
                 print('writing bf weights')
                 _ = yaml.dump(latest_solns, file)
+            ETCD.put_dict(
+                '/cmd/corr/1/bf',
+                {
+                    'cmd': 'update_weights',
+                    'val': latest_solns['cal_solutions']
+                }
+            )
             print('done writing')
             os.system(
                 "cd {0} ; "
