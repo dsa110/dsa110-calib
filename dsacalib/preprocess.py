@@ -40,7 +40,7 @@ OUTRIGGER_DELAYS = {
     113: 18.6-1.2,
     114: 20.5-1.2,
     115: 22.3-1.2,
-    116:  4.071, # Updated empriically. MC: 5.5-1.2,
+    116:  4.070, # Updated empriically. MC: 5.5-1.2,
     117:  6.5-1.2
 }
 
