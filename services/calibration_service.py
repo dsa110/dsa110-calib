@@ -24,7 +24,7 @@ from dsacalib.utils import exception_logger # pylint: disable=wrong-import-posit
 from dsacalib.calib import calibrate_phases # pylint: disable=wrong-import-position
 from dsacalib.routines import get_files_for_cal, calibrate_measurement_set # pylint: disable=wrong-import-position
 from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd, write_beamformer_solutions, average_beamformer_solutions # pylint: disable=wrong-import-position
-from dsacalib.plotting import summary_plot, plot_current_beamformer_solutions, plot_bandpass_phases # pylint: disable=wrong-import-position
+from dsacalib.plotting import summary_plot, plot_current_beamformer_solutions, plot_bandpass_phases, plot_beamformer_weights # pylint: disable=wrong-import-position
 
 # Logger
 LOGGER = dsl.DsaSyslogger()
@@ -51,6 +51,7 @@ ANTENNAS = np.concatenate((
     ANTENNAS_PLOT,
     np.arange(36, 36+39)
 ))
+POLS = ['B', 'A']
 ANTENNAS_NOT_IN_BF = ['103 A', '103 B', '101 A', '101 B', '100 A', '100 B',
                       '116 A', '116 B', '102 A', '102 B']
 CALTABLE = resource_filename('dsacalib', 'data/calibrator_sources.csv')
@@ -93,7 +94,7 @@ def sort_filenames(filenames):
             filenames_sorted[yesterday][cal] = filenames[yesterday][cal]
     return filenames_sorted
 
-def find_bf_solns_to_avg(today, filenames, ttime, start_time):
+def find_bf_solns_to_avg(filenames, ttime, start_time):
     """Find all previous calibrator passes to average.
     """
     # TODO: Just use a glob of the beamformer directory instead since the
@@ -173,7 +174,7 @@ def find_bf_solns_to_avg(today, filenames, ttime, start_time):
 
 def extract_applied_delays(file):
     """Extracts the current snap delays from the hdf5 file.
-    
+
     If delays are not set in the hdf5 file, uses the most recent delays in
     the beamformer weights directory instead.
 
@@ -199,9 +200,9 @@ def extract_applied_delays(file):
             applied_delays = applied_delays[ANTENNAS-1, :]
         else:
             current_solns = '{0}/beamformer_weights.yaml'.format(BEAMFORMER_DIR)
-            with open(current_solns) as file:
+            with open(current_solns) as yamlfile:
                 calibration_params = yaml.load(
-                    file,
+                    yamlfile,
                     Loader=yaml.FullLoader
                 )['cal_solutions']
             applied_delays = np.array(calibration_params['delays'])*2
@@ -214,7 +215,7 @@ def extract_applied_delays(file):
 # TODO: Etcd watch robust to etcd connection failures.
 def calibrate_file(etcd_dict):
     """Generates and calibrates a measurement set.
-    
+
     An etcd watch callback function.
     """
     cmd = etcd_dict['cmd']
@@ -366,13 +367,13 @@ def calibrate_file(etcd_dict):
         print('getting list of calibrators')
         # Now we want to find all sources in the last 24 hours
         # start by updating our list with calibrators from the day before
-        beamformer_names, latest_solns = find_bf_solns_to_avg(date, filenames, ttime, start_time)
+        beamformer_names, latest_solns = find_bf_solns_to_avg(
+            filenames, ttime, start_time
+        )
         # Average beamformer solutions
-        # TODO: Implement averaging that takes into account flags
-        # For now, just using the most recent one instead
         if len(beamformer_names) > 0:
             print('averaging beamformer weights')
-            averaged_files = average_beamformer_solutions(
+            averaged_files, avg_flags = average_beamformer_solutions(
                 beamformer_names,
                 ttime,
                 outdir=BEAMFORMER_DIR,
@@ -387,6 +388,25 @@ def calibrate_file(etcd_dict):
             latest_solns['cal_solutions']['caltime'] = [
                 float(Time(bf.split('_')[1]).mjd) for bf in beamformer_names
             ]
+            # Remove the old bad cal solutions
+            for key, value in \
+                latest_solns['cal_solutions']['flagged_antennas'].items():
+                if 'casa solutions flagged' in value:
+                    value = value.remove('casa solutions flagged')
+            # Flag new bad solutions
+            idxant, idxpol = np.nonzero(avg_flags)
+            for i, ant in enumerate(idxant):
+                key = '{0} {1}'.format(ANTENNAS[ant], POLS[idxpol[i]])
+                if key not in \
+                    latest_solns['cal_solutions']['flagged_antennas'].keys():
+                    latest_solns['cal_solutions']['flagged_antennas'][key] = []
+                latest_solns['cal_solutions']['flagged_antennas'][key] += \
+                    ['casa solutions flagged']
+            latest_solns['cal_solutions']['flagged_antennas'] = {
+                key: value for key, value in
+                latest_solns['cal_solutions']['flagged_antennas'].items()
+                if len(value) > 0
+            }
             print('opening yaml file')
             with open(
                 '{0}/beamformer_weights.yaml'.format(BEAMFORMER_DIR), 'w'
@@ -410,9 +430,14 @@ def calibrate_file(etcd_dict):
                     beamformer_names[0]
                 )
             )
-
+            beamformer_names += [averaged_files[0].split('_')[-1].strip(".dat")]
+            _ = plot_beamformer_weights(
+                beamformer_names,
+                antennas_to_plot=ANTENNAS_PLOT,
+                outname='{0}/figures/{1}'.format(MSDIR, ttime)
+            )
         # Plot evolution of the phase over the day
-        calibrate_phases(filenames_sorted, REFANT)
+        calibrate_phases(filenames, REFANT)
         plot_bandpass_phases(
             filenames,
             ANTENNAS_PLOT,

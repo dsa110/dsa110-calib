@@ -1165,13 +1165,15 @@ def plot_current_beamformer_solutions(
                     visdata[i, ...] = np.array(f['Data']['visdata'][:])
                     ant1 = np.array(f['Header']['ant_1_array'][:])
                     ant2 = np.array(f['Header']['ant_2_array'][:])
-        visdata = visdata.reshape(-1, 325, 48, 2)
+        visdata = visdata.reshape((-1, 325, 48, 2))
         ant1 = ant1.reshape(-1, 325)[0, :]
         ant2 = ant2.reshape(-1, 325)[0, :]
         with open(
-            '{0}/beamformer_weights_corr{1:02d}.dat'.format(
+            '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
                 gaindir,
-                corr),
+                corr,
+                beamformer_name
+            ),
             'rb'
         ) as f:
             data = np.fromfile(f, '<f4')
@@ -1299,3 +1301,98 @@ def plot_bandpass_phases(
         plt.savefig('{0}_phases.png'.format(outname))
     if not show:
         plt.close()
+
+def plot_beamformer_weights(
+    beamformer_names,
+    corrlist=np.arange(1, 16+1),
+    antennas_to_plot=None,
+    antennas=None,
+    outname=None,
+    pols=None,
+    show=True,
+    gaindir='/home/user/beamformer_weights/'
+):
+    if pols is None:
+        pols = ['B', 'A']
+    if antennas_to_plot is None:
+        antennas_to_plot = np.array(
+            [13, 14, 15, 16, 17, 18, 19, 20,
+             24, 25, 26, 27, 28, 29, 30, 31,
+             32, 33, 34, 35
+            ])
+    # Set shape of the figure
+    nplots = 4
+    nx = 5
+    ny = len(antennas_to_plot)//nx
+    if len(antennas_to_plot)%nx != 0:
+        ny += 1
+    if antennas is None:
+        antennas = np.concatenate((np.array(
+            [24, 25, 26, 27, 28, 29, 30, 31, 32,
+             33, 34, 35, 20, 19, 18, 17, 16, 15,
+             14, 13, 100, 101, 102, 116, 103]),
+            np.arange(36, 36+39)))
+    gains = np.zeros(
+        (len(beamformer_names), len(antennas), len(corrlist), 48, 2),
+        dtype=np.complex
+    )
+    for i, beamformer_name in enumerate(beamformer_names):
+        for corridx, corr in enumerate(corrlist):
+            with open(
+                '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
+                    gaindir,
+                    corr,
+                    beamformer_name
+                ),
+                'rb'
+            ) as f:
+                data = np.fromfile(f, '<f4')
+            temp = data[64:].reshape(64, 48, 2, 2)
+            gains[i, :, corridx, :, :] = temp[..., 0]+1.0j*temp[..., 1]
+    gains = gains.reshape(
+        (len(beamformer_names), len(antennas), len(corrlist)*48, 2)
+    )
+    #ymax = np.nanmax(np.log10(np.abs(gains)))
+    #ymin = np.nanmin(np.log10(np.abs(gains)))
+    # Phase, polarization B
+    _fig, ax = plt.subplots(
+        nplots*ny,
+        nx,
+        figsize=(6*nx, 2.5*ny*nplots),
+        sharex=True,
+        sharey=False
+    )
+    for axi in ax[-1, :]:
+        axi.set_xlabel('freq channel')
+    for nplot in range(nplots):
+        polidx = nplot%2
+        angle = nplot//2
+        axi = ax[ny*nplot:ny*(nplot+1), :]
+        for axii in axi[:, 0]:
+            axii.set_ylabel('phase (rad)' if angle else 'amplitude (arb)')
+        axi = axi.flatten()
+        for i, ant in enumerate(antennas_to_plot):
+            for bnidx, beamformer_name in enumerate(beamformer_names):
+                idx = np.where(antennas == ant)[0][0]
+                axi[i].plot(
+                    np.angle(gains[bnidx, idx, :, polidx]) if angle else \
+                        np.abs(gains[bnidx, idx, :, polidx]),
+                    alpha=0.4,
+                    ls='None',
+                    marker='.',
+                    label=beamformer_name
+                )
+                axi[i].set_title('{0} {1}: {2}'.format(
+                    ant, pols[polidx], 'phase' if angle else 'amp'
+                ))
+            if angle:
+                axi[i].set_ylim(-np.pi, np.pi)
+            #else:
+            #    axi[i].set_ylim(ymin, ymax)
+        axi[0].legend()
+
+    if outname is not None:
+        plt.savefig('{0}_averagedweights.png'.format(outname))
+    if not show:
+        plt.close()
+    return gains
