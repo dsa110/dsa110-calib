@@ -1059,7 +1059,7 @@ def write_beamformer_solutions(
     corr_list=np.arange(1, 17),
     outdir='/home/user/beamformer_weights/',
     flagged_antennas=None,
-    pols=['B', 'A']
+    pols=None
 ):
     """Writes beamformer solutions to disk.
 
@@ -1536,6 +1536,12 @@ def average_beamformer_solutions(
         corridxs = [
             1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
         ]
+    gainshape = (64, 48, 2, 2)
+    gains = np.ones(
+            (len(fnames), len(corridxs), gainshape[0], gainshape[1],
+             gainshape[2], gainshape[3]),
+            dtype='<f4'
+        )*np.nan
     antenna_flags = [None]*len(fnames)
     for i, fname in enumerate(fnames):
         tmp_antflags = []
@@ -1553,7 +1559,17 @@ def average_beamformer_solutions(
                         tmp_antflags.append(antenna_order.index(antname))
             antenna_flags[i] = sorted(tmp_antflags)
 
+<<<<<<< 6fd0b59d48c029b59a74300ae5d3fc04ea5ab0ea
         for j, corr in enumerate(corridxs):
+=======
+    for corr in corridxs:
+        gains = np.ones(
+            (len(fnames), gainshape[0], gainshape[1],
+             gainshape[2], gainshape[3]),
+            dtype='<f4'
+        )*np.nan
+        for i, fname in enumerate(fnames):
+>>>>>>> averaging of calibration solutions
             if os.path.exists(
                 '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
                 outdir,
@@ -1577,6 +1593,7 @@ def average_beamformer_solutions(
             else:
                 message = \
                     '{0} not found during beamformer weight averaging'.format(
+<<<<<<< 6fd0b59d48c029b59a74300ae5d3fc04ea5ab0ea
                         '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
                         outdir,
                         corr,
@@ -1608,4 +1625,25 @@ def average_beamformer_solutions(
             with open('{0}/{1}.dat'.format(outdir, fnameout), 'wb') as f:
                 f.write(bytes(wcorr))
             written_files += ['{0}.dat'.format(fnameout)]
+=======
+                    '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
+                    outdir,
+                    corr,
+                    fname
+                )))
+    gains = np.nanmedian(gains, axis=0)
+    fracflagged = np.sum(np.sum(np.isnan(gains), axis=2), axis=0)/(gains.shape[0]*gains.shape[2])
+    antenna_flags_badsolns = fracflagged > tol
+    gains[np.isnan(gains)] = 0.
+    written_files = []
+    for i, corr in enumerate(corridxs):
+        fnameout = 'beamformer_weights_corr{0:02d}_{1}'.format(
+            corr, ttime.isot
+        )
+        wcorr = gains[i].flatten()
+        wcorr = np.concatenate([eastings, wcorr], axis=0)
+        with open('{0}/{1}.dat'.format(outdir, fnameout), 'wb') as f:
+            f.write(bytes(wcorr))
+        written_files += ['{0}.dat'.format(fnameout)]
+>>>>>>> averaging of calibration solutions
     return written_files, antenna_flags_badsolns
