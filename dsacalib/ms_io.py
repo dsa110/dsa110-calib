@@ -1528,13 +1528,7 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None, tol=0.3):
                         tmp_antflags.append(antenna_order.index(antname))
             antenna_flags[i] = sorted(tmp_antflags)
 
-    for corr in corridxs:
-        gains = np.ones(
-            (len(fnames), gainshape[0], gainshape[1],
-             gainshape[2], gainshape[3]),
-            dtype='<f4'
-        )*np.nan
-        for i, fname in enumerate(fnames):
+        for j, corr in enumerate(corridxs):
             if os.path.exists(
                 '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
                 outdir,
@@ -1552,9 +1546,7 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None, tol=0.3):
                 ) as f:
                     data = np.fromfile(f, '<f4')
                     eastings = data[:64]
-                    gains[i, ...] = data[64:].reshape(gainshape)
-                if antenna_flags[i] is not None:
-                    gains[i, antenna_flags[i], ... ] = np.nan
+                    gains[i, j, ...] = data[64:].reshape(gainshape)
             else:
                 LOGGER.info(
                     '{0} not found during beamformer weight averaging'.format(
@@ -1563,8 +1555,15 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None, tol=0.3):
                     corr,
                     fname
                 )))
+        if antenna_flags[i] is not None:
+            gains[i, :, antenna_flags[i], ... ] = np.nan
+
     gains = np.nanmedian(gains, axis=0)
-    fracflagged = np.sum(np.sum(np.isnan(gains), axis=2), axis=0)/(gains.shape[0]*gains.shape[2])
+    print(gains.shape) # corr, antenna, freq, pol, complex
+    fracflagged = np.sum(np.sum(np.sum(
+        np.isnan(gains),
+        axis=4), axis=2), axis=0)\
+        /(gains.shape[0]*gains.shape[2]*gains.shape[4])
     antenna_flags_badsolns = fracflagged > tol
     gains[np.isnan(gains)] = 0.
     written_files = []
@@ -1572,7 +1571,7 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None, tol=0.3):
         fnameout = 'beamformer_weights_corr{0:02d}_{1}'.format(
             corr, ttime.isot
         )
-        wcorr = gains[i].flatten()
+        wcorr = gains[i, ...].flatten()
         wcorr = np.concatenate([eastings, wcorr], axis=0)
         with open('{0}/{1}.dat'.format(outdir, fnameout), 'wb') as f:
             f.write(bytes(wcorr))
