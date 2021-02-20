@@ -245,7 +245,6 @@ def calibrate_file(etcd_dict):
         if ttime-start_time > 24*u.h:
             start_time = ttime - 24*u.h
         ttime.precision = 0
-
         ETCD.put_dict(
             '/mon/cal/calibration',
             {
@@ -370,6 +369,15 @@ def calibrate_file(etcd_dict):
         beamformer_names, latest_solns = find_bf_solns_to_avg(
             filenames, ttime, start_time
         )
+        # For now, don't use averaging
+        if latest_solns is not None:
+            ETCD.put_dict(
+                '/cmd/corr/1/bf',
+                {
+                    'cmd': 'update_weights',
+                    'val': latest_solns['cal_solutions']
+                }
+            )
         # Average beamformer solutions
         if len(beamformer_names) > 0:
             print('averaging beamformer weights')
@@ -413,13 +421,14 @@ def calibrate_file(etcd_dict):
             ) as file:
                 print('writing bf weights')
                 _ = yaml.dump(latest_solns, file)
-            ETCD.put_dict(
-                '/cmd/corr/1/bf',
-                {
-                    'cmd': 'update_weights',
-                    'val': latest_solns['cal_solutions']
-                }
-            )
+# TODO: make sure these are looking good and then switch to averaging
+#             ETCD.put_dict(
+#                 '/cmd/corr/1/bf',
+#                 {
+#                     'cmd': 'update_weights',
+#                     'val': latest_solns['cal_solutions']
+#                 }
+#             )
             print('done writing')
             os.system(
                 "cd {0} ; "

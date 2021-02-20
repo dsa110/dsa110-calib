@@ -1338,6 +1338,10 @@ def plot_beamformer_weights(
     )
     for i, beamformer_name in enumerate(beamformer_names):
         for corridx, corr in enumerate(corrlist):
+            print('beamformer_weights_corr{0:02d}_{1}.dat'.format(
+                    corr,
+                    beamformer_name
+            ))
             with open(
                 '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
                     gaindir,
