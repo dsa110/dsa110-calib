@@ -189,6 +189,7 @@ def extract_applied_delays(file):
     ndarray
         The applied delays in ns.
     """
+    # TODO: extract isnt working the way I expect
     with h5py.File(file, 'r') as f:
         if 'applied_delays_ns' in f['Header']['extra_keywords'].keys():
             delaystring = (
