@@ -144,3 +144,31 @@ def T3_initialize_ms(
         filenames,
         '{0}/{1}.ms'.format(params['msdir'], msname)
     )
+
+def write_T3data_to_ms(msname, datapaths, msdir):
+    """Copies data from the T3 cpucorrelator to a measurement set.
+
+    Parameters
+    ----------
+    msname : str
+        The name used to title the ms.
+    datapaths : dictionary
+        The path to the data file for each correlator node. e.g.
+        {'corr01': '/mnt/data/dsa110/cpucorr/corr01.dat',
+         'corr02': '/mnt/data/dsa110/cpucorr/corr02.dat'}
+        Note that correlators that do not have a specified data file will not
+        be overwritten or flagged, and the simulated data will contaminate that
+        band.
+    msdir : str
+        The path to the measurement set. Will modify `msdir`/`msname`.ms.
+    
+    """
+    for corr, datapath in datapaths.items():
+        shutil.copyfile(
+            datapath,
+            '{0}/{1}.ms/SUBMSS/{1}_{2}.ms/table.f2_TSM1'.format(
+                msdir,
+                msname,
+                corr
+            )
+        )
