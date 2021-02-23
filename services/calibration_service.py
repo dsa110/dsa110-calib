@@ -37,7 +37,7 @@ ETCD = ds.DsaStore()
 # These should be put somewhere else eventually
 CALTIME = 15*u.min
 REFANT = '102'
-REFCORR = '01'
+REFCORR = '03'
 FILELENGTH = 15*u.min
 MSDIR = '/mnt/data/dsa110/calibration/'
 BEAMFORMER_DIR = '/home/user/beamformer_weights/'
@@ -188,12 +188,13 @@ def extract_applied_delays(file):
     ndarray
         The applied delays in ns.
     """
+    # TODO: extract isnt working the way I expect
     with h5py.File(file, 'r') as f:
         if 'applied_delays_ns' in f['Header']['extra_keywords'].keys():
             delaystring = (
                 f['Header']['extra_keywords']['applied_delays_ns']
-                .value
-            )
+                [()]
+            ).astype(np.str)
             applied_delays = np.array(
                 delaystring.split(' ')
             ).astype(np.int).reshape(-1, 2)
@@ -223,6 +224,7 @@ def calibrate_file(etcd_dict):
     if cmd == 'calibrate':
         calname = val['calname']
         flist = val['flist']
+        print('flist[0]: {0}, {1}'.format(flist[0], type(flist[0])))
         date = first_true(flist).split('/')[-1][:-14]
         msname = '{0}/{1}_{2}'.format(MSDIR, date, calname)
         date_specifier = '{0}*'.format(date)
@@ -354,7 +356,8 @@ def calibrate_file(etcd_dict):
                 ANTENNAS,
                 applied_delays,
                 flagged_antennas=ANTENNAS_NOT_IN_BF,
-                outdir=BEAMFORMER_DIR
+                outdir=BEAMFORMER_DIR,
+                corr_list=np.array([ 0,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16])
             )
         except Exception as exc:
             exception_logger(
@@ -385,7 +388,7 @@ def calibrate_file(etcd_dict):
                 beamformer_names,
                 ttime,
                 outdir=BEAMFORMER_DIR,
-                corridxs=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+                corridxs=[0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
             )
             print('setting parameters for new yaml file')
             # Make the final yaml file
@@ -443,7 +446,8 @@ def calibrate_file(etcd_dict):
             _ = plot_beamformer_weights(
                 beamformer_names,
                 antennas_to_plot=ANTENNAS_PLOT,
-                outname='{0}/figures/{1}'.format(MSDIR, ttime)
+                outname='{0}/figures/{1}'.format(MSDIR, ttime),
+                corrlist=np.array([ 0,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16])
             )
         # Plot evolution of the phase over the day
         calibrate_phases(filenames, REFANT)
