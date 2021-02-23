@@ -55,7 +55,7 @@ def populate_queue(etcd_dict):
     cmd = etcd_dict['cmd']
     val = etcd_dict['val']
     if cmd == 'rsync':
-        rsync_string = '{0}:{1} /mnt/data/dsa110/correlator/{0}/'.format(
+        rsync_string = '{0}.sas.pvt:{1} /mnt/data/dsa110/correlator/{0}/'.format(
             val['hostname'],
             val['filename']
         )
