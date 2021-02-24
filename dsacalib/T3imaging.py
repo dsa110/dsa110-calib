@@ -1,6 +1,7 @@
 """Creating and manipulating measurement sets from T3 visibilities.
 """
 import os
+import shutil
 import yaml
 import numpy as np
 from pkg_resources import resource_filename
