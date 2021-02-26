@@ -66,22 +66,20 @@ def first_true(iterable, default=False, pred=None):
     # first_true([a,b], x, f) --> a if f(a) else b if f(b) else x
     return next(filter(pred, iterable), default)
 
-def rsync_file(rsync_string):
+def rsync_file(rsync_string, remove_source_files=True):
     """Rsyncs a file from the correlator machines to dsastorage.
 
     Parameters
     ----------
     rsync_string : str
-        The correlator machine name and the path to the file to rsync,
-        separated by a space.
-        E.g. 'corr06 /home/ubuntu/data/2020-06-24T12:32:06.hdf5'
+        E.g. 'corr06.sas.pvt:/home/ubuntu/data/2020-06-24T12:32:06.hdf5 /mnt/data/dsa110/correlator/corr06/'
     """
     fname, fdir = rsync_string.split(' ')
     output = subprocess.run(
         [
             'rsync',
             '-avv',
-            '--remove-source-files',
+            '--remove-source-files' if remove_source_files else '',
             fname,
             fdir
         ],
