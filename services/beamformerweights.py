@@ -27,8 +27,6 @@ PARAMS = CONF.get('corr')
 CORR_LIST = list(PARAMS['ch0'].keys())
 CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
 
-
-
 ANTENNAS_PLOT = np.array(list(PARAMS['antenna_order'].values()))
 ANTENNAS = list(np.concatenate((
     ANTENNAS_PLOT,
