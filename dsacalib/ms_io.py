@@ -1512,6 +1512,7 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None, tol=0.3):
             dtype='<f4'
         )*np.nan
     antenna_flags = [None]*len(fnames)
+    eastings = None
     for i, fname in enumerate(fnames):
         tmp_antflags = []
         filepath = '{0}/beamformer_weights_{1}.yaml'.format(outdir, fname)
@@ -1558,7 +1559,7 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None, tol=0.3):
         if antenna_flags[i] is not None:
             gains[i, :, antenna_flags[i], ... ] = np.nan
 
-    gains = np.nanmedian(gains, axis=0)
+    gains = np.nanmean(gains, axis=0) #np.nanmedian(gains, axis=0)
     print(gains.shape) # corr, antenna, freq, pol, complex
     fracflagged = np.sum(np.sum(np.sum(
         np.isnan(gains),
@@ -1567,13 +1568,14 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None, tol=0.3):
     antenna_flags_badsolns = fracflagged > tol
     gains[np.isnan(gains)] = 0.
     written_files = []
-    for i, corr in enumerate(corridxs):
-        fnameout = 'beamformer_weights_corr{0:02d}_{1}'.format(
-            corr, ttime.isot
-        )
-        wcorr = gains[i, ...].flatten()
-        wcorr = np.concatenate([eastings, wcorr], axis=0)
-        with open('{0}/{1}.dat'.format(outdir, fnameout), 'wb') as f:
-            f.write(bytes(wcorr))
-        written_files += ['{0}.dat'.format(fnameout)]
+    if eastings is not None:
+        for i, corr in enumerate(corridxs):
+            fnameout = 'beamformer_weights_corr{0:02d}_{1}'.format(
+                corr, ttime.isot
+            )
+            wcorr = gains[i, ...].flatten()
+            wcorr = np.concatenate([eastings, wcorr], axis=0)
+            with open('{0}/{1}.dat'.format(outdir, fnameout), 'wb') as f:
+                f.write(bytes(wcorr))
+            written_files += ['{0}.dat'.format(fnameout)]
     return written_files, antenna_flags_badsolns
