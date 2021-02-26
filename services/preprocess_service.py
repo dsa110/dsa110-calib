@@ -91,7 +91,7 @@ def task_handler(task_fn, inqueue, outqueue=None):
             time.sleep(TSLEEP)
 
 def gather_worker(inqueue, outqueue):
-    # TODO: Replace corr 21 with corr 4
+    # TODO: Look up the corr ids
     """Gather all files that match a filename.
 
     Will wait for a maximum of 15 minutes from the time the first file is
@@ -114,8 +114,8 @@ def gather_worker(inqueue, outqueue):
             fname = inqueue.get()
             corrid = int(fname.split('/')[5].strip('corr'))
             # 21 is currently replacing 4
-            if corrid==21:
-                filelist[4-1] = fname
+            if corrid == 0:
+                filelist[1-1] = fname
             else:
                 filelist[corrid-1] = fname
             nfiles += 1

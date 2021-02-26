@@ -224,7 +224,9 @@ def calibrate_file(etcd_dict):
     if cmd == 'calibrate':
         calname = val['calname']
         flist = val['flist']
-        print('flist[0]: {0}, {1}'.format(flist[0], type(flist[0])))
+        print('flist[0]: {0}, {1}'.format(
+            first_true(flist), type(first_true(flist))
+        ))
         date = first_true(flist).split('/')[-1][:-14]
         msname = '{0}/{1}_{2}'.format(MSDIR, date, calname)
         date_specifier = '{0}*'.format(date)
@@ -347,7 +349,7 @@ def calibrate_file(etcd_dict):
         )
         print('calculating beamformer weights')
         try:
-            applied_delays = extract_applied_delays(flist[0])
+            applied_delays = extract_applied_delays(first_true(flist))
             # Write beamformer solutions for one source
             _ = write_beamformer_solutions(
                 msname,
@@ -420,7 +422,10 @@ def calibrate_file(etcd_dict):
             }
             print('opening yaml file')
             with open(
-                '{0}/beamformer_weights.yaml'.format(BEAMFORMER_DIR), 'w'
+                '{0}/beamformer_weights_{1}.yaml'.format(
+                    BEAMFORMER_DIR, ttime.isot
+                ),
+                'w'
             ) as file:
                 print('writing bf weights')
                 _ = yaml.dump(latest_solns, file)
