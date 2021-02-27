@@ -13,7 +13,7 @@ import pandas
 import scipy # pylint: disable=unused-import
 from casacore.tables import table
 import dsautils.calstatus as cs
-import dsautils.dsa_syslog as dsl
+# import dsautils.dsa_syslog as dsl
 import dsacalib.utils as du
 import dsacalib.ms_io as dmsio
 import dsacalib.fits_io as dfio
@@ -28,9 +28,9 @@ iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
 from astropy.time import Time # pylint: disable=wrong-import-position
 
-LOGGER = dsl.DsaSyslogger()
-LOGGER.subsystem("software")
-LOGGER.app("dsacalib")
+#LOGGER = dsl.DsaSyslogger()
+#LOGGER.subsystem("software")
+#LOGGER.app("dsacalib")
 
 def __init__():
     return
@@ -46,7 +46,7 @@ def _check_path(fname):
     assert os.path.exists(fname), 'File {0} does not exist'.format(fname)
 
 def triple_antenna_cal(
-    obs_params, ant_params, throw_exceptions=True, sefd=False
+    obs_params, ant_params, throw_exceptions=True, sefd=False, logger=None
 ):
     r"""Calibrate visibilities from 3 antennas.
 
@@ -72,6 +72,8 @@ def triple_antenna_cal(
         calibration solutions will be solved against a model of ones. If set to
         ``False``, only 10 minutes will be included in the measurement set and
         the calibration solutison will be solved against a sky model.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
 
     Returns
     -------
@@ -267,12 +269,20 @@ def triple_antenna_cal(
         error = dc.flag_zeros(msname)
         if error > 0:
             status = cs.update(status, ['flagging_err'])
-            LOGGER.info("Non-fatal error in zero flagging")
+            message = "Non-fatal error in zero flagging"
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
         if 8 in antenna_order:
             error = dc.flag_antenna(msname, '8', pol='A')
             if error > 0:
                 status = cs.update(status, ['flagging_err'])
-                LOGGER.info("Non-fatal error in antenna 8 flagging")
+                message = "Non-fatal error in antenna 8 flagging"
+                if logger is not None:
+                    logger.info(message)
+                else:
+                    print(message)
 
         # Antenna-based delay calibration
         calstring = 'delay calibration'
@@ -290,7 +300,11 @@ def triple_antenna_cal(
         error = dc.delay_calibration(msname, cal.name, refant=refant)
         if error > 0:
             status = cs.update(status, ['delay_cal_err'])
-            LOGGER.info('Non-fatal error occured in delay calibration.')
+            message = 'Non-fatal error occured in delay calibration.'
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
         _check_path('{0}_{1}_kcal'.format(msname, cal.name))
 
         calstring = 'flagging of ms data'
@@ -305,12 +319,19 @@ def triple_antenna_cal(
         bad_times, times, error = dc.get_bad_times(msname, cal.name, refant)
         if error > 0:
             status = cs.update(status, ['flagging_err'])
-            LOGGER.info('Non-fatal error occured in calculation of delays on '
-                        'short timescales.')
+            message = 'Non-fatal error occured in calculation of delays on short timescales.'
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
         error = dc.flag_badtimes(msname, times, bad_times, nant)
         if error > 0:
             status = cs.update(status, ['flagging_err'])
-            LOGGER.info('Non-fatal error occured in flagging of bad timebins')
+            message = 'Non-fatal error occured in flagging of bad timebins'
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
         _check_path('{0}_{1}_2kcal'.format(msname, cal.name))
         calstring = 'baseline-based bandpass and gain calibration'
         current_error = (
@@ -333,7 +354,11 @@ def triple_antenna_cal(
         )
         if error > 0:
             status = cs.update(status, ['gain_bp_cal_err'])
-            LOGGER.info('Non-fatal error occured in gain/bandpass calibration.')
+            message = 'Non-fatal error occured in gain/bandpass calibration.'
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
         for fname in [
             '{0}_{1}_bcal'.format(msname, cal.name),
             '{0}_{1}_gpcal'.format(msname, cal.name),
@@ -401,7 +426,7 @@ def triple_antenna_cal(
 
     except Exception as exc:
         status = cs.update(status, current_error)
-        du.exception_logger(LOGGER, calstring, exc, throw_exceptions)
+        du.exception_logger(logger, calstring, exc, throw_exceptions)
         try:
             caltime
         except NameError:
@@ -410,7 +435,7 @@ def triple_antenna_cal(
     return status, caltime
 
 def plot_solutions(
-    msname, calname, figure_path, show_plots=False
+    msname, calname, figure_path, show_plots=False, logger=None
 ):
     r"""Plots the antenna delay, gain and bandpass calibration solutions.
 
@@ -434,6 +459,8 @@ def plot_solutions(
         The location to save the figures.  Defaults ``./figures``.
     show_plots : boolean
         If False, plots are closed after being saved. Defaults False.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
     """
     try:
         _ = dp.plot_antenna_delays(
@@ -443,11 +470,13 @@ def plot_solutions(
             show=show_plots
         )
     except RuntimeError:
-        LOGGER.info(
-            'Plotting antenna delays failed for {0}'.format(
-                msname
-            )
+        message = 'Plotting antenna delays failed for {0}'.format(
+            msname
         )
+        if logger is not None:
+            logger.info(message)
+        else:
+            print(message)
     try:
         _ = dp.plot_gain_calibration(
             msname,
@@ -456,11 +485,13 @@ def plot_solutions(
             show=show_plots
         )
     except RuntimeError:
-        LOGGER.info(
-            'Plotting gain calibration solutions failed for {0}'.format(
-                msname
-            )
+        message = 'Plotting gain calibration solutions failed for {0}'.format(
+            msname
         )
+        if logger is not None:
+            logger.info(message)
+        else:
+            print(message)
     try:
         _ = dp.plot_bandpass(
             msname,
@@ -469,14 +500,17 @@ def plot_solutions(
             show=show_plots
         )
     except RuntimeError:
-        LOGGER.info(
+        message = \
             'Plotting bandpass calibration solutions failed for {0}'.format(
                 msname
-            )
         )
+        if logger is not None:
+            logger.info(message)
+        else:
+            print(message)
 
 def calibration_head(obs_params, ant_params, write_to_etcd=False,
-                     throw_exceptions=None, sefd=False):
+                     throw_exceptions=None, sefd=False, logger=None):
     """Controls calibrtion of a dsa10 or dsa110 dataset.
 
     After calibration, results are writen to etcd.
@@ -501,6 +535,8 @@ def calibration_head(obs_params, ant_params, write_to_etcd=False,
         and 60 minutes will be saved to the measurement set.  If set to
         ``False``, a sky model will be used in calibration and only 10 minutes
         of data is saved to the measurement set.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
 
     Returns
     -------
@@ -509,21 +545,32 @@ def calibration_head(obs_params, ant_params, write_to_etcd=False,
     """
     if throw_exceptions is None:
         throw_exceptions = not write_to_etcd
-    LOGGER.info('Beginning calibration of ms {0}.ms (start time {1}) using '
-                'source {2}'.format(obs_params['msname'],
-                                    obs_params['utc_start'].isot,
-                                    obs_params['cal'].name))
+    message = 'Beginning calibration of ms {0}.ms (start time {1}) using source {2}'.format(
+            obs_params['msname'],
+            obs_params['utc_start'].isot,
+            obs_params['cal'].name
+    )
+    if logger is not None:
+        logger.info(message)
+    else:
+        print(message)
     status, caltime = triple_antenna_cal(obs_params, ant_params,
-                                         throw_exceptions, sefd)
-    LOGGER.info('Ending calibration of ms {0}.ms (start time {1}) using '
-                'source {2} with status {3}'.format(
-                    obs_params['msname'], obs_params['utc_start'].isot,
-                    obs_params['cal'].name, status))
+                                         throw_exceptions, sefd, logger=logger)
+    message = 'Ending calibration of ms {0}.ms (start time {1}) using source {2} with status {3}'.format(
+            obs_params['msname'], obs_params['utc_start'].isot,
+            obs_params['cal'].name, status
+    )
+    if logger is not None:
+        logger.info(message)
+    else:
+        print(message)
     print('Status: {0}'.format(cs.decode(status)))
     print('')
     if write_to_etcd:
-        dmsio.caltable_to_etcd(obs_params['msname'], obs_params['cal'].name,
-                            ant_params['antenna_order'], caltime, status)
+        dmsio.caltable_to_etcd(
+            obs_params['msname'], obs_params['cal'].name,
+            ant_params['antenna_order'], caltime, status, logger=logger
+        )
     return status
 
 def _gauss_offset(xvals, amp, mean, sigma, offset):
@@ -886,14 +933,17 @@ def flag_pixels(msname, thresh=6.0):
 #     (idx1s, idx2s) = np.where(fraction_flagged > 0.3)
 #     for idx1 in idx1s:
 #         for idx2 in idx2s:
-#             LOGGER.info(
-#                 'Baseline {0}-{1} {2}: {3} percent of data flagged'
-#                 .format(
+#             message = \
+#                 'Baseline {0}-{1} {2}: {3} percent of data flagged'.format(
 #                     ant1[idx1],
 #                     ant2[idx1],
 #                     'A' if idx2==1 else 'B',
-#                     fraction_flagged[idx1, idx2]*100)
-#             )
+#                     fraction_flagged[idx1, idx2]*100
+#                 )
+#             if logger is not None:
+#                 logger.info(message)
+#             else:
+#                 print(message)
 
     flags = ~good_pixels
     if flags.shape[0]==vis.shape[1]:
@@ -903,7 +953,7 @@ def flag_pixels(msname, thresh=6.0):
         tb.putcol('FLAG', flags.reshape(shape))
 
 def flag_antennas_using_delays(
-    antenna_delays, kcorr, msname, kcorr_thresh=0.3
+    antenna_delays, kcorr, msname, kcorr_thresh=0.3, logger=None
 ):
     """Flags antennas by comparing the delay on short times to the delay cal.
 
@@ -920,6 +970,8 @@ def flag_antennas_using_delays(
     kcorr_thresh : float
         The tolerance for descrepancies between the antenna_delays and kcorr,
         in nanoseconds.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
     """
     error = 0
     percent_bad = (
@@ -930,16 +982,20 @@ def flag_antennas_using_delays(
             if percent_bad[i, j] > kcorr_thresh:
                 error += not dc.flag_antenna(msname, '{0}'.format(i+1),
                                 pol='A' if j==0 else 'B')
-                LOGGER.info(
-                    'Flagged antenna {0}{1} in {2}'
-                    .format(i+1, 'A' if j==0 else 'B', msname)
+                message = 'Flagged antenna {0}{1} in {2}'.format(
+                    i+1, 'A' if j==0 else 'B', msname
                 )
+                if logger is not None:
+                    logger.info(message)
+                else:
+                    print(message)
     return error
 
 def calibrate_measurement_set(
     msname, cal, refant, throw_exceptions=True, bad_antennas=None,
     bad_uvrange='2~27m', keepdelays=False, forsystemhealth=False,
-    interp_thresh=1.5, interp_polyorder=7, blbased=False, manual_flags=None
+    interp_thresh=1.5, interp_polyorder=7, blbased=False, manual_flags=None,
+    logger=None
 ):
     r"""Calibrates the measurement set.
 
@@ -993,6 +1049,8 @@ def calibrate_measurement_set(
     manual_flags : list(str)
         Include any additional flags to be done prior to calibration, as
         CASA-understood strings.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
 
     Returns
     -------
@@ -1046,36 +1104,40 @@ def calibrate_measurement_set(
         )
         error = dc.flag_baselines(msname, uvrange=bad_uvrange)
         if error > 0:
-            LOGGER.info(
-                'Non-fatal error occured in flagging short baselines of {0}.'
-                .format(msname)
-            )
+            message = 'Non-fatal error occured in flagging short baselines of {0}.'.format(msname)
+            if logger is not None:
+                logger.warning(message)
+            else:
+                print(message)
         print('flagging zeros')
         error = dc.flag_zeros(msname)
         if error > 0:
-            LOGGER.info(
-                'Non-fatal error occured in flagging zeros of {0}.'
-                .format(msname)
-            )
+            message = 'Non-fatal error occured in flagging zeros of {0}.'.format(msname)
+            if logger is not None:
+                logger.warning(message)
+            else:
+                print(message)
         print('flagging antennas')
         if bad_antennas is not None:
             for ant in bad_antennas:
                 error = dc.flag_antenna(msname, ant)
                 if error > 0:
-                    LOGGER.info(
-                        'Non-fatal error occured in flagging ant {0} of {1}.'
-                        .format(ant, msname)
-                    )
+                    message = 'Non-fatal error occured in flagging ant {0} of {1}.'.format(ant, msname)
+                    if logger is not None:
+                        logger.warning(message)
+                    else:
+                        print(message)
         if manual_flags is not None:
             for entry in manual_flags:
                 dc.flag_manual(msname, entry[0], entry[1])
         print('flagging rfi')
         flag_pixels(msname)
         if error > 0:
-            LOGGER.info(
-                'Non-fatal error occured in flagging bad pixels of {0}.'
-                .format(msname)
-            )
+            message = 'Non-fatal error occured in flagging bad pixels of {0}.'.format(msname)
+            if logger is not None:
+                logger.warning(message)
+            else:
+                print(message)
         print('delay cal')
         # Antenna-based delay calibration
         calstring = 'delay calibration'
@@ -1097,10 +1159,11 @@ def calibrate_measurement_set(
         )
         if error > 0:
             status = cs.update(status, cs.DELAY_CAL_ERR )
-            LOGGER.info(
-                'Non-fatal error occured in delay calibration of {0}.'
-                .format(msname)
-            )
+            message = 'Non-fatal error occured in delay calibration of {0}.'.format(msname)
+            if logger is not None:
+                logger.warning(message)
+            else:
+                print(message)
         _check_path('{0}_{1}_kcal'.format(msname, cal.name))
         print('flagging based on delay cal')
         calstring = 'flagging of ms data'
@@ -1118,18 +1181,20 @@ def calibrate_measurement_set(
         error += flag_antennas_using_delays(antenna_delays, kcorr, msname)
         if error > 0:
             status = cs.update(status, cs.FLAGGING_ERR)
-            LOGGER.info(
-                'Non-fatal error occured in flagging of bad timebins on {0}'
-                .format(msname)
-            )
+            message = 'Non-fatal error occured in flagging of bad timebins on {0}'.format(msname)
+            if logger is not None:
+                logger.warning(message)
+            else:
+                print(message)
         try:
             _check_path('{0}_{1}_2kcal'.format(msname, cal.name))
         except AssertionError:
             status = cs.update(status, cs.FLAGGING_ERR)
-            LOGGER.info(
-                'Non-fatal error occured in flagging of bad timebins on {0}'
-                .format(msname)
-            )
+            message = 'Non-fatal error occured in flagging of bad timebins on {0}'.format(msname)
+            if logger is not None:
+                logger.warning(message)
+            else:
+                print(message)
         print('delay cal again')
         # Antenna-based delay calibration
         calstring = 'delay calibration'
@@ -1148,20 +1213,14 @@ def calibrate_measurement_set(
         error = dc.delay_calibration(msname, cal.name, refant=refant)
         if error > 0:
             status = cs.update(status, cs.DELAY_CAL_ERR )
-            LOGGER.info(
-                'Non-fatal error occured in delay calibration of {0}.'
-                .format(msname)
-            )
+            message = 'Non-fatal error occured in delay calibration ' + \
+                'of {0}.'.format(msname)
+            if logger is not None:
+                logger.warning(message)
+            else:
+                print(message)
         _check_path('{0}_{1}_kcal'.format(msname, cal.name))
 
-#         if keepdelays and not forsystemhealth:
-#             # Change to delays of even 2 nanoseconds
-#             with table(
-#                 '{0}_{1}_kcal'.format(msname, cal.name),
-#                 readonly=False
-#             ) as tb:
-#                 fparam = np.array(tb.FPARAM[:])
-#                 tb.putcol('FPARAM', np.round(fparam/2)*2)
         print('bandpass and gain cal')
         calstring = 'bandpass and gain calibration'
         current_error = (
@@ -1185,10 +1244,11 @@ def calibrate_measurement_set(
         )
         if error > 0:
             status = cs.update(status, cs.GAIN_BP_CAL_ERR)
-            LOGGER.info(
-                'Non-fatal error occured in gain/bandpass calibration of {0}.'
-                .format(msname)
-            )
+            if logger is not None:
+                logger.warning(message)
+            else:
+                print(message)
+            message = 'Non-fatal error occured in gain/bandpass calibration of {0}.'.format(msname)
         fnames = [
             '{0}_{1}_bcal'.format(msname, cal.name),
             '{0}_{1}_bacal'.format(msname, cal.name),
@@ -1226,7 +1286,7 @@ def calibrate_measurement_set(
 
     except Exception as exc:
         status = cs.update(status, current_error)
-        du.exception_logger(LOGGER, calstring, exc, throw_exceptions)
+        du.exception_logger(logger, calstring, exc, throw_exceptions)
     print('end of cal routine')
     return status
 

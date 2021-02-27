@@ -8,16 +8,6 @@ import subprocess
 import numpy as np
 import astropy.units as u
 from pyuvdata import UVData
-# import dsautils.dsa_store as ds
-import dsautils.dsa_syslog as dsl
-
-# ETCD interface
-# ETCD = ds.DsaStore()
-
-# Logger
-LOGGER = dsl.DsaSyslogger()
-LOGGER.subsystem("software")
-LOGGER.app("dsacalib")
 
 # parameters for freq scrunching
 NFREQ = 48
@@ -75,23 +65,31 @@ def rsync_file(rsync_string, remove_source_files=True):
         E.g. 'corr06.sas.pvt:/home/ubuntu/data/2020-06-24T12:32:06.hdf5 /mnt/data/dsa110/correlator/corr06/'
     """
     fname, fdir = rsync_string.split(' ')
-    output = subprocess.run(
-        [
-            'rsync',
-            '-avv',
-            '--remove-source-files' if remove_source_files else '',
-            fname,
-            fdir
-        ],
-        check=True,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT
-    )
-    LOGGER.info(
-        'rsync of {0} completed\noutput: {1}'.format(
-            fname, output.stdout
+    if remove_source_files:
+        _output = subprocess.run(
+            [
+                'rsync',
+                '-avv',
+                '--remove-source-files',
+                fname,
+                fdir
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
         )
-    )
+    else:
+        _output = subprocess.run(
+            [
+                'rsync',
+                '-avv',
+                fname,
+                fdir
+            ],
+            check=True,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT
+        )
     fname = fname.split('/')[-1]
     return '{0}{1}'.format(fdir, fname)
 

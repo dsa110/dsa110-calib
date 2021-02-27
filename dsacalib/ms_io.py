@@ -25,7 +25,6 @@ from casatasks import importuvfits, virtualconcat
 from casacore.tables import addImagingColumns, table
 from pyuvdata import UVData
 from dsautils import dsa_store
-import dsautils.dsa_syslog as dsl
 from dsautils import calstatus as cs
 from dsamfs.fringestopping import calc_uvw_blt
 from dsacalib import constants as ct
@@ -38,9 +37,6 @@ iers.conf.auto_max_age = None
 from astropy.time import Time # pylint: disable=wrong-import-position wrong-import-order
 
 de = dsa_store.DsaStore()
-LOGGER = dsl.DsaSyslogger()
-LOGGER.subsystem("software")
-LOGGER.app("dsacalib")
 
 def T3_initialize_ms(paramfile, msname, tstart, sourcename, ra, dec):
     """Initialize a ms to write correlated data from the T3 system to.
@@ -561,7 +557,7 @@ def reshape_calibration_data(vals, flags, ant1, ant2, baseline, time, spw):
     return time, vals, flags, ant1, ant2
 
 def caltable_to_etcd(
-    msname, calname, caltime, status, pols=None
+    msname, calname, caltime, status, pols=None, logger=None
 ):
     r"""Copies calibration values from delay and gain tables to etcd.
 
@@ -586,6 +582,8 @@ def caltable_to_etcd(
     pols : list
         The names of the polarizations. If ``None``, will be set to
         ``['B', 'A']``. Defaults ``None``.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
     """
     if pols is None:
         pols = ['B', 'A']
@@ -648,7 +646,7 @@ def caltable_to_etcd(
             cs.INV_GAINPHASE_P2 |
             cs.INV_GAINCALTIME
         )
-        du.exception_logger(LOGGER, 'caltable_to_etcd', exc, throw=False)
+        du.exception_logger(logger, 'caltable_to_etcd', exc, throw=False)
 
     # Delays for each antenna.
     try:
@@ -681,7 +679,7 @@ def caltable_to_etcd(
             cs.INV_DELAYCALTIME
         )
         antenna_order_delays = np.zeros(0, dtype=np.int)
-        du.exception_logger(LOGGER, 'caltable_to_etcd', exc, throw=False)
+        du.exception_logger(logger, 'caltable_to_etcd', exc, throw=False)
 
     antenna_order = np.unique(
         np.array([antenna_order_amps,
@@ -1172,7 +1170,8 @@ def write_beamformer_solutions(
 
 def convert_calibrator_pass_to_ms(
     cal, date, files, duration, msdir='/mnt/data/dsa110/calibration/',
-    hdf5dir='/mnt/data/dsa110/correlator/'
+    hdf5dir='/mnt/data/dsa110/correlator/',
+    logger=None
 ):
     r"""Converts hdf5 files near a calibrator pass to a CASA ms.
 
@@ -1194,6 +1193,8 @@ def convert_calibrator_pass_to_ms(
     msdir : str
         The full path to the directory to place the measurement set in. The ms
         will be written to `msdir`/`date`\_`cal.name`.ms
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
     """
     msname = '{0}/{1}_{2}'.format(msdir, date, cal.name)
     if len(files) == 1:
@@ -1206,13 +1207,20 @@ def convert_calibrator_pass_to_ms(
                 ra=cal.ra,
                 dec=cal.dec,
                 flux=cal.I,
-                dt=duration
+                dt=duration,
+                logger=logger
             )
-            LOGGER.info('Wrote {0}.ms'.format(msname))
+            message = 'Wrote {0}.ms'.format(msname)
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
         except (ValueError, IndexError):
-            LOGGER.info(
-                'No data for {0} transit on {1}'.format(date, cal.name)
-            )
+            message = 'No data for {0} transit on {1}'.format(date, cal.name)
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
     elif len(files) > 0:
         msnames = []
         for filename in files:
@@ -1230,7 +1238,8 @@ def convert_calibrator_pass_to_ms(
                     ra=cal.ra,
                     dec=cal.dec,
                     flux=cal.I,
-                    dt=duration
+                    dt=duration,
+                    logger=logger
                 )
                 msnames += ['{0}/{1}'.format(msdir, filename)]
             except (ValueError, IndexError):
@@ -1247,19 +1256,33 @@ def convert_calibrator_pass_to_ms(
             virtualconcat(
                 ['{0}.ms'.format(msn) for msn in msnames],
                 '{0}.ms'.format(msname))
-            LOGGER.info('Wrote {0}.ms'.format(msname))
+            message = 'Wrote {0}.ms'.format(msname)
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
         elif len(msnames) == 1:
             os.rename('{0}.ms'.format(msnames[0]), '{0}.ms'.format(msname))
-            LOGGER.info('Wrote {0}.ms'.format(msname))
+            message = 'Wrote {0}.ms'.format(msname)
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
         else:
-            LOGGER.info(
-                'No data for {0} transit on {1}'.format(date, cal.name)
-            )
+            message = 'No data for {0} transit on {1}'.format(date, cal.name)
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
     else:
-        LOGGER.info('No data for {0} transit on {1}'.format(date, cal.name))
+        message = 'No data for {0} transit on {1}'.format(date, cal.name)
+        if logger is not None:
+            logger.info(message)
+        else:
+            print(message)
 
 def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
-               flux=None):
+               flux=None, logger=None):
     """
     Converts a uvh5 data to a uvfits file.
 
@@ -1285,6 +1308,8 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         the primary beam response to the calibrator source to the model column
         of the ms. If not included, a model of a constant response over
         frequency and time will be written instead of the primary beam model.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
     """
     print(fname)
     # zenith_dec = 0.6503903199825691*u.rad
@@ -1314,14 +1339,16 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     # are being converted to ICRS
     df_itrf = get_itrf(height=UV.telescope_location_lat_lon_alt[-1])
     if len(df_itrf['x_m']) != UV.antenna_positions.shape[0]:
-        LOGGER.info(
-            'Mismatch between antennas in current environment ({0}) '
-            'and correlator environment ({1}) for file {2}'.format(
-                len(df_itrf['x_m']),
-                UV.antenna_positions.shape[0],
-                fname
-            )
-        )
+        message = 'Mismatch between antennas in current environment ({0}) ' + \
+                  'and correlator environment ({1}) for file {2}'.format(
+                        len(df_itrf['x_m']),
+                        UV.antenna_positions.shape[0],
+                        fname
+                  )
+        if logger is not None:
+            logger.info(message)
+        else:
+            print(message)
     UV.antenna_positions[:len(df_itrf['x_m'])] = np.array([
         df_itrf['x_m'],
         df_itrf['y_m'],
@@ -1476,7 +1503,9 @@ def extract_times(UV, ra, dt):
     assert UV.data_array.shape[0]==UV.Nblts
     UV.Ntimes = UV.Nblts//UV.Nbls
 
-def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None, tol=0.3):
+def average_beamformer_solutions(
+    fnames, ttime, outdir, corridxs=None, tol=0.3, logger=None
+):
     """Averages written beamformer solutions.
 
     Parameters
@@ -1492,6 +1521,8 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None, tol=0.3):
     corridxs : list
         The correlator nodes for which to average beamformer solutions.
         Defaults to 1 through 16 inclusive.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
 
     Returns
     -------
@@ -1549,13 +1580,17 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None, tol=0.3):
                     eastings = data[:64]
                     gains[i, j, ...] = data[64:].reshape(gainshape)
             else:
-                LOGGER.info(
+                message = \
                     '{0} not found during beamformer weight averaging'.format(
-                    '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
-                    outdir,
-                    corr,
-                    fname
-                )))
+                        '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
+                        outdir,
+                        corr,
+                        fname
+                    ))
+                if logger is not None:
+                    logger.info(message)
+                else:
+                    print(message)
         if antenna_flags[i] is not None:
             gains[i, :, antenna_flags[i], ... ] = np.nan
 

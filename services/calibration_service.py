@@ -3,28 +3,28 @@
 
 import os
 import warnings
-# make sure warnings do not spam syslog
-warnings.filterwarnings("ignore")
-import datetime # pylint: disable=wrong-import-position
-import time # pylint: disable=wrong-import-position
-import yaml # pylint: disable=wrong-import-position
-import h5py # pylint: disable=wrong-import-position
-import matplotlib # pylint: disable=wrong-import-position
+import datetime
+import time
+import yaml
+import h5py
+import matplotlib
 matplotlib.use('Agg')
-import matplotlib.pyplot as plt # pylint: disable=wrong-import-position
-from matplotlib.backends.backend_pdf import PdfPages # pylint: disable=wrong-import-position
-from pkg_resources import resource_filename # pylint: disable=wrong-import-position
-import numpy as np # pylint: disable=wrong-import-position
-import astropy.units as u # pylint: disable=wrong-import-position
-from astropy.time import Time # pylint: disable=wrong-import-position
-import dsautils.dsa_store as ds # pylint: disable=wrong-import-position
-import dsautils.dsa_syslog as dsl # pylint: disable=wrong-import-position
-from dsacalib.preprocess import first_true # pylint: disable=wrong-import-position
-from dsacalib.utils import exception_logger # pylint: disable=wrong-import-position
-from dsacalib.calib import calibrate_phases # pylint: disable=wrong-import-position
-from dsacalib.routines import get_files_for_cal, calibrate_measurement_set # pylint: disable=wrong-import-position
-from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd, write_beamformer_solutions, average_beamformer_solutions # pylint: disable=wrong-import-position
-from dsacalib.plotting import summary_plot, plot_current_beamformer_solutions, plot_bandpass_phases, plot_beamformer_weights # pylint: disable=wrong-import-position
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+from pkg_resources import resource_filename
+import numpy as np
+import astropy.units as u
+from astropy.time import Time
+import dsautils.dsa_store as ds
+import dsautils.dsa_syslog as dsl
+import dsautils.cnf as dsc
+from dsacalib.preprocess import first_true
+from dsacalib.utils import exception_logger
+from dsacalib.calib import calibrate_phases
+from dsacalib.routines import get_files_for_cal, calibrate_measurement_set
+from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd, write_beamformer_solutions, average_beamformer_solutions 
+from dsacalib.plotting import summary_plot, plot_current_beamformer_solutions, plot_bandpass_phases, plot_beamformer_weights 
+warnings.filterwarnings("ignore")
 
 # Logger
 LOGGER = dsl.DsaSyslogger()
@@ -34,19 +34,17 @@ LOGGER.app("dsacalib")
 # ETCD interface
 ETCD = ds.DsaStore()
 
+CONF = dsc.Conf()
+PARAMS = CONF.get('corr')
+
 # These should be put somewhere else eventually
 CALTIME = 15*u.min
 REFANT = '102'
-REFCORR = '03'
 FILELENGTH = 15*u.min
 MSDIR = '/mnt/data/dsa110/calibration/'
 BEAMFORMER_DIR = '/home/user/beamformer_weights/'
 # This should be made more general for more antennas
-ANTENNAS_PLOT = np.array(
-    [24, 25, 26, 27, 28, 29, 30, 31, 32,
-     33, 34, 35, 20, 19, 18, 17, 16, 15,
-     14, 13, 100, 101, 102, 116, 103]
-)
+ANTENNAS_PLOT = np.array(list(PARAMS['antenna_order'].values()))
 ANTENNAS = np.concatenate((
     ANTENNAS_PLOT,
     np.arange(36, 36+39)
@@ -55,6 +53,9 @@ POLS = ['B', 'A']
 ANTENNAS_NOT_IN_BF = ['103 A', '103 B', '101 A', '101 B', '100 A', '100 B',
                       '116 A', '116 B', '102 A', '102 B']
 CALTABLE = resource_filename('dsacalib', 'data/calibrator_sources.csv')
+CORR_LIST = list(PARAMS['ch0'].keys())
+CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
+REFCORR = '{0:02d}'.format(CORR_LIST[0])
 
 def sort_filenames(filenames):
     """Sort list of calibrator passes.
@@ -263,7 +264,8 @@ def calibrate_file(etcd_dict):
             cal=filenames[date][calname]['cal'],
             date=date,
             files=filenames[date][calname]['files'],
-            duration=CALTIME
+            duration=CALTIME,
+            logger=LOGGER
         )
         print('done writing ms')
         LOGGER.info('{0}.ms created'.format(msname))
@@ -275,14 +277,16 @@ def calibrate_file(etcd_dict):
             bad_antennas=None,
             bad_uvrange='2~27m',
             forsystemhealth=True,
-            throw_exceptions=True
+            throw_exceptions=True,
+            logger=LOGGER
         )
         print('done calibration')
         caltable_to_etcd(
             msname,
             calname,
             filenames[date][calname]['transit_time'].mjd,
-            status
+            status,
+            logger=LOGGER
         )
 
         ETCD.put_dict(
@@ -320,8 +324,7 @@ def calibrate_file(etcd_dict):
 #                 calname,
 #                 date,
 #                 # beamformer name,
-#                 corrlist=[1, 2, 3, 4, 5, 6, 7, 8, 9, 10,
-#                           11, 12, 13, 14, 15, 16],
+#                 corrlist=CORR_LIST,
 #                 outname=figure_path,
 #                 show=False
 #             )
@@ -341,7 +344,8 @@ def calibrate_file(etcd_dict):
             bad_uvrange='2~27m',
             keepdelays=False,
             forsystemhealth=False,
-            throw_exceptions=False
+            throw_exceptions=False,
+            logger=LOGGER
         )
         LOGGER.info(
             'Calibrated {0}.ms for beamformer weights with status {1}'
@@ -359,7 +363,7 @@ def calibrate_file(etcd_dict):
                 applied_delays,
                 flagged_antennas=ANTENNAS_NOT_IN_BF,
                 outdir=BEAMFORMER_DIR,
-                corr_list=np.array([ 0,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16])
+                corr_list=np.array(CORR_LIST)
             )
         except Exception as exc:
             exception_logger(
@@ -374,15 +378,6 @@ def calibrate_file(etcd_dict):
         beamformer_names, latest_solns = find_bf_solns_to_avg(
             filenames, ttime, start_time
         )
-        # For now, don't use averaging
-        if latest_solns is not None:
-            ETCD.put_dict(
-                '/cmd/corr/1/bf',
-                {
-                    'cmd': 'update_weights',
-                    'val': latest_solns['cal_solutions']
-                }
-            )
         # Average beamformer solutions
         if len(beamformer_names) > 0:
             print('averaging beamformer weights')
@@ -390,7 +385,8 @@ def calibrate_file(etcd_dict):
                 beamformer_names,
                 ttime,
                 outdir=BEAMFORMER_DIR,
-                corridxs=[0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
+                corridxs=CORR_LIST,
+                logger=LOGGER
             )
             print('setting parameters for new yaml file')
             # Make the final yaml file
@@ -429,14 +425,18 @@ def calibrate_file(etcd_dict):
             ) as file:
                 print('writing bf weights')
                 _ = yaml.dump(latest_solns, file)
-# TODO: make sure these are looking good and then switch to averaging
-#             ETCD.put_dict(
-#                 '/cmd/corr/1/bf',
-#                 {
-#                     'cmd': 'update_weights',
-#                     'val': latest_solns['cal_solutions']
-#                 }
-#             )
+            # Get rid of things that don't need to be stored in etcd
+            latest_solns['cal_solutions'].pop('antenna_order')
+            latest_solns['cal_solutions'].pop('pol_order')
+            latest_solns['cal_solutions'].pop('corr_order')
+            latest_solns['cal_solutions']['time'] = ttime.mjd
+            ETCD.put_dict(
+                '/cmd/corr/1/bf',
+                {
+                    'cmd': 'update_weights',
+                    'val': latest_solns['cal_solutions']
+                }
+            )
             print('done writing')
             os.system(
                 "cd {0} ; "
@@ -452,7 +452,7 @@ def calibrate_file(etcd_dict):
                 beamformer_names,
                 antennas_to_plot=ANTENNAS_PLOT,
                 outname='{0}/figures/{1}'.format(MSDIR, ttime),
-                corrlist=np.array([ 0,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15, 16])
+                corrlist=np.array(CORR_LIST)
             )
         # Plot evolution of the phase over the day
         calibrate_phases(filenames, REFANT)

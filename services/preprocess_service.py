@@ -262,7 +262,7 @@ if __name__=="__main__":
                 args=(
                     processes[name]['task_fn'],
                     processes[name]['queue'],
-                    processes[name]['outqueue']
+                    processes[name]['outqueue'],
                 ),
                 daemon=True
             )]
