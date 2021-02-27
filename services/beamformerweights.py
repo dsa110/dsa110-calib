@@ -10,6 +10,7 @@ import numpy as np
 from astropy.time import Time
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
+import dsautils.cnf as dsc
 from dsacalib.preprocess import rsync_file
 warnings.filterwarnings("ignore")
 
@@ -21,15 +22,24 @@ LOGGER.app("dsacalib")
 # ETCD interface
 ETCD = ds.DsaStore()
 
+CONF = dsc.Conf()
+PARAMS = CONF.get('corr')
+
+ANTENNAS_PLOT = np.array(list(PARAMS['antenna_order'].values()))
+ANTENNAS = list(np.concatenate((
+    ANTENNAS_PLOT,
+    np.arange(36, 36+39))
+))
+
 BFDIR = '/home/user/beamformer_weights/'
 WEIGHTFILE = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out'
 FLAGFILE = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/flagants.dat'
-BFARCHIVEDIR = '/mnt/data/dsa110/T3/calib/'
+BFARCHIVEDIR = '/mnt/data/dsa110/T3/calibs/'
 
 def update_beamformer_weights(etcd_dict):
     """Updates beamformer weights and antenna flags on core machines.
 
-    Also archives the beamformer weights in /mnt/data/dsa110/T3/calib/
+    Also archives the beamformer weights in /mnt/data/dsa110/T3/calibs/
     """
     cmd = etcd_dict['cmd']
     val = etcd_dict['val']
@@ -37,10 +47,10 @@ def update_beamformer_weights(etcd_dict):
     if cmd == 'update_weights':
         bfsolns = val
         # Put antenna flags in the way needed by the bf
-        antenna_flags = np.zeros((len(bfsolns['antenna_order'])), np.int)
+        antenna_flags = np.zeros((len(ANTENNAS)), np.int)
         for key in bfsolns['flagged_antennas']:
             antenna_flags[
-                bfsolns['antenna_order'].index(int(key.split(' ')[0]))
+               ANTENNAS.index(int(key.split(' ')[0]))
             ] = 1
         antenna_flags = np.where(antenna_flags)[0]
         with open('antenna_flags.txt', 'w') as f:
@@ -51,7 +61,7 @@ def update_beamformer_weights(etcd_dict):
         with open(
             '{0}/beamformer_weights_{1}.yaml'.format(BFARCHIVEDIR, tstamp.isot), 'w'
         ) as file:
-            _ = yaml.dump(latest_solns, file)
+            _ = yaml.dump(bfsolns, file)
         for i, corr in enumerate(bfsolns['corr']):
             fname = '{0}/{1}'.format(
                 BFDIR,
@@ -70,8 +80,14 @@ def update_beamformer_weights(etcd_dict):
                 corr,
                 FLAGFILE
             )
-            rsync_file('{0} {1}'.format(fname, fnameout))
-            rsync_file('antenna_flags.txt {0}'.format(flagsout))
+            rsync_file(
+                '{0} {1}'.format(fname, fnameout),
+                remove_source_files=False
+            )
+            rsync_file(
+                'antenna_flags.txt {0}'.format(flagsout),
+                remove_source_files=False
+            )
             shutil.copyfile(fname, fnamearchive)
         LOGGER.info(
             'Updated beamformer weights using {0}'.format(
