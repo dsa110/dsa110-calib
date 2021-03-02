@@ -76,7 +76,7 @@ def test_simulate_ms(tmpdir):
         fobs_out = np.array(tb.CHAN_FREQ[:])
     tobs = tobs.reshape(-1, 6)
     assert np.all(np.abs(tobs[0, :]-tobs[0, 0]) < 1e-15)
-    assert np.abs(tobs[0, 0]-(tstart.mjd+0.000032768*ntint/2/constants.SECONDS_PER_DAY)) < 1e-11
+    assert np.abs(tobs[0, 0]-(tstart.mjd+0.000032768*ntint/2/constants.SECONDS_PER_DAY)) < 1e-10
     assert tobs.shape[0] == 122880//ntint
     assert fobs_out.shape == (1, 6144//nfint)
     assert np.all(np.abs(np.diff(fobs_out)-(-0.030517578125*nfint*1e6)) < 1e-15)
