@@ -24,6 +24,10 @@ ETCD = ds.DsaStore()
 
 CONF = dsc.Conf()
 PARAMS = CONF.get('corr')
+CORR_LIST = list(PARAMS['ch0'].keys())
+CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
+
+
 
 ANTENNAS_PLOT = np.array(list(PARAMS['antenna_order'].values()))
 ANTENNAS = list(np.concatenate((
@@ -62,7 +66,7 @@ def update_beamformer_weights(etcd_dict):
             '{0}/beamformer_weights_{1}.yaml'.format(BFARCHIVEDIR, tstamp.isot), 'w'
         ) as file:
             _ = yaml.dump(bfsolns, file)
-        for i, corr in enumerate(bfsolns['corr']):
+        for i, corr in enumerate(CORR_LIST):
             fname = '{0}/{1}'.format(
                 BFDIR,
                 bfsolns['weight_files'][i]

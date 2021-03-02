@@ -21,7 +21,7 @@ LOGGER.app("dsacalib")
 # ETCD interface
 ETCD = ds.DsaStore()
 
-DATE_STR = '26feb21'
+DATE_STR = '28feb21'
 VOLTAGE_DIR = '/mnt/data/dsa110/T3/'
 CORR_LIST = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 RSYNC_Q = Queue()
@@ -63,7 +63,7 @@ def rsync_handler(inqueue):
 def populate_queue(etcd_dict):
     """Copies voltage triggers from corr machines.
     """
-    time.sleep(60) # Allow correlator voltage service to create metadata
+    time.sleep(5*60) # Allow correlator voltage service to create metadata
     for specnum in etcd_dict.keys():
         specnum = (int(specnum)-477)*16
         for corr in PARAMS['ch0'].keys():

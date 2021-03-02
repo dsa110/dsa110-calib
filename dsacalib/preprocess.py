@@ -66,7 +66,7 @@ def rsync_file(rsync_string, remove_source_files=True):
     """
     fname, fdir = rsync_string.split(' ')
     if remove_source_files:
-        _output = subprocess.run(
+        output = subprocess.run(
             [
                 'rsync',
                 '-avv',
@@ -74,23 +74,25 @@ def rsync_file(rsync_string, remove_source_files=True):
                 fname,
                 fdir
             ],
-            check=True,
+            #check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT
         )
     else:
-        _output = subprocess.run(
+        output = subprocess.run(
             [
                 'rsync',
                 '-avv',
                 fname,
                 fdir
             ],
-            check=True,
+            #check=True,
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT
         )
     fname = fname.split('/')[-1]
+    if output.returncode != 0:
+        print(output)
     return '{0}{1}'.format(fdir, fname)
 
 def fscrunch_file(fname):
