@@ -1244,11 +1244,11 @@ def calibrate_measurement_set(
         )
         if error > 0:
             status = cs.update(status, cs.GAIN_BP_CAL_ERR)
+            message = 'Non-fatal error occured in gain/bandpass calibration of {0}.'.format(msname)
             if logger is not None:
                 logger.warning(message)
             else:
                 print(message)
-            message = 'Non-fatal error occured in gain/bandpass calibration of {0}.'.format(msname)
         fnames = [
             '{0}_{1}_bcal'.format(msname, cal.name),
             '{0}_{1}_bacal'.format(msname, cal.name),
