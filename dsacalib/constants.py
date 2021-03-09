@@ -19,11 +19,13 @@ DEG_PER_HOUR = 360/SECONDS_PER_SIDEREAL_DAY*3600
 
 # Time between time the packet says as start and first
 # sample recorded - used only for dsa-10 correlator
+# Not in use for DSA-110
 TIME_OFFSET = 4.294967296
 CASA_TIME_OFFSET = 0.00042824074625968933 # in days
 
 # The integration time of the visibilities in seconds
 # used only for dsa-10 correlator
+# Not in use for DSA-110
 TSAMP = 8.192e-6*128*384
 
 # The longitude and latitude of the OVRO site
@@ -41,6 +43,7 @@ C_GHZ_M = c.c.to_value(u.GHz*u.m)
 # when writing to a CASA ms
 # Currently integrating for 10-s
 # When commissioning DSA-110, want 1-s integrations
+# Not in use for DSA-110
 NINT = int(np.floor(10/TSAMP))
 
 # Default sky model parameters
