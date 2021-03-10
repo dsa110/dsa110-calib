@@ -13,7 +13,6 @@ import pandas
 import scipy # pylint: disable=unused-import
 from casacore.tables import table
 import dsautils.calstatus as cs
-# import dsautils.dsa_syslog as dsl
 import dsacalib.utils as du
 import dsacalib.ms_io as dmsio
 import dsacalib.fits_io as dfio
@@ -27,10 +26,6 @@ from astropy.utils import iers # pylint: disable=wrong-import-order
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
 from astropy.time import Time # pylint: disable=wrong-import-position
-
-#LOGGER = dsl.DsaSyslogger()
-#LOGGER.subsystem("software")
-#LOGGER.app("dsacalib")
 
 def __init__():
     return
