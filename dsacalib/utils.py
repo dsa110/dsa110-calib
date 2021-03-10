@@ -36,10 +36,15 @@ def exception_logger(logger, task, exception, throw):
         If set to True, the exception is raised after the traceback is written
         to syslogs.
     """
-    logger.error(
-        'During {0}, {1} occurred:\n{2}'.format(
-            task, type(exception).__name__, ''.join(
-                traceback.format_tb(exception.__traceback__))))
+    error_string = 'During {0}, {1} occurred:\n{2}'.format(
+        task, type(exception).__name__, ''.join(
+            traceback.format_tb(exception.__traceback__)
+        )
+    )
+    if logger is not None:
+        logger.error(error_string)
+    else:
+        print(error_string)
     if throw:
         raise exception
 

@@ -25,7 +25,6 @@ from casatasks import importuvfits, virtualconcat
 from casacore.tables import addImagingColumns, table
 from pyuvdata import UVData
 from dsautils import dsa_store
-import dsautils.dsa_syslog as dsl
 from dsautils import calstatus as cs
 from dsamfs.fringestopping import calc_uvw_blt
 from dsacalib import constants as ct
@@ -38,9 +37,6 @@ iers.conf.auto_max_age = None
 from astropy.time import Time # pylint: disable=wrong-import-position wrong-import-order
 
 de = dsa_store.DsaStore()
-LOGGER = dsl.DsaSyslogger()
-LOGGER.subsystem("software")
-LOGGER.app("dsacalib")
 
 def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
                 freq, deltafreq, freqresolution, nchannels, integrationtime,
@@ -531,7 +527,7 @@ def reshape_calibration_data(
     return time, vals, flags, ant1, ant2, spw, orig_shape
 
 def caltable_to_etcd(
-    msname, calname, caltime, status, pols=None
+    msname, calname, caltime, status, pols=None, logger=None
 ):
     r"""Copies calibration values from delay and gain tables to etcd.
 
@@ -556,6 +552,8 @@ def caltable_to_etcd(
     pols : list
         The names of the polarizations. If ``None``, will be set to
         ``['B', 'A']``. Defaults ``None``.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
     """
     if pols is None:
         pols = ['B', 'A']
@@ -618,7 +616,7 @@ def caltable_to_etcd(
             cs.INV_GAINPHASE_P2 |
             cs.INV_GAINCALTIME
         )
-        du.exception_logger(LOGGER, 'caltable_to_etcd', exc, throw=False)
+        du.exception_logger(logger, 'caltable_to_etcd', exc, throw=False)
 
     # Delays for each antenna.
     try:
@@ -651,7 +649,7 @@ def caltable_to_etcd(
             cs.INV_DELAYCALTIME
         )
         antenna_order_delays = np.zeros(0, dtype=np.int)
-        du.exception_logger(LOGGER, 'caltable_to_etcd', exc, throw=False)
+        du.exception_logger(logger, 'caltable_to_etcd', exc, throw=False)
 
     antenna_order = np.unique(
         np.array([antenna_order_amps,
@@ -796,7 +794,7 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
     return antennas, antenna_gains
 
 def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
-                             corr_list, antenna_flags):
+                             corr_list, antenna_flags, tol=0.3):
     """Writes weights for the beamformer.
 
     Parameters
@@ -818,6 +816,10 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
         data.
     antenna_flags : ndarray(bool)
         Dimensions (antennas, pols). True where flagged, False otherwise.
+    tol : float
+        The fraction of data for a single antenna/pol flagged that the
+        can be flagged in the beamformer. If more data than this is flagged as
+        having bad solutions, the entire antenna/pol pair is flagged.
 
     Returns
     -------
@@ -945,16 +947,22 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
 #                             kind='nearest'
 #                         )
 #                         weights[i, j, idx, k] = fr(idx) + 1j*fi(idx)
+#     weights[np.isnan(weights)] = 0.
+    fracflagged = np.sum(np.sum(np.isnan(weights), axis=2), axis=0)\
+        /(weights.shape[0]*weights.shape[2])
+    antenna_flags_badsolns = fracflagged > tol
     weights[np.isnan(weights)] = 0.
-    # Divide by the first antenna
-    print(weights.shape)
-    weights = weights/weights[:, 0, ..., 0][:, np.newaxis, :, np.newaxis]
-    weights[np.isnan(weights)] = 0.
-    # Flag bad antennas
-    flags = np.tile(antenna_flags[ np.newaxis, :, np.newaxis, :],
-                    (ncorr, 1, 48, 1))
 
-    weights[flags] = 0.
+    # Divide by the first non-flagged antenna
+    idx0, idx1 = np.nonzero(
+        np.logical_not(
+            antenna_flags + antenna_flags_badsolns
+        )
+    )
+    weights = (
+        weights/weights[:, idx0[0], ..., idx1[0]][:, np.newaxis, :, np.newaxis]
+    )
+    weights[np.isnan(weights)] = 0.
 
     filenames = []
     for i, corr_idx in enumerate(corr_list):
@@ -971,7 +979,7 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
         with open('{0}/{1}.dat'.format(outdir, fname), 'wb') as f:
             f.write(bytes(wcorr))
         filenames += ['{0}.dat'.format(fname)]
-    return corr_list, bu, fweights, filenames
+    return corr_list, bu, fweights, filenames, antenna_flags_badsolns
 
 def get_delays(antennas, msname, calname, applied_delays):
     r"""Returns the delays to be set in the correlator.
@@ -1002,24 +1010,27 @@ def get_delays(antennas, msname, calname, applied_delays):
     delays, _time, flags, ant1, _ant2 = read_caltable(
         '{0}_{1}_kcal'.format(msname, calname)
     )
+    delays = delays.squeeze()
+    flags = flags.squeeze()
     print('delays: {0}'.format(delays.shape))
-    delays[flags] = np.nan
+    # delays[flags] = np.nan
     ant1 = list(ant1)
     idx = [ant1.index(ant-1) for ant in antennas]
     delays = delays[idx]
-    delays = delays.squeeze() + applied_delays
+    flags = flags[idx]
+    delays = delays + applied_delays
     delays = delays - np.nanmin(delays)
-
     delays = (np.rint(delays/2)*2)
-    flags = np.isnan(delays)
-    delays[flags] = 0
+    # delays[flags] = 0
     return delays.astype(np.int), flags
 
 def write_beamformer_solutions(
     msname, calname, caltime, antennas, applied_delays,
     corr_list=np.arange(1, 17),
     outdir='/home/user/beamformer_weights/',
-    flagged_antennas=None):
+    flagged_antennas=None,
+    pols=None
+):
     """Writes beamformer solutions to disk.
 
     Parameters
@@ -1044,10 +1055,12 @@ def write_beamformer_solutions(
         bandwidth of each correlator is pulled from dsa110-meridian-fs package
         data.
     flagged_antennas : list
-        A list of antennas to flag in the beamformer solutions. These antennas
-        will be given beamformer weights of 0, and delays of 0.
+        A list of antennas to flag in the beamformer solutions. Should include
+        polarizations. e.g. ['24 B', '32 A']
     outdir : str
         The directory to write the beamformer weights in.
+    pols : list
+        The order of the polarizations.
 
     Returns
     -------
@@ -1055,11 +1068,16 @@ def write_beamformer_solutions(
         Dimensions (antennas, pols). True where the data is flagged, and should
         not be used. Compiled from the ms flags as well as `flagged_antennas`.
     """
+    if pols is None:
+        pols = ['B', 'A']
+    beamformer_flags = {}
     delays, flags = get_delays(antennas, msname, calname, applied_delays)
+    print('delay flags:', flags.shape)
     if flagged_antennas is not None:
-        for ant in flagged_antennas:
-            delays[antennas==ant, ...] = 0
-            flags[antennas==ant, ...] = 1
+        for item in flagged_antennas:
+            ant, pol = item.split(' ')
+            flags[antennas==ant, pols==pol] = 1
+            beamformer_flags['{0} {1}'.format(ant, pol)] = ['flagged by user']
     delays = delays-np.min(delays[~flags])
     while not np.all(delays[~flags] < 1024):
         if np.sum(delays[~flags] > 1024) < np.nansum(delays[~flags] < 1024):
@@ -1067,20 +1085,24 @@ def write_beamformer_solutions(
         else:
             argflag = np.argmin(delays[~flags])
         argflag = np.where(~flags.flatten())[0][argflag]
+        flag_idxs = np.unravel_index(argflag, flags.shape)
         flags[np.unravel_index(argflag, flags.shape)] = 1
+        key = '{0} {1}'.format(antennas[flag_idxs[0]], pols[flag_idxs[1]])
+        if key not in beamformer_flags.keys():
+            beamformer_flags[key] = []
+        beamformer_flags[key] += ['delay exceeds snap capabilities']
         delays = delays-np.min(delays[~flags])
-    delays[flags] = 0
 
     caltime.precision = 0
-    corr_list, eastings, _fobs, weights_files = write_beamformer_weights(
-        msname,
-        calname,
-        caltime,
-        antennas,
-        outdir,
-        corr_list,
-        flags
-    )
+    corr_list, eastings, _fobs, weights_files, flags_badsolns = \
+        write_beamformer_weights(msname, calname, caltime, antennas, outdir,
+        corr_list, flags)
+    idxant, idxpol = np.nonzero(flags_badsolns)
+    for i, ant in enumerate(idxant):
+        key = '{0} {1}'.format(antennas[ant], pols[idxpol[i]])
+        if key not in beamformer_flags.keys():
+            beamformer_flags[key] = []
+        beamformer_flags[key] += ['casa solutions flagged']
 
     calibration_dictionary = {
         'cal_solutions':
@@ -1101,6 +1123,7 @@ def write_beamformer_solutions(
             'weights_axis1': 'frequency',
             'weights_axis2': 'pol',
             'weight_files': weights_files,
+            'flagged_antennas': beamformer_flags
         }
     }
 
@@ -1117,7 +1140,8 @@ def write_beamformer_solutions(
 
 def convert_calibrator_pass_to_ms(
     cal, date, files, duration, msdir='/mnt/data/dsa110/calibration/',
-    hdf5dir='/mnt/data/dsa110/correlator/'
+    hdf5dir='/mnt/data/dsa110/correlator/',
+    logger=None
 ):
     r"""Converts hdf5 files near a calibrator pass to a CASA ms.
 
@@ -1139,6 +1163,8 @@ def convert_calibrator_pass_to_ms(
     msdir : str
         The full path to the directory to place the measurement set in. The ms
         will be written to `msdir`/`date`\_`cal.name`.ms
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
     """
     msname = '{0}/{1}_{2}'.format(msdir, date, cal.name)
     if len(files) == 1:
@@ -1151,13 +1177,20 @@ def convert_calibrator_pass_to_ms(
                 ra=cal.ra,
                 dec=cal.dec,
                 flux=cal.I,
-                dt=duration
+                dt=duration,
+                logger=logger
             )
-            LOGGER.info('Wrote {0}.ms'.format(msname))
+            message = 'Wrote {0}.ms'.format(msname)
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
         except (ValueError, IndexError):
-            LOGGER.info(
-                'No data for {0} transit on {1}'.format(date, cal.name)
-            )
+            message = 'No data for {0} transit on {1}'.format(date, cal.name)
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
     elif len(files) > 0:
         msnames = []
         for filename in files:
@@ -1175,7 +1208,8 @@ def convert_calibrator_pass_to_ms(
                     ra=cal.ra,
                     dec=cal.dec,
                     flux=cal.I,
-                    dt=duration
+                    dt=duration,
+                    logger=logger
                 )
                 msnames += ['{0}/{1}'.format(msdir, filename)]
             except (ValueError, IndexError):
@@ -1192,19 +1226,33 @@ def convert_calibrator_pass_to_ms(
             virtualconcat(
                 ['{0}.ms'.format(msn) for msn in msnames],
                 '{0}.ms'.format(msname))
-            LOGGER.info('Wrote {0}.ms'.format(msname))
+            message = 'Wrote {0}.ms'.format(msname)
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
         elif len(msnames) == 1:
             os.rename('{0}.ms'.format(msnames[0]), '{0}.ms'.format(msname))
-            LOGGER.info('Wrote {0}.ms'.format(msname))
+            message = 'Wrote {0}.ms'.format(msname)
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
         else:
-            LOGGER.info(
-                'No data for {0} transit on {1}'.format(date, cal.name)
-            )
+            message = 'No data for {0} transit on {1}'.format(date, cal.name)
+            if logger is not None:
+                logger.info(message)
+            else:
+                print(message)
     else:
-        LOGGER.info('No data for {0} transit on {1}'.format(date, cal.name))
+        message = 'No data for {0} transit on {1}'.format(date, cal.name)
+        if logger is not None:
+            logger.info(message)
+        else:
+            print(message)
 
 def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
-               flux=None):
+               flux=None, logger=None):
     """
     Converts a uvh5 data to a uvfits file.
 
@@ -1230,6 +1278,8 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         the primary beam response to the calibrator source to the model column
         of the ms. If not included, a model of a constant response over
         frequency and time will be written instead of the primary beam model.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
     """
     print(fname)
     # zenith_dec = 0.6503903199825691*u.rad
@@ -1259,14 +1309,16 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     # are being converted to ICRS
     df_itrf = get_itrf(height=UV.telescope_location_lat_lon_alt[-1])
     if len(df_itrf['x_m']) != UV.antenna_positions.shape[0]:
-        LOGGER.info(
-            'Mismatch between antennas in current environment ({0}) '
-            'and correlator environment ({1}) for file {2}'.format(
-                len(df_itrf['x_m']),
-                UV.antenna_positions.shape[0],
-                fname
-            )
-        )
+        message = 'Mismatch between antennas in current environment ({0}) ' + \
+                  'and correlator environment ({1}) for file {2}'.format(
+                        len(df_itrf['x_m']),
+                        UV.antenna_positions.shape[0],
+                        fname
+                  )
+        if logger is not None:
+            logger.info(message)
+        else:
+            print(message)
     UV.antenna_positions[:len(df_itrf['x_m'])] = np.array([
         df_itrf['x_m'],
         df_itrf['y_m'],
@@ -1421,7 +1473,9 @@ def extract_times(UV, ra, dt):
     assert UV.data_array.shape[0]==UV.Nblts
     UV.Ntimes = UV.Nblts//UV.Nbls
 
-def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None):
+def average_beamformer_solutions(
+    fnames, ttime, outdir, corridxs=None, tol=0.3, logger=None
+):
     """Averages written beamformer solutions.
 
     Parameters
@@ -1437,21 +1491,46 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None):
     corridxs : list
         The correlator nodes for which to average beamformer solutions.
         Defaults to 1 through 16 inclusive.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
 
     Returns
     -------
-    list
+    written_files : list
         The names of the written beamformer solutions (one for each correlator
         node).
+    antenna_flags_badsolns:
+        Flags for antenna/polarization dimensions of gains.
     """
     if corridxs is None:
         corridxs = [
             1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
         ]
-    written_files = []
-    for corr in corridxs:
-        gains = np.ones((len(fnames), 12352), dtype='<f4')*np.nan
-        for i, fname in enumerate(fnames):
+    gainshape = (64, 48, 2, 2)
+    gains = np.ones(
+            (len(fnames), len(corridxs), gainshape[0], gainshape[1],
+             gainshape[2], gainshape[3]),
+            dtype='<f4'
+        )*np.nan
+    antenna_flags = [None]*len(fnames)
+    eastings = None
+    for i, fname in enumerate(fnames):
+        tmp_antflags = []
+        filepath = '{0}/beamformer_weights_{1}.yaml'.format(outdir, fname)
+        if os.path.exists(filepath):
+            with open(filepath) as f:
+                calibration_params = yaml.load(
+                    f, Loader=yaml.FullLoader
+                )['cal_solutions']
+                antenna_order = calibration_params['antenna_order']
+                for key in calibration_params['flagged_antennas']:
+                    if 'casa solutions flagged' in \
+                        calibration_params['flagged_antennas'][key]:
+                        antname = int(key.split(' ')[0])
+                        tmp_antflags.append(antenna_order.index(antname))
+            antenna_flags[i] = sorted(tmp_antflags)
+
+        for j, corr in enumerate(corridxs):
             if os.path.exists(
                 '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
                 outdir,
@@ -1467,18 +1546,41 @@ def average_beamformer_solutions(fnames, ttime, outdir, corridxs=None):
                     ),
                     'rb'
                 ) as f:
-                    gains[i, ...] = np.fromfile(f, '<f4')
+                    data = np.fromfile(f, '<f4')
+                    eastings = data[:64]
+                    gains[i, j, ...] = data[64:].reshape(gainshape)
             else:
-                LOGGER.info(
+                message = \
                     '{0} not found during beamformer weight averaging'.format(
-                    '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
-                    outdir,
-                    corr,
-                    fname
-                )))
-        gains = np.nanmedian(gains, axis=0)
-        fnameout = 'beamformer_weights_corr{0:02d}_{1}'.format(corr, ttime.isot)
-        with open('{0}/{1}.dat'.format(outdir, fnameout), 'wb') as f:
-            f.write(bytes(gains))
-        written_files += ['{0}.dat'.format(fnameout)]
-    return written_files
+                        '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
+                        outdir,
+                        corr,
+                        fname
+                    ))
+                if logger is not None:
+                    logger.info(message)
+                else:
+                    print(message)
+        if antenna_flags[i] is not None:
+            gains[i, :, antenna_flags[i], ... ] = np.nan
+
+    gains = np.nanmean(gains, axis=0) #np.nanmedian(gains, axis=0)
+    print(gains.shape) # corr, antenna, freq, pol, complex
+    fracflagged = np.sum(np.sum(np.sum(
+        np.isnan(gains),
+        axis=4), axis=2), axis=0)\
+        /(gains.shape[0]*gains.shape[2]*gains.shape[4])
+    antenna_flags_badsolns = fracflagged > tol
+    gains[np.isnan(gains)] = 0.
+    written_files = []
+    if eastings is not None:
+        for i, corr in enumerate(corridxs):
+            fnameout = 'beamformer_weights_corr{0:02d}_{1}'.format(
+                corr, ttime.isot
+            )
+            wcorr = gains[i, ...].flatten()
+            wcorr = np.concatenate([eastings, wcorr], axis=0)
+            with open('{0}/{1}.dat'.format(outdir, fnameout), 'wb') as f:
+                f.write(bytes(wcorr))
+            written_files += ['{0}.dat'.format(fnameout)]
+    return written_files, antenna_flags_badsolns
