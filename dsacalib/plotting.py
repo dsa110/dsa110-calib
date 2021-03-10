@@ -12,6 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import astropy.units as u
 import scipy # pylint: disable=unused-import
+from scipy.fftpack import fftshift
 import casatools as cc
 from casacore.tables import table
 from dsacalib.ms_io import read_caltable, extract_vis_from_ms
@@ -455,7 +456,7 @@ def plot_delays(vis_ft, labels, delay_arr, bname, nx=None, outname=None,
     return delays
 
 def plot_image(msname, imtype, sr0, verbose=False, outname=None, show=True,
-               npix=256):
+               npix=256, cellsize='0.2arcsec'):
     """Uses CASA to grid and image visibilities.
 
     Parameters
@@ -487,8 +488,8 @@ def plot_image(msname, imtype, sr0, verbose=False, outname=None, show=True,
     direction = me.direction(sr0.epoch,
                              qa.quantity(sr0.ra.to_value(u.deg), 'deg'),
                              qa.quantity(sr0.dec.to_value(u.deg), 'deg'))
-    error += not im.defineimage(nx=npix, ny=npix, cellx='1arcsec',
-                                celly='1arcsec', phasecenter=direction)
+    error += not im.defineimage(nx=npix, ny=npix, cellx=cellsize,
+                                celly=cellsize, phasecenter=direction)
     error += not im.makeimage(type=imtype,
                               image='{0}_{1}.im'.format(msname, imtype))
     error += not im.done()
@@ -501,6 +502,7 @@ def plot_image(msname, imtype, sr0, verbose=False, outname=None, show=True,
     if verbose:
         print('Image shape: {0}'.format(dd['shape']))
     imvals = ia.getchunk(0, int(npixx))[:, :, 0, 0]
+    imvals = fftshift(imvals)
     error += ia.done()
     if verbose:
         peakx, peaky = np.where(imvals.max() == imvals)
