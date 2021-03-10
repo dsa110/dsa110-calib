@@ -507,7 +507,6 @@ def plot_image(imname, verbose=False, outname=None, show=True):
     if verbose:
         print('Image shape: {0}'.format(dd['shape']))
     imvals = ia.getchunk(0, int(npixx))[:, :, 0, 0]
-    #imvals = fftshift(imvals)
     error += ia.done()
     if verbose:
         peakx, peaky = np.where(imvals.max() == imvals)
