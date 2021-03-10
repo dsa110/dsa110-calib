@@ -23,8 +23,9 @@ LOGGER.app("dsacalib")
 ETCD = ds.DsaStore()
 
 CONF = dsc.Conf()
-PARAMS = CONF.get('corr')
-CORR_LIST = list(PARAMS['ch0'].keys())
+CORR_PARAMS = CONF.get('corr')
+CAL_PARAMS = CONF.get('cal')
+CORR_LIST = list(CORR_PARAMS['ch0'].keys())
 CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
 
 ANTENNAS_PLOT = np.array(list(PARAMS['antenna_order'].values()))
@@ -32,11 +33,10 @@ ANTENNAS = list(np.concatenate((
     ANTENNAS_PLOT,
     np.arange(36, 36+39))
 ))
-
-BFDIR = '/home/user/beamformer_weights/'
-WEIGHTFILE = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/utils/antennas.out'
-FLAGFILE = '/home/ubuntu/proj/dsa110-shell/dsa110-xengine/scripts/flagants.dat'
-BFARCHIVEDIR = '/mnt/data/dsa110/T3/calibs/'
+BFDIR = CAL_PARAMS['beamformer_dir']
+WEIGHTFILE = CAL_PARAMS['weightfile']
+FLAGFILE = CAL_PARAMS['flagfile']
+BFARCHIVEDIR = CAL_PARAMS['bfarchivedir']
 
 def update_beamformer_weights(etcd_dict):
     """Updates beamformer weights and antenna flags on core machines.

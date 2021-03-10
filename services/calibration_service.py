@@ -35,25 +35,28 @@ LOGGER.app("dsacalib")
 ETCD = ds.DsaStore()
 
 CONF = dsc.Conf()
-PARAMS = CONF.get('corr')
+CORR_PARAMS = CONF.get('corr')
+CAL_PARAMS = CONF.get('cal')
+MFS_PARAMS = CONF.get('fringe')
 
 # These should be put somewhere else eventually
-CALTIME = 15*u.min
-REFANT = '102'
-FILELENGTH = 15*u.min
-MSDIR = '/mnt/data/dsa110/calibration/'
-BEAMFORMER_DIR = '/home/user/beamformer_weights/'
+CALTIME = CAL_PARAMS['caltime_minutes']*u.min
+REFANT = CAL_PARAMS['refant']
+FILELENGTH = MFS_PARAMS['filelength_minutes']*u.min
+MSDIR = CAL_PARAMS['msdir']
+BEAMFORMER_DIR = CAL_PARAMS['beamformer_dir']
+HDF5DIR = CAL_PARAMS['hdf5_dir']
 # This should be made more general for more antennas
-ANTENNAS_PLOT = np.array(list(PARAMS['antenna_order'].values()))
+ANTENNAS_PLOT = np.array(list(CORR_PARAMS['antenna_order'].values()))
 ANTENNAS = np.concatenate((
     ANTENNAS_PLOT,
     np.arange(36, 36+39)
 ))
-POLS = ['B', 'A']
+POLS = CORR_PARAMS['pols_voltage']
 ANTENNAS_NOT_IN_BF = ['103 A', '103 B', '101 A', '101 B', '100 A', '100 B',
                       '116 A', '116 B', '102 A', '102 B']
-CALTABLE = resource_filename('dsacalib', 'data/calibrator_sources.csv')
-CORR_LIST = list(PARAMS['ch0'].keys())
+CALTABLE = CAL_PARAMS['caltable']
+CORR_LIST = list(CORR_PARAMS['ch0'].keys())
 CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
 REFCORR = '{0:02d}'.format(CORR_LIST[0])
 
@@ -106,6 +109,7 @@ def find_bf_solns_to_avg(filenames, ttime, start_time):
         REFCORR,
         CALTIME,
         FILELENGTH,
+        hdf5dir=HDF5DIR,
         date_specifier='{0}*'.format(yesterday),
     )
     if yesterday in filenames_yesterday.keys():
@@ -242,6 +246,7 @@ def calibrate_file(etcd_dict):
             REFCORR,
             CALTIME,
             FILELENGTH,
+            hdf5dir=HDF5DIR,
             date_specifier=date_specifier,
         )
         ttime = filenames[date][calname]['transit_time']
@@ -265,7 +270,8 @@ def calibrate_file(etcd_dict):
             date=date,
             files=filenames[date][calname]['files'],
             duration=CALTIME,
-            logger=LOGGER
+            logger=LOGGER,
+            msdir=MSDIR
         )
         print('done writing ms')
         LOGGER.info('{0}.ms created'.format(msname))
