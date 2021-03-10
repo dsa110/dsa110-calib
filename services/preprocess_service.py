@@ -2,11 +2,8 @@
 """
 
 import warnings
-# make sure warnings do not spam syslog
-warnings.filterwarnings("ignore")
 from multiprocessing import Process, Queue
 import time
-from pkg_resources import resource_filename
 import pandas
 import numpy as np
 from astropy.time import Time
@@ -14,9 +11,23 @@ from astropy.coordinates import Angle
 import astropy.units as u
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
+import dsautils.cnf as cnf
 import dsacalib.constants as ct
 from dsacalib.preprocess import rsync_file, fscrunch_file, first_true
 from dsacalib.utils import exception_logger
+# make sure warnings do not spam syslog
+warnings.filterwarnings("ignore")
+
+CONF = cnf.Conf()
+CORR_CONF = CONF.get('corr')
+CAL_CONF = CONF.get('cal')
+MFS_CONF = CONF.get('fringe')
+CORRLIST = CORR_CONF['ch0'].keys()
+NCORR = len(CORRLIST)
+CALTIME = CAL_CONF['caltime_minutes']*u.min
+FILELENGTH = MFS_CONF['filelength_minutes']*u.min
+HDF5DIR = CAL_CONF['hdf5_dir']
+CALTABLE = CAL_CONF['caltable']
 
 # Logger
 LOGGER = dsl.DsaSyslogger()
@@ -33,9 +44,6 @@ GATHER_Q = Queue()
 ASSESS_Q = Queue()
 CALIB_Q = Queue()
 
-# Number of correlators
-NCORR = 16
-
 # Maximum number of files per correlator that can be assessed for calibration
 # needs at one time.
 MAX_ASSESS = 4
@@ -47,7 +55,7 @@ MAX_WAIT = 5*60
 # Time to sleep if a queue is empty before trying to get an item
 TSLEEP = 10
 
-def populate_queue(etcd_dict):
+def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=HDF5DIR):
     """Populates the fscrunch and rsync queues using etcd.
 
     Etcd watch callback function.
@@ -55,11 +63,12 @@ def populate_queue(etcd_dict):
     cmd = etcd_dict['cmd']
     val = etcd_dict['val']
     if cmd == 'rsync':
-        rsync_string = '{0}.sas.pvt:{1} /mnt/data/dsa110/correlator/{0}/'.format(
+        rsync_string = '{0}.sas.pvt:{1} {2}/{0}/'.format(
             val['hostname'],
-            val['filename']
+            val['filename'],
+            hdf5dir
         )
-        RSYNC_Q.put(rsync_string)
+        queue.put(rsync_string)
 
 def task_handler(task_fn, inqueue, outqueue=None):
     """Handles in and out queues of preprocessing tasks.
@@ -90,8 +99,7 @@ def task_handler(task_fn, inqueue, outqueue=None):
         else:
             time.sleep(TSLEEP)
 
-def gather_worker(inqueue, outqueue):
-    # TODO: Look up the corr ids
+def gather_worker(inqueue, outqueue, corrlist=CORRLIST):
     """Gather all files that match a filename.
 
     Will wait for a maximum of 15 minutes from the time the first file is
@@ -105,25 +113,21 @@ def gather_worker(inqueue, outqueue):
     outqueue : multiprocessing.Queue instance
         The queue in which to place the gathered files (as a list).
     """
-    filelist = [None]*NCORR
+    ncorr = len(corr_list)
+    filelist = [None]*ncorr
     nfiles = 0
     # Times out after 15 minutes
     end = time.time() + 60*15
-    while nfiles < NCORR and time.time() < end:
+    while nfiles < ncorr and time.time() < end:
         if not inqueue.empty():
             fname = inqueue.get()
-            corrid = int(fname.split('/')[5].strip('corr'))
-            # 21 is currently replacing 4
-            if corrid == 0:
-                filelist[1-1] = fname
-            else:
-                filelist[corrid-1] = fname
+            corrid = int(fname.split('/')[5])
+            filelist[corrlist.index(corrid)] = fname
             nfiles += 1
-            #print(filelist)
         time.sleep(1)
     outqueue.put(filelist)
 
-def gather_files(inqueue, outqueue):
+def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=TSLEEP):
     """Gather files from all correlators.
 
     Will wait for a maximum of 15 minutes from the time the first file is
@@ -136,9 +140,9 @@ def gather_files(inqueue, outqueue):
     outqueue : multiprocessing.Queue instance
         The queue in which to place the gathered files (as a list).
     """
-    gather_queues = [Queue(NCORR) for idx in range(MAX_ASSESS)]
-    gather_names = [None]*MAX_ASSESS
-    gather_processes = [None]*MAX_ASSESS
+    gather_queues = [Queue(ncorr) for idx in range(max_assess)]
+    gather_names = [None]*max_assess
+    gather_processes = [None]*max_assess
     nfiles_assessed = 0
     while True:
         if not inqueue.empty():
@@ -146,17 +150,17 @@ def gather_files(inqueue, outqueue):
                 fname = inqueue.get()
                 print(fname)
                 if not fname.split('/')[-1][:-7] in gather_names:
-                    gather_names[nfiles_assessed%MAX_ASSESS] = \
+                    gather_names[nfiles_assessed%max_assess] = \
                         fname.split('/')[-1][:-7]
-                    gather_processes[nfiles_assessed%MAX_ASSESS] = \
+                    gather_processes[nfiles_assessed%max_assess] = \
                         Process(
                             target=gather_worker,
                             args=(
-                                gather_queues[nfiles_assessed%MAX_ASSESS],
+                                gather_queues[nfiles_assessed%max_assess],
                                 outqueue
                             )
                         )
-                    gather_processes[nfiles_assessed%MAX_ASSESS].start()
+                    gather_processes[nfiles_assessed%max_assess].start()
                     nfiles_assessed += 1
                 gather_queues[
                     gather_names.index(fname.split('/')[-1][:-7])
@@ -169,9 +173,9 @@ def gather_files(inqueue, outqueue):
                     throw=False
                 )
         else:
-            time.sleep(TSLEEP)
+            time.sleep(tsleep)
 
-def assess_file(inqueue, outqueue, caltime=15*u.min):
+def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH, caltable=CALTABLE):
     """Decides whether calibration is necessary.
 
     Sends a command to etcd using the monitor point /cmd/cal if the file should
@@ -189,10 +193,6 @@ def assess_file(inqueue, outqueue, caltime=15*u.min):
         a measurement set for calibration. Used to assess whether any part of
         the desired calibrator pass is in a given file.
     """
-    caltable = resource_filename(
-        'dsacalib',
-        'data/calibrator_sources.csv'
-    )
     calsources = pandas.read_csv(caltable, header=0)
     while True:
         if not inqueue.empty():
@@ -204,7 +204,7 @@ def assess_file(inqueue, outqueue, caltime=15*u.min):
                     'apparent',
                     longitude=ct.OVRO_LON*u.rad
                 )
-                tend = (Time(datetime)+15*u.min).sidereal_time(
+                tend = (Time(datetime)+filelength).sidereal_time(
                     'apparent',
                     longitude=ct.OVRO_LON*u.rad
                 )
