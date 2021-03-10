@@ -8,31 +8,14 @@ import subprocess
 import numpy as np
 import astropy.units as u
 from pyuvdata import UVData
-
+import dsautils.cnf as cnf
+CONF = cnf.Conf()
+MFS_CONF = CONF.get('fringe')
 # parameters for freq scrunching
-NFREQ = 48
+NFREQ = MFS_CONF['nfreq_scrunch']
 # Outrigger delays are those estimated by Morgan Catha based on the cable
 # length.
-OUTRIGGER_DELAYS = {
-    100:  2400, #  3.6-1.2,
-    101:  2400, #  3.6-1.2,
-    102:   872, # Updated empirically. MC: 3.5-1.2,
-    103:  1000, #  2.2-1.2,
-    104:  3100, #  4.3-1.2,
-    105: 11700, # 12.9-1.2,
-    106:  9500, # 10.7-1.2,
-    107: 10400, # 11.6-1.2,
-    108: 11100, # 12.3-1.2,
-    109: 12200, # 13.4-1.2,
-    110: 16100, # 17.3-1.2,
-    111: 15100, # 16.3-1.2,
-    112: 15900, # 17.1-1.2,
-    113: 17400, # 18.6-1.2,
-    114: 19300, # 20.5-1.2,
-    115: 21100, # 22.3-1.2,
-    116:  4070, # Updated empriically. MC: 5.5-1.2,
-    117:  5300, #  6.5-1.2
-}
+OUTRIGGER_DELAYS = MFS_CONF['outriggger_delays']
 
 def first_true(iterable, default=False, pred=None):
     """Returns the first true value in the iterable.
