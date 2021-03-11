@@ -28,7 +28,7 @@ CAL_PARAMS = CONF.get('cal')
 CORR_LIST = list(CORR_PARAMS['ch0'].keys())
 CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
 
-ANTENNAS_PLOT = np.array(list(PARAMS['antenna_order'].values()))
+ANTENNAS_PLOT = np.array(list(CORR_PARAMS['antenna_order'].values()))
 ANTENNAS = list(np.concatenate((
     ANTENNAS_PLOT,
     np.arange(36, 36+39))

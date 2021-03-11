@@ -1312,6 +1312,34 @@ def plot_beamformer_weights(
     show=True,
     gaindir='/home/user/beamformer_weights/'
 ):
+    """Plot beamformer weights from a number of beamformer solutions.
+
+    Parameters
+    ----------
+    beamformer_names : list(str)
+        The postfixes of the beamformer weight files to plot. Will open
+        beamformer_weights_corr??_`beamformer_name`.dat for each item in
+        beamformer_names.
+    corrlist : list(int)
+        The corrnode numbers.
+    antennas_to_plot : list(int)
+        The names of the antennas to plot.
+    antennas : list(int)
+        The names of the antennas in the beamformer weight files.
+    outname : str
+        The prefix of the file to save the plot to. If None, no figure is saved.
+    pols : list(str)
+        The order of the pols in the beamformer weight files.
+    show : bool
+        If False, the plot is closed after saving.
+    gaindir : str
+        The directory in which the beamformer weight files are saved.
+
+    Returns
+    -------
+    ndarray
+        The beamformer weights.
+    """
     if pols is None:
         pols = ['B', 'A']
     if antennas_to_plot is None:

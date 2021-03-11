@@ -7,11 +7,6 @@ import datetime
 import time
 import yaml
 import h5py
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
-from pkg_resources import resource_filename
 import numpy as np
 import astropy.units as u
 from astropy.time import Time
@@ -22,8 +17,12 @@ from dsacalib.preprocess import first_true
 from dsacalib.utils import exception_logger
 from dsacalib.calib import calibrate_phases
 from dsacalib.routines import get_files_for_cal, calibrate_measurement_set
-from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd, write_beamformer_solutions, average_beamformer_solutions 
-from dsacalib.plotting import summary_plot, plot_current_beamformer_solutions, plot_bandpass_phases, plot_beamformer_weights 
+from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd, write_beamformer_solutions, average_beamformer_solutions
+from dsacalib.plotting import summary_plot, plot_current_beamformer_solutions, plot_bandpass_phases, plot_beamformer_weights
+import matplotlib
+matplotlib.use('Agg')
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 warnings.filterwarnings("ignore")
 
 # Logger
@@ -193,7 +192,6 @@ def extract_applied_delays(file):
     ndarray
         The applied delays in ns.
     """
-    # TODO: extract isnt working the way I expect
     with h5py.File(file, 'r') as f:
         if 'applied_delays_ns' in f['Header']['extra_keywords'].keys():
             delaystring = (
