@@ -15,7 +15,7 @@ MFS_CONF = CONF.get('fringe')
 NFREQ = MFS_CONF['nfreq_scrunch']
 # Outrigger delays are those estimated by Morgan Catha based on the cable
 # length.
-OUTRIGGER_DELAYS = MFS_CONF['outriggger_delays']
+OUTRIGGER_DELAYS = MFS_CONF['outrigger_delays']
 
 def first_true(iterable, default=False, pred=None):
     """Returns the first true value in the iterable.
