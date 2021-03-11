@@ -1,5 +1,5 @@
 """
-DSACALIB/MS_IO.PY
+Dsacalib/MS_IO.PY
 
 Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 
@@ -1339,12 +1339,11 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     # are being converted to ICRS
     df_itrf = get_itrf(height=UV.telescope_location_lat_lon_alt[-1])
     if len(df_itrf['x_m']) != UV.antenna_positions.shape[0]:
-        message = 'Mismatch between antennas in current environment ({0}) ' + \
-                  'and correlator environment ({1}) for file {2}'.format(
-                        len(df_itrf['x_m']),
-                        UV.antenna_positions.shape[0],
-                        fname
-                  )
+        message = 'Mismatch between antennas in current environment ({0}) and correlator environment ({1}) for file {2}'.format(
+            len(df_itrf['x_m']),
+            UV.antenna_positions.shape[0],
+            fname
+        )
         if logger is not None:
             logger.info(message)
         else:

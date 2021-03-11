@@ -113,7 +113,7 @@ def gather_worker(inqueue, outqueue, corrlist=CORRLIST):
     outqueue : multiprocessing.Queue instance
         The queue in which to place the gathered files (as a list).
     """
-    ncorr = len(corr_list)
+    ncorr = len(corrlist)
     filelist = [None]*ncorr
     nfiles = 0
     # Times out after 15 minutes
