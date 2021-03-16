@@ -8,7 +8,13 @@ import subprocess
 import numpy as np
 import astropy.units as u
 from pyuvdata import UVData
+import dsautils.dsa_syslog as dsl
 import dsautils.cnf as cnf
+
+LOGGER = dsl.DsaSyslogger()
+LOGGER.subsystem("software")
+LOGGER.app("dsamfs")
+
 CONF = cnf.Conf()
 MFS_CONF = CONF.get('fringe')
 # parameters for freq scrunching
@@ -49,33 +55,21 @@ def rsync_file(rsync_string, remove_source_files=True):
     """
     fname, fdir = rsync_string.split(' ')
     if remove_source_files:
-        output = subprocess.run(
-            [
-                'rsync',
-                '-avv',
-                '--remove-source-files',
-                fname,
-                fdir
-            ],
-            #check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT
-        )
+        command = '. ~/.keychain/dsa-storage-sh; rsync -avv --remove-source-files {0} {1}'.format(fname, fdir)
     else:
-        output = subprocess.run(
-            [
-                'rsync',
-                '-avv',
-                fname,
-                fdir
-            ],
-            #check=True,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT
-        )
+        command = '. ~/.keychain/dsa-storage-sh; rsync -avv {0} {1}'.format(fname, fdir)
+    process = subprocess.Popen(
+        command,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        shell=True
+    )
+    proc_stdout = str(process.communicate()[0].strip())
+    print(proc_stdout)
+    LOGGER.info(proc_stdout)
     fname = fname.split('/')[-1]
-    if output.returncode != 0:
-        print(output)
+    #if output.returncode != 0:
+    #    print(output)
     return '{0}{1}'.format(fdir, fname)
 
 def fscrunch_file(fname):
