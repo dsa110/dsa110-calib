@@ -1,6 +1,6 @@
 """A service to preprocess hdf5 files before calibration.
 """
-
+import datetime
 import warnings
 from multiprocessing import Process, Queue
 import time
@@ -199,12 +199,12 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH, calta
             try:
                 flist = inqueue.get()
                 fname = first_true(flist)
-                datetime = fname.split('/')[-1][:19]
-                tstart = Time(datetime).sidereal_time(
+                datet = fname.split('/')[-1][:19]
+                tstart = Time(datet).sidereal_time(
                     'apparent',
                     longitude=ct.OVRO_LON*u.rad
                 )
-                tend = (Time(datetime)+filelength).sidereal_time(
+                tend = (Time(datet)+filelength).sidereal_time(
                     'apparent',
                     longitude=ct.OVRO_LON*u.rad
                 )
@@ -314,6 +314,13 @@ if __name__=="__main__":
                     "ntasks_total": processes[name]['nthreads']
                 }
             )
+            ETCD.put_dict(
+                '/mon/service/calpreprocess',
+                {
+                    "cadence": 60,
+                    "time": Time(datetime.datetime.utcnow()).mjd
+                    }
+                )
         while not CALIB_Q.empty():
             (calname_fromq, flist_fromq) = CALIB_Q.get()
             ETCD.put_dict(

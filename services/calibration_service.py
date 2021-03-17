@@ -435,7 +435,7 @@ def calibrate_file(etcd_dict):
             latest_solns['cal_solutions'].pop('corr_order')
             latest_solns['cal_solutions']['time'] = ttime.mjd
             ETCD.put_dict(
-                '/cmd/corr/1/bf',
+                '/mon/cal/bfweights',
                 {
                     'cmd': 'update_weights',
                     'val': latest_solns['cal_solutions']
@@ -470,11 +470,10 @@ if __name__=="__main__":
     ETCD.add_watch('/cmd/cal', calibrate_file)
     while True:
         ETCD.put_dict(
-            '/mon/cal/calibrate_process',
+            '/mon/service/calibration',
             {
-                "alive": True,
                 "cadence": 60,
-                "time": Time(datetime.datetime.utcnow()).isot
+                "time": Time(datetime.datetime.utcnow()).mjd
             }
         )
         time.sleep(60)
