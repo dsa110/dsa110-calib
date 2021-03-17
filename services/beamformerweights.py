@@ -98,14 +98,13 @@ def update_beamformer_weights(etcd_dict):
         )
 
 if __name__ == "__main__":
-    ETCD.add_watch('/cmd/corr/1/bf', update_beamformer_weights)
+    ETCD.add_watch('/mon/cal/bfweights', update_beamformer_weights)
     while True:
         ETCD.put_dict(
-            '/mon/corr/1/bf',
+            '/mon/service/bfweightcopy',
             {
-                "alive": True,
                 "cadence": 60,
-                "time": Time(datetime.datetime.utcnow()).isot
+                "time": Time(datetime.datetime.utcnow()).mjd
             }
         )
         time.sleep(60)
