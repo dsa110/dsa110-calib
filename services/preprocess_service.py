@@ -1,4 +1,4 @@
-"""A service to preprocess hdf5 files before calibration.
+"""A service to preprcocess hdf5 files before calibration.
 """
 import datetime
 import warnings
@@ -22,7 +22,7 @@ CONF = cnf.Conf()
 CORR_CONF = CONF.get('corr')
 CAL_CONF = CONF.get('cal')
 MFS_CONF = CONF.get('fringe')
-CORRLIST = CORR_CONF['ch0'].keys()
+CORRLIST = list(CORR_CONF['ch0'].keys())
 NCORR = len(CORRLIST)
 CALTIME = CAL_CONF['caltime_minutes']*u.min
 FILELENGTH = MFS_CONF['filelength_minutes']*u.min
@@ -121,7 +121,7 @@ def gather_worker(inqueue, outqueue, corrlist=CORRLIST):
     while nfiles < ncorr and time.time() < end:
         if not inqueue.empty():
             fname = inqueue.get()
-            corrid = int(fname.split('/')[5])
+            corrid = fname.split('/')[5]
             filelist[corrlist.index(corrid)] = fname
             nfiles += 1
         time.sleep(1)
@@ -245,7 +245,7 @@ if __name__=="__main__":
             'processes': []
         },
         'fscrunch': {
-            'nthreads': 1,
+            'nthreads': 4,
             'task_fn': fscrunch_file,
             'queue': FSCRUNCH_Q,
             'outqueue': GATHER_Q,

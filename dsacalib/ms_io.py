@@ -15,7 +15,7 @@ import os
 import glob
 #from scipy.interpolate import interp1d
 import numpy as np
-from pkg_resources import resource_filename
+#from pkg_resources import resource_filename
 import yaml
 import scipy # pylint: disable=unused-import
 import astropy.units as u
@@ -26,6 +26,7 @@ from casacore.tables import addImagingColumns, table
 from pyuvdata import UVData
 from dsautils import dsa_store
 from dsautils import calstatus as cs
+import dsautils.cnf as dsc
 from dsamfs.fringestopping import calc_uvw_blt
 from dsacalib import constants as ct
 import dsacalib.utils as du
@@ -37,6 +38,9 @@ iers.conf.auto_max_age = None
 from astropy.time import Time # pylint: disable=wrong-import-position wrong-import-order
 
 de = dsa_store.DsaStore()
+
+CONF = dsc.Conf()
+CORR_PARAMS = CONF.get('corr')
 
 def T3_initialize_ms(paramfile, msname, tstart, sourcename, ra, dec):
     """Initialize a ms to write correlated data from the T3 system to.
@@ -864,26 +868,25 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
         The names of the file containing the beamformer weights.
     """
     # Get the frequencies we want to write solutions for.
-    corr_settings = resource_filename("dsamfs", "data/dsa_parameters.yaml")
+    # corr_settings = resource_filename("dsamfs", "data/dsa_parameters.yaml")
+    # params = yaml.safe_load(fhand)
     ncorr = len(corr_list)
     weights = np.ones((ncorr, len(antennas), 48, 2), dtype=np.complex64)
     fweights = np.ones((ncorr, 48), dtype=np.float32)
-    with open(corr_settings) as fhand:
-        params = yaml.safe_load(fhand)
-        nchan = params['nchan']
-        dfreq = params['bw_GHz']/nchan
-        if params['chan_ascending']:
-            fobs = params['f0_GHz']+np.arange(nchan)*dfreq
-        else:
-            fobs = params['f0_GHz']-np.arange(nchan)*dfreq
-        nchan_spw = params['nchan_spw']
-        for i, corr_id in enumerate(corr_list):
-            ch0 = params['ch0']['corr{0:02d}'.format(corr_id)]
-            fobs_corr = fobs[ch0:ch0+nchan_spw]
-            fweights[i, :] = fobs_corr.reshape(
-                fweights.shape[1],
-                -1
-            ).mean(axis=1)
+    nchan = CORR_PARAMS['nchan']
+    dfreq = CORR_PARAMS['bw_GHz']/nchan
+    if CORR_PARAMS['chan_ascending']:
+        fobs = CORR_PARAMS['f0_GHz']+np.arange(nchan)*dfreq
+    else:
+        fobs = CORR_PARAMS['f0_GHz']-np.arange(nchan)*dfreq
+    nchan_spw = CORR_PARAMS['nchan_spw']
+    for i, corr_id in enumerate(corr_list):
+        ch0 = CORR_PARAMS['ch0']['corr{0:02d}'.format(corr_id)]
+        fobs_corr = fobs[ch0:ch0+nchan_spw]
+        fweights[i, :] = fobs_corr.reshape(
+            fweights.shape[1],
+            -1
+        ).mean(axis=1)
 
     antpos_df = get_itrf()
     blen = np.zeros((len(antennas), 3))
