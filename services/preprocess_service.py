@@ -121,7 +121,7 @@ def gather_worker(inqueue, outqueue, corrlist=CORRLIST):
     while nfiles < ncorr and time.time() < end:
         if not inqueue.empty():
             fname = inqueue.get()
-            corrid = fname.split('/')[5]
+            corrid = fname.replace('//', '/').split('/')[5]
             filelist[corrlist.index(corrid)] = fname
             nfiles += 1
         time.sleep(1)
