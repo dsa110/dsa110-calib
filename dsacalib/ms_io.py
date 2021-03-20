@@ -1582,7 +1582,7 @@ def average_beamformer_solutions(
                     eastings = data[:64]
                     gains[i, j, ...] = data[64:].reshape(gainshape)
                 if antenna_flags[i] is not None:
-                    gains[i, antenna_flags[i], ... ] = np.nan
+                    gains[i, :, antenna_flags[i], ... ] = np.nan
             else:
                 message = \
                     '{0} not found during beamformer weight averaging'.format(
