@@ -1,6 +1,7 @@
 """A service to preprcocess hdf5 files before calibration.
 """
 import datetime
+import sys
 import warnings
 from multiprocessing import Process, Queue
 import time
@@ -158,7 +159,8 @@ def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=T
                             args=(
                                 gather_queues[nfiles_assessed%max_assess],
                                 outqueue
-                            )
+                            ),
+                        daemon=True
                         )
                     gather_processes[nfiles_assessed%max_assess].start()
                     nfiles_assessed += 1
@@ -269,68 +271,74 @@ if __name__=="__main__":
         for pinst in processes[name]['processes']:
             pinst.start()
 
-    processes['gather'] = {
-        'nthreads': 1,
-        'task_fn': gather_files,
-        'queue': GATHER_Q,
-        'outqueue': ASSESS_Q,
-        'processes': []
-    }
-    processes['gather']['processes'] += [Process(
-        target=gather_files,
-        args=(
-            GATHER_Q,
-            ASSESS_Q
-            )
-    )]
-    processes['gather']['processes'][0].start()
+    try:
+        processes['gather'] = {
+            'nthreads': 1,
+            'task_fn': gather_files,
+            'queue': GATHER_Q,
+            'outqueue': ASSESS_Q,
+            'processes': []
+        }
+        processes['gather']['processes'] += [Process(
+            target=gather_files,
+            args=(
+                GATHER_Q,
+                ASSESS_Q
+                )
+        )]
+        processes['gather']['processes'][0].start()
 
-    processes['assess'] = {
-        'nthreads': 1,
-        'task_fn': assess_file,
-        'queue': ASSESS_Q,
-        'outqueue': CALIB_Q,
-         'processes': []
-    }
-    processes['assess']['processes'] += [Process(
-        target=assess_file,
-        args=(
-            ASSESS_Q,
-            CALIB_Q
-        )
-    )]
-    processes['assess']['processes'][0].start()
+        processes['assess'] = {
+            'nthreads': 1,
+            'task_fn': assess_file,
+            'queue': ASSESS_Q,
+            'outqueue': CALIB_Q,
+             'processes': []
+        }
+        processes['assess']['processes'] += [Process(
+            target=assess_file,
+            args=(
+                ASSESS_Q,
+                CALIB_Q
+            ),
+            daemon=True
+        )]
+        processes['assess']['processes'][0].start()
 
-    while True:
-        for name in processes.keys():
-            ETCD.put_dict(
-                '/mon/cal/{0}_process'.format(name),
-                {
-                    "queue_size": processes[name]['queue'].qsize(),
-                    "ntasks_alive": sum([
-                        pinst.is_alive() for pinst in
-                        processes[name]['processes']
-                    ]),
-                    "ntasks_total": processes[name]['nthreads']
-                }
-            )
-            ETCD.put_dict(
-                '/mon/service/calpreprocess',
-                {
-                    "cadence": 60,
-                    "time": Time(datetime.datetime.utcnow()).mjd
+        while True:
+            for name in processes.keys():
+                ETCD.put_dict(
+                    '/mon/cal/{0}_process'.format(name),
+                    {
+                        "queue_size": processes[name]['queue'].qsize(),
+                        "ntasks_alive": sum([
+                            pinst.is_alive() for pinst in
+                            processes[name]['processes']
+                        ]),
+                        "ntasks_total": processes[name]['nthreads']
                     }
                 )
-        while not CALIB_Q.empty():
-            (calname_fromq, flist_fromq) = CALIB_Q.get()
-            ETCD.put_dict(
-                '/cmd/cal',
-                {
-                    'cmd': 'calibrate',
-                    'val': {
-                        'calname': calname_fromq,
-                        'flist': flist_fromq
+                ETCD.put_dict(
+                    '/mon/service/calpreprocess',
+                    {
+                        "cadence": 60,
+                        "time": Time(datetime.datetime.utcnow()).mjd
+                        }
+                    )
+            while not CALIB_Q.empty():
+                (calname_fromq, flist_fromq) = CALIB_Q.get()
+                ETCD.put_dict(
+                    '/cmd/cal',
+                    {
+                        'cmd': 'calibrate',
+                        'val': {
+                            'calname': calname_fromq,
+                            'flist': flist_fromq
+                        }
                     }
-                }
-            )
-        time.sleep(60)
+                )
+            time.sleep(60)
+    except (KeyboardInterrupt, SystemExit):
+        processes['gather']['processes'][0].terminate()
+        processes['gather']['processes'][0].join()
+        sys.exit()
