@@ -15,6 +15,7 @@ import dsautils.dsa_syslog as dsl
 import dsautils.cnf as cnf
 import dsacalib.constants as ct
 from dsacalib.preprocess import rsync_file, fscrunch_file, first_true
+from dsacalib.preprocess import update_caltable
 from dsacalib.utils import exception_logger
 # make sure warnings do not spam syslog
 warnings.filterwarnings("ignore")
@@ -55,6 +56,13 @@ MAX_WAIT = 5*60
 
 # Time to sleep if a queue is empty before trying to get an item
 TSLEEP = 10
+
+def _update_caltable_callback(etcd_dict):
+    """When the antennas are moved, make and read a new calibration table.
+    """
+    if etcd_dict['cmd'] == 'move':
+        pt_el = etcd_dict['val']*u.deg
+        update_caltable(pt_el)
 
 def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=HDF5DIR):
     """Populates the fscrunch and rsync queues using etcd.
@@ -177,7 +185,8 @@ def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=T
         else:
             time.sleep(tsleep)
 
-def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH, caltable=CALTABLE):
+def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH,
+                caltable=CALTABLE):
     """Decides whether calibration is necessary.
 
     Sends a command to etcd using the monitor point /cmd/cal if the file should
@@ -195,7 +204,6 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH, calta
         a measurement set for calibration. Used to assess whether any part of
         the desired calibrator pass is in a given file.
     """
-    calsources = pandas.read_csv(caltable, header=0)
     while True:
         if not inqueue.empty():
             try:
@@ -212,6 +220,7 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH, calta
                 )
                 a0 = (caltime*np.pi*u.rad/
                       (ct.SECONDS_PER_SIDEREAL_DAY*u.s)).to_value(u.rad)
+                calsources = pandas.read_csv(caltable, header=0)
                 for _index, row in calsources.iterrows():
                     delta_lst_start = (
                         tstart-Angle(row['ra'])
