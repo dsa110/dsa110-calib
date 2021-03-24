@@ -4,12 +4,18 @@ Prepares hdf5 files written by dsa-meridian-fs for conversion to ms.
 """
 import re
 import os
+import shutil
 import subprocess
+from urllib.request import urlretrieve
+import pandas
+from pkg_resources import resource_filename, resource_exists
 import numpy as np
 import astropy.units as u
 from pyuvdata import UVData
 import dsautils.dsa_syslog as dsl
 import dsautils.cnf as cnf
+import dsacalib.constants as ct
+from dsacalib.fringestopping import pb_resp
 
 LOGGER = dsl.DsaSyslogger()
 LOGGER.subsystem("software")
@@ -136,3 +142,161 @@ def fscrunch_file(fname):
             fname
         )
     return fname
+
+def read_nvss_catalog():
+    """Reads the NVSS catalog into a pandas dataframe.
+    """
+    if not resource_exists('dsacalib', 'data/heasarc_nvss.tdat'):
+        urlretrieve(
+            'https://heasarc.gsfc.nasa.gov/FTP/heasarc/dbase/tdat_files/heasarc_nvss.tdat.gz',
+            resource_filename('dsacalib', 'data/heasarc_nvss.tdat.gz')
+        )
+        os.system('gunzip {0}'.format(
+            resource_filename('dsacalib', 'data/heasarc_nvss.tdat.gz')
+        ))
+
+    df = pandas.read_csv(
+        resource_filename('dsacalib','data/heasarc_nvss.tdat'),
+        sep='|',
+        skiprows=67,
+        names=[
+            'ra',
+            'dec',
+            'lii',
+            'bii',
+            'ra_error',
+            'dec_error',
+            'flux_20_cm',
+            'flux_20_cm_error',
+            'limit_major_axis',
+            'major_axis',
+            'major_axis_error',
+            'limit_minor_axis',
+            'minor_axis',
+            'minor_axis_error',
+            'position_angle',
+            'position_angle_error',
+            'residual_code',
+            'residual_flux',
+            'pol_flux',
+            'pol_flux_error',
+            'pol_angle',
+            'pol_angle_error',
+            'field_name',
+            'x_pixel',
+            'y_pixel',
+            'extra'
+        ],
+    )
+    df.drop(df.tail(1).index, inplace=True)
+    df.drop(['extra'], axis='columns', inplace=True)
+    return df
+
+def generate_caltable(
+    pt_dec,
+    csv_string,
+    radius=2.5*u.deg,
+    min_weighted_flux=1*u.Jy,
+    min_percent_flux=0.15
+):
+    """Generate a table of calibrators at a given declination.
+
+    Parameters
+    ----------
+    pt_dec : astropy quantity
+        The pointing declination, in degrees or radians.
+    radius : astropy quantity
+        The radius of the DSA primary beam. Only sources out to this radius
+        from the pointing declination are considered.
+    min_weighted_flux : astropy quantity
+        The minimum primary-beam response-weighted flux of a calibrator for
+        which it is included in the calibrator list, in Jy or equivalent.
+    min_percent_flux : float
+        The minimum ratio of the calibrator weighted flux to the weighted flux
+        in the primary beam for which to include the calibrator.
+    """
+    df = read_nvss_catalog()
+    calibrators = df[
+        (df['dec'] < (pt_dec+radius).to_value(u.deg)) &
+        (df['dec'] > (pt_dec-radius).to_value(u.deg)) &
+        (df['flux_20_cm'] > 1000)
+    ]
+    # Calculate field flux and weighted flux for each calibrator
+    calibrators = calibrators.assign(field_flux=np.zeros(len(calibrators)))
+    calibrators = calibrators.assign(weighted_flux=np.zeros(len(calibrators)))
+    for name, row in calibrators.iterrows():
+        calibrators['weighted_flux'].loc[name] = row['flux_20_cm']/1e3*pb_resp(
+            row['ra']*(1*u.deg).to_value(u.rad),
+            pt_dec.to_value(u.rad),
+            row['ra']*(1*u.deg).to_value(u.rad),
+            row['dec']*(1*u.deg).to_value(u.rad),
+            1.4
+        )
+        field = df[
+            (df['dec'] < (pt_dec+radius).to_value(u.deg)) &
+            (df['dec'] > (pt_dec-radius).to_value(u.deg)) &
+            (df['ra'] < row['ra']+radius.to_value(u.deg)/np.cos(pt_dec)) &
+            (df['ra'] > row['ra']-radius.to_value(u.deg)/np.cos(pt_dec))
+        ]
+        field = field.assign(weighted_flux=np.zeros(len(field)))
+        for fname, frow in field.iterrows():
+            field['weighted_flux'].loc[fname] = frow['flux_20_cm']/1e3*pb_resp(
+                row['ra']*(1*u.deg).to_value(u.rad),
+                pt_dec.to_value(u.rad),
+                frow['ra']*(1*u.deg).to_value(u.rad),
+                frow['dec']*(1*u.deg).to_value(u.rad),
+                1.4
+            )
+        calibrators['field_flux'].loc[name] = sum(field['weighted_flux'])
+    # Calculate percent of the field flux that is contained in the
+    # main calibrator
+    calibrators = calibrators.assign(
+        percent_flux=calibrators['weighted_flux']/calibrators['field_flux']
+    )
+    # Keep calibrators based on the weighted flux and percent flux
+    calibrators = calibrators[
+        (calibrators['weighted_flux'] > min_weighted_flux.to_value(u.Jy)) &
+        (calibrators['percent_flux'] > min_percent_flux)]
+    # Create the caltable needed by the calibrator service
+    caltable = calibrators[[
+        'ra', 'dec', 'flux_20_cm', 'weighted_flux', 'percent_flux'
+    ]]
+    caltable.reset_index(inplace=True)
+    caltable.rename(
+        columns={
+            "index": "source",
+            "flux_20_cm": "flux (Jy)",
+            "weighted_flux": "weighted flux (Jy)",
+            "percent_flux": "percent flux"
+        },
+        inplace=True
+    )
+    caltable['flux (Jy)'] = caltable['flux (Jy)']/1e3
+    caltable['source'] = [sname.strip('NVSS ') for sname in caltable['source']]
+    caltable.to_csv(resource_filename('dsacalib', csv_string))
+
+
+def update_caltable(pt_el):
+    """Updates caltable to new elevation.
+
+    If needed, a new caltable is written to the dsacalib data directory.
+    The caltable to be used is copied to 'calibrator_sources.csv' in the
+    dsacalib data directory.
+
+    Parameters
+    ----------
+    pt_el : astropy quantity
+        The antenna pointing elevation in degrees or equivalent.
+    """
+    pt_dec = ct.OVRO_LAT*u.rad + pt_el - 90*u.deg
+    print(pt_dec.to(u.deg))
+    csv_string = 'data/calibrator_sources_dec{0}{1}.csv'.format(
+        '+' if pt_dec.to_value(u.deg) >= 0 else '-',
+        '{0:05.2f}'.format(pt_dec.to_value(u.deg)).replace('.', 'p')
+    )
+    if not resource_exists('dsacalib', csv_string):
+        generate_caltable(pt_dec, csv_string)
+    shutil.copy(
+        resource_filename('dsacalib', csv_string),
+        resource_filename('dsacalib', 'data/calibrator_sources.csv')
+    )

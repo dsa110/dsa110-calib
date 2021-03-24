@@ -238,7 +238,7 @@ def calibrate_file(etcd_dict):
            ETCD.get_dict('/mon/snap/1/armed_mjd')['armed_mjd'], format='mjd'
         )
         LOGGER.info('Creating {0}.ms'.format(msname))
-
+# TODO: Get caltable name from pt_dec in the file
         filenames = get_files_for_cal(
             CALTABLE,
             REFCORR,
