@@ -1,5 +1,5 @@
 T3corr:
-    msdir: '/mnt/data/dsa110/imaging_virisha/'
+    msdir: '/mnt/data/dsa110/imaging/'
     npol: 4
     pols: 'XX XY YX YY'
     nchan: 8192 # native

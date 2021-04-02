@@ -109,7 +109,7 @@ def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
         deltafreq=deltafreq,
         freqresolution=freqresolution,
         nchannels=nchannels,
-        stokes='XX YY XY YX' if fullpol else 'XX YY'
+        stokes='XX XY YX YY' if fullpol else 'XX YY'
     )
     sm.settimes(
         integrationtime=integrationtime,
