@@ -275,8 +275,7 @@ def generate_caltable(
     caltable['source'] = [sname.strip('NVSS ') for sname in caltable['source']]
     caltable.to_csv(resource_filename('dsacalib', csv_string))
 
-
-def update_caltable(pt_el):
+def update_caltable(pt_dec):
     """Updates caltable to new elevation.
 
     If needed, a new caltable is written to the dsacalib data directory.
@@ -288,15 +287,10 @@ def update_caltable(pt_el):
     pt_el : astropy quantity
         The antenna pointing elevation in degrees or equivalent.
     """
-    pt_dec = ct.OVRO_LAT*u.rad + pt_el - 90*u.deg
-    print(pt_dec.to(u.deg))
     csv_string = 'data/calibrator_sources_dec{0}{1}.csv'.format(
         '+' if pt_dec.to_value(u.deg) >= 0 else '-',
         '{0:05.2f}'.format(pt_dec.to_value(u.deg)).replace('.', 'p')
     )
     if not resource_exists('dsacalib', csv_string):
         generate_caltable(pt_dec, csv_string)
-    shutil.copy(
-        resource_filename('dsacalib', csv_string),
-        resource_filename('dsacalib', 'data/calibrator_sources.csv')
-    )
+    return resource_filename('dsacalib', csv_string)
