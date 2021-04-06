@@ -29,7 +29,6 @@ NCORR = len(CORRLIST)
 CALTIME = CAL_CONF['caltime_minutes']*u.min
 FILELENGTH = MFS_CONF['filelength_minutes']*u.min
 HDF5DIR = CAL_CONF['hdf5_dir']
-CALTABLE = CAL_CONF['caltable']
 
 # Logger
 LOGGER = dsl.DsaSyslogger()
@@ -185,8 +184,7 @@ def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=T
         else:
             time.sleep(tsleep)
 
-def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH,
-                caltable=CALTABLE):
+def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
     """Decides whether calibration is necessary.
 
     Sends a command to etcd using the monitor point /cmd/cal if the file should
@@ -220,6 +218,9 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH,
                 )
                 a0 = (caltime*np.pi*u.rad/
                       (ct.SECONDS_PER_SIDEREAL_DAY*u.s)).to_value(u.rad)
+                # TODO: Get declination from hdf5 header
+                pt_dec = params['pt_dec']*u.rad
+                caltable = update_caltable(pt_dec)
                 calsources = pandas.read_csv(caltable, header=0)
                 for _index, row in calsources.iterrows():
                     delta_lst_start = (
