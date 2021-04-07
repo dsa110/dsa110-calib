@@ -54,7 +54,6 @@ ANTENNAS = np.concatenate((
 POLS = CORR_PARAMS['pols_voltage']
 ANTENNAS_NOT_IN_BF = ['103 A', '103 B', '101 A', '101 B', '100 A', '100 B',
                       '116 A', '116 B', '102 A', '102 B']
-CALTABLE = CAL_PARAMS['caltable']
 CORR_LIST = list(CORR_PARAMS['ch0'].keys())
 CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
 REFCORR = '{0:02d}'.format(CORR_LIST[0])
@@ -237,10 +236,13 @@ def calibrate_file(etcd_dict):
         start_time = Time(
            ETCD.get_dict('/mon/snap/1/armed_mjd')['armed_mjd'], format='mjd'
         )
+        with h5py.File(fname, mode='r') as h5file:
+            pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value*u.rad
+        caltable = update_caltable(pt_dec)
         LOGGER.info('Creating {0}.ms'.format(msname))
 # TODO: Get caltable name from pt_dec in the file
         filenames = get_files_for_cal(
-            CALTABLE,
+            caltable,
             REFCORR,
             CALTIME,
             FILELENGTH,
