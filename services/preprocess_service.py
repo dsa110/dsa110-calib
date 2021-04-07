@@ -6,6 +6,7 @@ import warnings
 from multiprocessing import Process, Queue
 import time
 import pandas
+import h5py
 import numpy as np
 from astropy.time import Time
 from astropy.coordinates import Angle
@@ -218,8 +219,8 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
                 )
                 a0 = (caltime*np.pi*u.rad/
                       (ct.SECONDS_PER_SIDEREAL_DAY*u.s)).to_value(u.rad)
-                # TODO: Get declination from hdf5 header
-                pt_dec = params['pt_dec']*u.rad
+                with h5py.File(fname, mode='r') as h5file:
+                    pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value*u.rad
                 caltable = update_caltable(pt_dec)
                 calsources = pandas.read_csv(caltable, header=0)
                 for _index, row in calsources.iterrows():
