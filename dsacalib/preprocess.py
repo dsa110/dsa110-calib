@@ -273,6 +273,8 @@ def generate_caltable(
     )
     caltable['flux (Jy)'] = caltable['flux (Jy)']/1e3
     caltable['source'] = [sname.strip('NVSS ') for sname in caltable['source']]
+    caltable['ra'] = caltable['ra']*u.deg
+    caltable['dec'] = caltable['dec']*u.deg
     caltable.to_csv(resource_filename('dsacalib', csv_string))
 
 def update_caltable(pt_dec):

@@ -1377,16 +1377,24 @@ def get_files_for_cal(
     for date in dates:
         filenames[date] = dict()
         for _index, row in calsources.iterrows():
+            if isinstance(row['ra'], str):
+                rowra = row['ra']
+            else:
+                rowra = row['ra']*u.deg
+            if isinstance(row['dec'], str):
+                rowdec = row['dec']
+            else:
+                rowdec = row['dec']*u.deg
             cal = du.src(
                 row['source'],
-                ra=Angle(row['ra']),
-                dec=Angle(row['dec']),
+                ra=Angle(rowra),
+                dec=Angle(rowdec),
                 I=row['flux (Jy)']
             )
 
             midnight = Time('{0}T00:00:00'.format(date))
             delta_lst = (
-                Angle(row['ra'])-midnight.sidereal_time(
+                Angle(rowra)-midnight.sidereal_time(
                     'apparent',
                     longitude=ct.OVRO_LON*u.rad
                 )

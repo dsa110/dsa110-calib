@@ -13,7 +13,7 @@ from astropy.time import Time
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
 import dsautils.cnf as dsc
-from dsacalib.preprocess import first_true
+from dsacalib.preprocess import first_true, update_caltable
 from dsacalib.utils import exception_logger
 from dsacalib.calib import calibrate_phases
 from dsacalib.routines import get_files_for_cal, calibrate_measurement_set
@@ -96,14 +96,14 @@ def sort_filenames(filenames):
             filenames_sorted[yesterday][cal] = filenames[yesterday][cal]
     return filenames_sorted
 
-def find_bf_solns_to_avg(filenames, ttime, start_time):
+def find_bf_solns_to_avg(filenames, ttime, start_time, caltable):
     """Find all previous calibrator passes to average.
     """
     # TODO: Just use a glob of the beamformer directory instead since the
     # names contain the transit pass time and calibrator names.
     yesterday = (ttime-1*u.d).isot.split('T')[0]
     filenames_yesterday = get_files_for_cal(
-        CALTABLE,
+        caltable,
         REFCORR,
         CALTIME,
         FILELENGTH,
@@ -236,7 +236,7 @@ def calibrate_file(etcd_dict):
         start_time = Time(
            ETCD.get_dict('/mon/snap/1/armed_mjd')['armed_mjd'], format='mjd'
         )
-        with h5py.File(fname, mode='r') as h5file:
+        with h5py.File(first_true(flist), mode='r') as h5file:
             pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value*u.rad
         caltable = update_caltable(pt_dec)
         LOGGER.info('Creating {0}.ms'.format(msname))
@@ -382,7 +382,7 @@ def calibrate_file(etcd_dict):
         # Now we want to find all sources in the last 24 hours
         # start by updating our list with calibrators from the day before
         beamformer_names, latest_solns = find_bf_solns_to_avg(
-            filenames, ttime, start_time
+            filenames, ttime, start_time, caltable
         )
         # Average beamformer solutions
         if len(beamformer_names) > 0:
