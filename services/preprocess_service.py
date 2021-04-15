@@ -224,13 +224,17 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
                 caltable = update_caltable(pt_dec)
                 calsources = pandas.read_csv(caltable, header=0)
                 for _index, row in calsources.iterrows():
+                    if isinstance(row['ra'], str):
+                        rowra = row['ra']
+                    else:
+                        rowra = row['ra']*u.deg
                     delta_lst_start = (
-                        tstart-Angle(row['ra'])
+                        tstart-Angle(rowra)
                     ).to_value(u.rad)%(2*np.pi)
                     if delta_lst_start > np.pi:
                         delta_lst_start -= 2*np.pi
                     delta_lst_end = (
-                        tend-Angle(row['ra'])
+                        tend-Angle(rowra)
                     ).to_value(u.rad)%(2*np.pi)
                     if delta_lst_end > np.pi:
                         delta_lst_end -= 2*np.pi
