@@ -467,6 +467,7 @@ def calibrate_file(etcd_dict):
             ANTENNAS_PLOT,
             outname='{0}/figures/{1}'.format(MSDIR, ttime)
         )
+        plt.close('all')
 
 if __name__=="__main__":
     ETCD.add_watch('/cmd/cal', calibrate_file)
