@@ -292,7 +292,7 @@ def triple_antenna_cal(
             cs.INV_GAINCALTIME |
             cs.INV_DELAYCALTIME
         )
-        error = dc.delay_calibration(msname, cal.name, refant=refant)
+        error = dc.delay_calibration(msname, cal.name, refants=[refant])
         if error > 0:
             status = cs.update(status, ['delay_cal_err'])
             message = 'Non-fatal error occured in delay calibration.'
@@ -311,7 +311,6 @@ def triple_antenna_cal(
             cs.INV_GAINPHASE_P2 |
             cs.INV_GAINCALTIME
         )
-        bad_times, times, error = dc.get_bad_times(msname, cal.name, refant)
         if error > 0:
             status = cs.update(status, ['flagging_err'])
             message = 'Non-fatal error occured in calculation of delays on short timescales.'
@@ -319,7 +318,6 @@ def triple_antenna_cal(
                 logger.info(message)
             else:
                 print(message)
-        error = dc.flag_badtimes(msname, times, bad_times, nant)
         if error > 0:
             status = cs.update(status, ['flagging_err'])
             message = 'Non-fatal error occured in flagging of bad timebins'
@@ -873,7 +871,6 @@ def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
     fobs, blen, bname, tstart, _tstop, tsamp, vis, mjd, lst, _transit_idx, \
         antenna_order = dfio.read_psrfits_file(
             fname, cal, dur=10*u.min, antpos=antpos, badants=badants)
-    nant = len(antenna_order)
 
     df.fringestop(vis, blen, cal, mjd, fobs, pt_dec)
     amp_model = df.amplitude_sky_model(cal, lst, pt_dec, fobs)
@@ -891,9 +888,6 @@ def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
 
     dc.delay_calibration(msname, cal.name, refant)
     _check_path('{0}_{1}_kcal'.format(msname, cal.name))
-
-    bad_times, times, _error = dc.get_bad_times(msname, cal.name, refant)
-    dc.flag_badtimes(msname, times, bad_times, nant)
 
     dc.gain_calibration(
         msname,
@@ -987,7 +981,7 @@ def flag_antennas_using_delays(
     return error
 
 def calibrate_measurement_set(
-    msname, cal, refant, throw_exceptions=True, bad_antennas=None,
+    msname, cal, refants, throw_exceptions=True, bad_antennas=None,
     bad_uvrange='2~27m', keepdelays=False, forsystemhealth=False,
     interp_thresh=1.5, interp_polyorder=7, blbased=False, manual_flags=None,
     logger=None
@@ -1052,6 +1046,10 @@ def calibrate_measurement_set(
     int
         A status code. Decode with dsautils.calstatus
     """
+    if isinstance(refants, str) or isinstance(refants, int):
+        refant = refants
+        refants = [refant]
+
     print('entered calibration')
     status = 0
     current_error = cs.UNKNOWN_ERR
@@ -1150,7 +1148,7 @@ def calibrate_measurement_set(
         error = dc.delay_calibration(
             msname,
             cal.name,
-            refant=refant
+            refants=refants
         )
         if error > 0:
             status = cs.update(status, cs.DELAY_CAL_ERR )
@@ -1170,7 +1168,6 @@ def calibrate_measurement_set(
             cs.INV_GAINPHASE_P2 |
             cs.INV_GAINCALTIME
         )
-        _bad_times, _times, error = dc.get_bad_times(msname, cal.name, refant)
         _times, antenna_delays, kcorr, _ant_nos = dp.plot_antenna_delays(
             msname, cal.name, show=False)
         error += flag_antennas_using_delays(antenna_delays, kcorr, msname)
@@ -1205,7 +1202,7 @@ def calibrate_measurement_set(
             cs.INV_DELAYCALTIME
         )
         shutil.rmtree('{0}_{1}_kcal'.format(msname, cal.name))
-        error = dc.delay_calibration(msname, cal.name, refant=refant)
+        error = dc.delay_calibration(msname, cal.name, refants=refants)
         if error > 0:
             status = cs.update(status, cs.DELAY_CAL_ERR )
             message = 'Non-fatal error occured in delay calibration ' + \

@@ -367,7 +367,7 @@ def extract_vis_from_ms(msname, data='data', swapaxes=True):
     return vals, time/ct.SECONDS_PER_DAY, fobs, flags, ant1, ant2, pt_dec, \
         spw, orig_shape
 
-def read_caltable(tablename, cparam=False):
+def read_caltable(tablename, cparam=False, reshape=True):
     """Requires that each spw has the same number of frequency channels.
 
     Parameters
@@ -404,8 +404,9 @@ def read_caltable(tablename, cparam=False):
         ant2 = np.array(tb.ANTENNA2[:])
     baseline = 2048*(ant1+1)+(ant2+1)+2**16
 
-    time, vals, flags, ant1, ant2, _, _ = reshape_calibration_data(
-        vals, flags, ant1, ant2, baseline, time, spw)
+    if reshape:
+        time, vals, flags, ant1, ant2, _, _ = reshape_calibration_data(
+            vals, flags, ant1, ant2, baseline, time, spw)
 
     return vals, time/ct.SECONDS_PER_DAY, flags, ant1, ant2
 

@@ -15,7 +15,7 @@ import casatools as cc
 from casacore.tables import table
 from dsacalib.ms_io import read_caltable
 
-def delay_calibration(msname, sourcename, refant, t='inf', combine_spw=False):
+def delay_calibration_worker(msname, sourcename, refant, t, combine_spw, name):
     r"""Calibrates delays using CASA.
 
     Uses CASA to calibrate delays and write the calibrated visibilities to the
@@ -40,6 +40,8 @@ def delay_calibration(msname, sourcename, refant, t='inf', combine_spw=False):
     combine_spw : boolean
         If True, distinct spws in the same ms will be combined before delay
         calibration.
+    name : str
+        The suffix for the calibration table.
 
     Returns
     -------
@@ -53,11 +55,125 @@ def delay_calibration(msname, sourcename, refant, t='inf', combine_spw=False):
     error = 0
     cb = cc.calibrater()
     error += not cb.open('{0}.ms'.format(msname))
-    error += not cb.setsolve(type='K', t=t, refant=refant, combine=combine,
-                             table='{0}_{1}_kcal'.format(msname, sourcename))
+    error += not cb.setsolve(
+        type='K',
+        t=t,
+        refant=refant,
+        combine=combine,                             
+        table='{0}_{1}_{2}'.format(msname, sourcename, name)
+    )
     error += not cb.solve()
     error += not cb.close()
+    return error
 
+def delay_calibration(msname, sourcename, refants, t1='inf', t2='60s', combine_spw=False):
+    r"""Calibrates delays using CASA.
+
+    Uses CASA to calibrate delays and write the calibrated visibilities to the
+    corrected_data column of the measurement set.
+
+    Parameters
+    ----------
+    msname : str
+        The name of the measurement set.  The measurement set `msname`.ms will
+        be opened.
+    sourcename : str
+        The name of the calibrator source. The calibration table will be
+        written to `msname`\_`sourcename`\_kcal.
+    refants : list(str)
+        The reference antennas to use in calibration. If list items are type
+        *str*, this is the name of the antenna.  If type *int*, it is the index
+        of the antenna in the measurement set. An average is done over all
+        reference antennas to get the final delay table.
+    t1 : str
+        The integration time to use before calibrating to generate the final
+        delay table, e.g. ``'inf'`` or ``'60s'``.  See the CASA documentation
+        for more examples. Defaults to ``'inf'`` (averaging over the entire
+        observation time).
+    t2 : str
+        The integration time to use before fast delay calibrations used to flag
+        antennas with poor delay solutions.
+    combine_spw : boolean
+        If True, distinct spws in the same ms will be combined before delay
+        calibration.
+
+    Returns
+    -------
+    int
+        The number of errors that occured during calibration.
+    """
+    if combine_spw:
+        combine = 'field,scan,obs,spw'
+    else:
+        combine = 'field,scan,obs'
+    error = 0
+    for t in [t1, t2]:
+        kcorr = None
+        for refant in refants:
+            if isinstance(refant, str):
+                refantidx = int(refant)-1
+            else:
+                refantidx = refant
+            error += delay_calibration_worker(
+                msname,
+                sourcename,
+                refant,
+                t,
+                combine_spw,
+                'ref{0}_{1}kcal'.format(refant, '' if t==t1 else '2')
+            )
+            if kcorr is None:
+                kcorr, tkcorr, flags, ant1, ant2 = read_caltable(
+                    '{0}_{1}_ref{2}_{3}kcal'.format(
+                        msname,
+                        sourcename,
+                        refant,
+                        '' if t==t1 else '2'
+                    ),
+                    cparam=False,
+                    reshape=False
+                )
+            else:
+                kcorrtmp, _, flagstmp, _, ant2tmp = read_caltable(
+                    '{0}_{1}_ref{2}_{3}kcal'.format(
+                        msname,
+                        sourcename,
+                        refant,
+                        '' if t==t1 else '2'
+                    ),
+                    cparam=False,
+                    reshape=False
+                )
+                antflags = np.abs(flags.reshape(flags.shape[0], -1).mean(axis=1)-1) < 1e-5
+                kcorr[antflags, ...] = kcorrtmp[antflags, ...]
+                ant2[antflags, ...] = ant2tmp[antflags, ...]
+                flags[antflags, ...] = flagstmp[antflags, ...]
+        # write out to a table
+        with table(
+            '{0}_{1}_ref{2}_{3}kcal'.format(
+                msname,
+                sourcename,
+                refant, 
+                '' if t==t1 else '2'
+            ),
+            readonly=False
+        ) as tb:
+            tb.putcol('FPARAM', kcorr)
+            tb.putcol('FLAG', flags)
+            tb.putcol('ANTENNA2', ant2)
+        os.rename(
+            '{0}_{1}_ref{2}_{3}kcal'.format(
+                msname,
+                sourcename,
+                refant, 
+                '' if t==t1 else '2'
+            ),
+            '{0}_{1}_{2}kcal'.format(
+                msname,
+                sourcename,
+                '' if t==t1 else '2'
+            )
+        )
     return error
 
 def gain_calibration(
@@ -676,80 +792,80 @@ def calc_delays(vis, df, nfavg=5, tavg=True):
 
     return vis_ft, delay_arr
 
-def get_bad_times(msname, sourcename, refant, tint='59s', combine_spw=False,
-                  nspw=1):
-    r"""Flags bad times in the calibrator data.
+# def get_bad_times(msname, sourcename, refant, tint='59s', combine_spw=False,
+#                   nspw=1):
+#     r"""Flags bad times in the calibrator data.
 
-    Calculates delays on short time periods and compares them to the delay
-    calibration solution. Can only be run after delay calibration.
+#     Calculates delays on short time periods and compares them to the delay
+#     calibration solution. Can only be run after delay calibration.
 
-    Parameters
-    ----------
-    msname : str
-        The name of the measurement set. The MS `msname`.ms will be opened.
-    sourcename : str
-        The name of the calibrator source.  The calibration table will be
-        written to `msname`\_`sourcename`\_kcal.
-    refant : str
-        The reference antenna to use in calibration. If type *str*, the name of
-        the reference antenna, if type *int*, the index of the antenna in the
-        CASA measurement set. This must be the same as the reference antenna
-        used in the delay calibration, or unexpected errors may occur.
-    tint : str
-        The timescale on which to calculate the delay solutions (and evaluate
-        the data quality). Must be a CASA-interpreted string, e.g. ``'inf'``
-        (average all of the data) or ``'60s'`` (average data to 60-second bins
-        before delay calibration).  Defaults to ``'59s'``.
-    combine_spw : bool
-        Set to True if the spws were combined before delay calibration.
-    nspw : int
-        The number of spws in the measurement set.
+#     Parameters
+#     ----------
+#     msname : str
+#         The name of the measurement set. The MS `msname`.ms will be opened.
+#     sourcename : str
+#         The name of the calibrator source.  The calibration table will be
+#         written to `msname`\_`sourcename`\_kcal.
+#     refant : str
+#         The reference antenna to use in calibration. If type *str*, the name of
+#         the reference antenna, if type *int*, the index of the antenna in the
+#         CASA measurement set. This must be the same as the reference antenna
+#         used in the delay calibration, or unexpected errors may occur.
+#     tint : str
+#         The timescale on which to calculate the delay solutions (and evaluate
+#         the data quality). Must be a CASA-interpreted string, e.g. ``'inf'``
+#         (average all of the data) or ``'60s'`` (average data to 60-second bins
+#         before delay calibration).  Defaults to ``'59s'``.
+#     combine_spw : bool
+#         Set to True if the spws were combined before delay calibration.
+#     nspw : int
+#         The number of spws in the measurement set.
 
-    Returns
-    -------
-    bad_times : array
-        Booleans, ``True`` if the data quality is poor and the time-bin should
-        be flagged, ``False`` otherwise.  Same dimensions as times.
-    times : array
-        Floats, the time (mjd) for each delay solution.
-    error : int
-        The number of errors that occured during calibration.
-    """
-    if combine_spw:
-        combine = 'field,scan,obs,spw'
-    else:
-        combine = 'field,scan,obs'
-    error = 0
-    # Solve the calibrator data on minute timescales
-    cb = cc.calibrater()
-    error += not cb.open('{0}.ms'.format(msname))
-    error += not cb.setsolve(type='K', t=tint, refant=refant, combine=combine,
-                             table='{0}_{1}_2kcal'.format(msname, sourcename))
-    error += not cb.solve()
-    error += not cb.close()
-    # Pull the solutions for the entire timerange and the 60-s data from the
-    # measurement set tables
-    antenna_delays, times, _flags, _ant1, _ant2 = read_caltable(
-        '{0}_{1}_2kcal'.format(msname, sourcename), cparam=False)
-    npol = antenna_delays.shape[-1]
-    kcorr, _tkcorr, _flags, _ant1, _ant2 = read_caltable(
-        '{0}_{1}_kcal'.format(msname, sourcename), cparam=False)
-    # Shapes (baseline, time, spw, frequency, pol)
-    # Squeeze on the freqeuncy axis
-    antenna_delays = antenna_delays.squeeze(axis=3)
-    kcorr = kcorr.squeeze(axis=3)
-    nant = antenna_delays.shape[0]
-    nspw = antenna_delays.shape[2]
+#     Returns
+#     -------
+#     bad_times : array
+#         Booleans, ``True`` if the data quality is poor and the time-bin should
+#         be flagged, ``False`` otherwise.  Same dimensions as times.
+#     times : array
+#         Floats, the time (mjd) for each delay solution.
+#     error : int
+#         The number of errors that occured during calibration.
+#     """
+#     if combine_spw:
+#         combine = 'field,scan,obs,spw'
+#     else:
+#         combine = 'field,scan,obs'
+#     error = 0
+#     # Solve the calibrator data on minute timescales
+#     cb = cc.calibrater()
+#     error += not cb.open('{0}.ms'.format(msname))
+#     error += not cb.setsolve(type='K', t=tint, refant=refant, combine=combine,
+#                              table='{0}_{1}_2kcal'.format(msname, sourcename))
+#     error += not cb.solve()
+#     error += not cb.close()
+#     # Pull the solutions for the entire timerange and the 60-s data from the
+#     # measurement set tables
+#     antenna_delays, times, _flags, _ant1, _ant2 = read_caltable(
+#         '{0}_{1}_2kcal'.format(msname, sourcename), cparam=False)
+#     npol = antenna_delays.shape[-1]
+#     kcorr, _tkcorr, _flags, _ant1, _ant2 = read_caltable(
+#         '{0}_{1}_kcal'.format(msname, sourcename), cparam=False)
+#     # Shapes (baseline, time, spw, frequency, pol)
+#     # Squeeze on the freqeuncy axis
+#     antenna_delays = antenna_delays.squeeze(axis=3)
+#     kcorr = kcorr.squeeze(axis=3)
+#     nant = antenna_delays.shape[0]
+#     nspw = antenna_delays.shape[2]
 
-    threshold = nant*nspw*npol//2
-    bad_pixels = (np.abs(antenna_delays-kcorr) > 1.5)
-    bad_times = (bad_pixels.reshape(bad_pixels.shape[0],
-                                            bad_pixels.shape[1], -1)
-                         .sum(axis=-1).sum(axis=0) > threshold)
-    # bad_times[:, np.sum(np.sum(bad_times, axis=0), axis=1) > threshold, :] \
-    #    = np.ones((nant, 1, npol))
+#     threshold = nant*nspw*npol//2
+#     bad_pixels = (np.abs(antenna_delays-kcorr) > 1.5)
+#     bad_times = (bad_pixels.reshape(bad_pixels.shape[0],
+#                                             bad_pixels.shape[1], -1)
+#                          .sum(axis=-1).sum(axis=0) > threshold)
+#     # bad_times[:, np.sum(np.sum(bad_times, axis=0), axis=1) > threshold, :] \
+#     #    = np.ones((nant, 1, npol))
 
-    return bad_times, times, error
+#     return bad_times, times, error
 
 def apply_calibration(msname, calname, msnamecal=None, combine_spw=False,
                       nspw=1, blbased=False):
