@@ -40,7 +40,9 @@ MFS_PARAMS = CONF.get('fringe')
 
 # These should be put somewhere else eventually
 CALTIME = CAL_PARAMS['caltime_minutes']*u.min
-REFANT = CAL_PARAMS['refant']
+REFANTS = CAL_PARAMS['refant']
+if isinstance(REFANTS, (str, int)):
+    REFANTS = [REFANTS]
 FILELENGTH = MFS_PARAMS['filelength_minutes']*u.min
 MSDIR = CAL_PARAMS['msdir']
 BEAMFORMER_DIR = CAL_PARAMS['beamformer_dir']
@@ -240,7 +242,6 @@ def calibrate_file(etcd_dict):
             pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value*u.rad
         caltable = update_caltable(pt_dec)
         LOGGER.info('Creating {0}.ms'.format(msname))
-# TODO: Get caltable name from pt_dec in the file
         filenames = get_files_for_cal(
             caltable,
             REFCORR,
@@ -279,7 +280,7 @@ def calibrate_file(etcd_dict):
         status = calibrate_measurement_set(
             msname,
             filenames[date][calname]['cal'],
-            refant=REFANT,
+            refants=REFANTS,
             bad_antennas=None,
             bad_uvrange='2~27m',
             forsystemhealth=True,
@@ -345,7 +346,7 @@ def calibrate_file(etcd_dict):
         status = calibrate_measurement_set(
             msname,
             filenames[date][calname]['cal'],
-            refant=REFANT,
+            refants=REFANTS,
             bad_antennas=None,
             bad_uvrange='2~27m',
             keepdelays=False,
@@ -461,7 +462,7 @@ def calibrate_file(etcd_dict):
                 corrlist=np.array(CORR_LIST)
             )
         # Plot evolution of the phase over the day
-        calibrate_phases(filenames, REFANT)
+        calibrate_phases(filenames, REFANTS[0])
         plot_bandpass_phases(
             filenames,
             ANTENNAS_PLOT,
