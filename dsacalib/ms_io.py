@@ -1187,14 +1187,14 @@ def convert_calibrator_pass_to_ms(
             message = 'Wrote {0}.ms'.format(msname)
             if logger is not None:
                 logger.info(message)
-            else:
-                print(message)
+            #else:
+            print(message)
         except (ValueError, IndexError):
             message = 'No data for {0} transit on {1}'.format(date, cal.name)
             if logger is not None:
                 logger.info(message)
-            else:
-                print(message)
+            #else:
+            print(message)
     elif len(files) > 0:
         msnames = []
         for filename in files:
@@ -1233,27 +1233,27 @@ def convert_calibrator_pass_to_ms(
             message = 'Wrote {0}.ms'.format(msname)
             if logger is not None:
                 logger.info(message)
-            else:
-                print(message)
+            #else:
+            print(message)
         elif len(msnames) == 1:
             os.rename('{0}.ms'.format(msnames[0]), '{0}.ms'.format(msname))
             message = 'Wrote {0}.ms'.format(msname)
             if logger is not None:
                 logger.info(message)
-            else:
-                print(message)
+            #else:
+            print(message)
         else:
             message = 'No data for {0} transit on {1}'.format(date, cal.name)
             if logger is not None:
                 logger.info(message)
-            else:
-                print(message)
+            #else:
+            print(message)
     else:
         message = 'No data for {0} transit on {1}'.format(date, cal.name)
         if logger is not None:
             logger.info(message)
-        else:
-            print(message)
+        #else:
+        print(message)
 
 def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
                flux=None, logger=None):
