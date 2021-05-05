@@ -1,9 +1,8 @@
-import pytest
-
+"""Tests for ms_io.py.
+"""
 import datetime
 import numpy as np
 from antpos.utils import get_itrf, get_baselines
-import scipy
 import casatools as cc
 from casacore.tables import table
 from dsacalib import constants
@@ -17,6 +16,8 @@ iers.conf.auto_max_age = None
 from astropy.time import Time
 
 def test_simulate_ms(tmpdir):
+    """Test simulate_ms function.
+    """
     ntint = 32*32*4
     nfint = 8*8*4
     antennas = np.array([24, 25, 26])
@@ -58,11 +59,12 @@ def test_simulate_ms(tmpdir):
         dt=0.000429017462010961+7.275957614183426e-12-7.767375791445374e-07,
         source=source,
         stoptime='{0}s'.format(0.000032768*122880),
-        autocorr=True, 
+        autocorr=True,
         fullpol=True
     )
     with table('{0}/test.ms/POLARIZATION'.format(tmpdir)) as tb:
-        # CORR_TYPE integers given by order in https://casa.nrao.edu/active/docs/doxygen/html/classcasa_1_1Stokes.html
+        # CORR_TYPE integers given by order in
+        # https://casa.nrao.edu/active/docs/doxygen/html/classcasa_1_1Stokes.html
         assert np.all(tb.CORR_TYPE[:][0] == np.array([9, 10, 11, 12]))
         assert np.all(
             tb.CORR_PRODUCT[:][0] == np.array([[0, 0], [0, 1], [1, 0], [1, 1]])

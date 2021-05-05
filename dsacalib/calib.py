@@ -59,14 +59,15 @@ def delay_calibration_worker(msname, sourcename, refant, t, combine_spw, name):
         type='K',
         t=t,
         refant=refant,
-        combine=combine,                             
+        combine=combine,
         table='{0}_{1}_{2}'.format(msname, sourcename, name)
     )
     error += not cb.solve()
     error += not cb.close()
     return error
 
-def delay_calibration(msname, sourcename, refants, t1='inf', t2='60s', combine_spw=False):
+def delay_calibration(msname, sourcename, refants, t1='inf', t2='60s',
+                      combine_spw=False):
     r"""Calibrates delays using CASA.
 
     Uses CASA to calibrate delays and write the calibrated visibilities to the
@@ -102,11 +103,9 @@ def delay_calibration(msname, sourcename, refants, t1='inf', t2='60s', combine_s
     int
         The number of errors that occured during calibration.
     """
-    if combine_spw:
-        combine = 'field,scan,obs,spw'
-    else:
-        combine = 'field,scan,obs'
+    assert isinstance(refants, list)
     error = 0
+    refant = None
     for t in [t1, t2]:
         kcorr = None
         for refant in refants:
@@ -123,7 +122,7 @@ def delay_calibration(msname, sourcename, refants, t1='inf', t2='60s', combine_s
                 'ref{0}_{1}kcal'.format(refant, '' if t==t1 else '2')
             )
             if kcorr is None:
-                kcorr, tkcorr, flags, ant1, ant2 = read_caltable(
+                kcorr, _, flags, _, ant2 = read_caltable(
                     '{0}_{1}_ref{2}_{3}kcal'.format(
                         msname,
                         sourcename,
@@ -144,8 +143,13 @@ def delay_calibration(msname, sourcename, refants, t1='inf', t2='60s', combine_s
                     cparam=False,
                     reshape=False
                 )
-                antflags = np.abs(flags.reshape(flags.shape[0], -1).mean(axis=1)-1) < 1e-5
-                kcorr[antflags, ...] = kcorrtmp[antflags, ...]
+                antflags = np.abs(
+                    flags.reshape(flags.shape[0], -1).mean(axis=1)-1) < 1e-5
+                assert antflags[refantidx] == 0, \
+                    'Refant {0} is flagged in kcorr!'.format(refant) + \
+                    'Choose refants that are separated in uv-space.'
+                kcorr[antflags, ...] = kcorrtmp[antflags, ...]-\
+                                       kcorr[refantidx, ...]
                 ant2[antflags, ...] = ant2tmp[antflags, ...]
                 flags[antflags, ...] = flagstmp[antflags, ...]
         # write out to a table
@@ -153,7 +157,7 @@ def delay_calibration(msname, sourcename, refants, t1='inf', t2='60s', combine_s
             '{0}_{1}_ref{2}_{3}kcal'.format(
                 msname,
                 sourcename,
-                refant, 
+                refant,
                 '' if t==t1 else '2'
             ),
             readonly=False
@@ -165,7 +169,7 @@ def delay_calibration(msname, sourcename, refants, t1='inf', t2='60s', combine_s
             '{0}_{1}_ref{2}_{3}kcal'.format(
                 msname,
                 sourcename,
-                refant, 
+                refant,
                 '' if t==t1 else '2'
             ),
             '{0}_{1}_{2}kcal'.format(

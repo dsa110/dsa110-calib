@@ -1,6 +1,5 @@
 """A service to create measurement sets and calibrate data.
 """
-
 import os
 import warnings
 import datetime
@@ -17,8 +16,10 @@ from dsacalib.preprocess import first_true, update_caltable
 from dsacalib.utils import exception_logger
 from dsacalib.calib import calibrate_phases
 from dsacalib.routines import get_files_for_cal, calibrate_measurement_set
-from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd, write_beamformer_solutions, average_beamformer_solutions
-from dsacalib.plotting import summary_plot, plot_current_beamformer_solutions, plot_bandpass_phases, plot_beamformer_weights
+from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd, \
+    write_beamformer_solutions, average_beamformer_solutions
+from dsacalib.plotting import summary_plot, plot_bandpass_phases, \
+    plot_beamformer_weights #, plot_current_beamformer_solutions
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
