@@ -62,9 +62,10 @@ def test_simulate_ms(tmpdir):
         fullpol=True
     )
     with table('{0}/test.ms/POLARIZATION'.format(tmpdir)) as tb:
-        assert np.all(tb.CORR_TYPE[:][0] == np.array([9, 12, 10, 11]))
+        # CORR_TYPE integers given by order in https://casa.nrao.edu/active/docs/doxygen/html/classcasa_1_1Stokes.html
+        assert np.all(tb.CORR_TYPE[:][0] == np.array([9, 10, 11, 12]))
         assert np.all(
-            tb.CORR_PRODUCT[:][0] == np.array([[0, 0], [1, 1], [0, 1], [1, 0]])
+            tb.CORR_PRODUCT[:][0] == np.array([[0, 0], [0, 1], [1, 0], [1, 1]])
         )
         assert tb.NUM_CORR[:][0] == 4
     with table('{0}/test.ms'.format(tmpdir)) as tb:
