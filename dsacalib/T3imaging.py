@@ -14,7 +14,7 @@ from dsacalib.dispersion import disperse, dedisperse
 import dsacalib.utils as du
 from dsacalib.ms_io import simulate_ms
 
-# TODO: create a single DEDISPERSION table for the MMS 
+# TODO: create a single DEDISPERSION table for the MMS
 # TODO: combine applied_dm with dispersion_measure to only read file once
 def T3_dedisperse_ms(
     paramfile, msname, dispersion_measure, ref_freq=1.405*u.GHz
@@ -162,7 +162,6 @@ def write_T3data_to_ms(msname, datapaths, msdir):
         band.
     msdir : str
         The path to the measurement set. Will modify `msdir`/`msname`.ms.
-    
     """
     for corr, datapath in datapaths.items():
         shutil.copyfile(

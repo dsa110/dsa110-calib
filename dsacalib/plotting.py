@@ -12,7 +12,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import astropy.units as u
 import scipy # pylint: disable=unused-import
-from scipy.fftpack import fftshift
 import casatools as cc
 from casacore.tables import table
 from astropy.coordinates import Angle
@@ -456,8 +455,7 @@ def plot_delays(vis_ft, labels, delay_arr, bname, nx=None, outname=None,
 
     return delays
 
-def gen_image(msname, imtype, sr0, verbose=False, outname=None, show=True,
-              npix=256, cellsize='0.2arcsec'):
+def gen_image(msname, imtype, sr0, npix=256, cellsize='0.2arcsec'):
     """Uses CASA to grid and image visibilities.
 
     Parameters
@@ -468,18 +466,15 @@ def gen_image(msname, imtype, sr0, verbose=False, outname=None, show=True,
         The visibilities to image.  Can be 'observed', 'corrected', or 'model'.
     sr0 : src instance
         The source to use as the phase center in the image.
-    verbose : boolean
-        If ``True``, information about the image, including the location and
-        SNR of the peak, are printed.  Default ``False``.
-    outname : str
-        The base to use for the name of the png file the plot is saved to. The
-        plot will be saved to `outname`_`imtype`.png if an outname is provided.
-        If `outname` is ``None``, the image is not saved.  Defaults ``None``.
-    show : boolean
-        If `show` is ``False``, the plot will be closed after being generated.
-        Defaults ``True``.
     npix : int
         The number of pixels per side to plot in the image. Defaults 256.
+    cellsize : str
+        The cellsize in a casa-understood unit.
+
+    Returns
+    -------
+    str
+        The name of the image file created.
     """
     error = 0
     im = cc.imager()
@@ -496,9 +491,25 @@ def gen_image(msname, imtype, sr0, verbose=False, outname=None, show=True,
     error += not im.done()
     return '{0}_{1}.im'.format(msname, imtype)
 
-def plot_image(imname, verbose=False, outname=None, show=True):
+def plot_image(imname, verbose=False, outname=None, show=True,
+               cellsize='0.2arcsec'):
     """Plots an image from the casa-generated image file.
+
+    Parameters
+    ----------
+    imname : str
+        The name of the image file.
+    verbose : bool
+        If True, details including the brightest pixel and max SNR are printed.
+    outname : str
+        The name of the file to save the plot to. Saves to `outname`_image.png.
+    show : bool
+        If False, the plot is closed after saving.
+    cellsize : str
+        The pixel size of the image, in casa-understood units.
     """
+    # TODO: get the cellsize from the metadata in the image.
+    error = 0
     ia = cc.image()
     error += not ia.open(imname)
     dd = ia.summary()

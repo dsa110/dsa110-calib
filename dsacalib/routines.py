@@ -886,7 +886,7 @@ def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
     if '8' in antenna_order:
         dc.flag_antenna(msname, '8', pol='A')
 
-    dc.delay_calibration(msname, cal.name, refant)
+    dc.delay_calibration(msname, cal.name, [refant])
     _check_path('{0}_{1}_kcal'.format(msname, cal.name))
 
     dc.gain_calibration(
@@ -1046,7 +1046,7 @@ def calibrate_measurement_set(
     int
         A status code. Decode with dsautils.calstatus
     """
-    if isinstance(refants, str) or isinstance(refants, int):
+    if isinstance(refants, (int,str)):
         refant = refants
         refants = [refant]
     else:
