@@ -1049,6 +1049,8 @@ def calibrate_measurement_set(
     if isinstance(refants, str) or isinstance(refants, int):
         refant = refants
         refants = [refant]
+    else:
+        refant = refants[0]
 
     print('entered calibration')
     status = 0
@@ -1202,6 +1204,7 @@ def calibrate_measurement_set(
             cs.INV_DELAYCALTIME
         )
         shutil.rmtree('{0}_{1}_kcal'.format(msname, cal.name))
+        shutil.rmtree('{0}_{1}_2kcal'.format(msname, cal.name))
         error = dc.delay_calibration(msname, cal.name, refants=refants)
         if error > 0:
             status = cs.update(status, cs.DELAY_CAL_ERR )
