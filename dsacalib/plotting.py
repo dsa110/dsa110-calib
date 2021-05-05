@@ -15,6 +15,7 @@ import scipy # pylint: disable=unused-import
 from scipy.fftpack import fftshift
 import casatools as cc
 from casacore.tables import table
+from astropy.coordinates import Angle
 from dsacalib.ms_io import read_caltable, extract_vis_from_ms
 import dsacalib.constants as ct
 
@@ -455,8 +456,8 @@ def plot_delays(vis_ft, labels, delay_arr, bname, nx=None, outname=None,
 
     return delays
 
-def plot_image(msname, imtype, sr0, verbose=False, outname=None, show=True,
-               npix=256, cellsize='0.2arcsec'):
+def gen_image(msname, imtype, sr0, verbose=False, outname=None, show=True,
+              npix=256, cellsize='0.2arcsec'):
     """Uses CASA to grid and image visibilities.
 
     Parameters
@@ -493,16 +494,20 @@ def plot_image(msname, imtype, sr0, verbose=False, outname=None, show=True,
     error += not im.makeimage(type=imtype,
                               image='{0}_{1}.im'.format(msname, imtype))
     error += not im.done()
+    return '{0}_{1}.im'.format(msname, imtype)
 
+def plot_image(imname, verbose=False, outname=None, show=True):
+    """Plots an image from the casa-generated image file.
+    """
     ia = cc.image()
-    error += not ia.open('{0}_{1}.im'.format(msname, imtype))
+    error += not ia.open(imname)
     dd = ia.summary()
     # dd has shape npixx, npixy, nch, npol
     npixx = dd['shape'][0]
     if verbose:
         print('Image shape: {0}'.format(dd['shape']))
     imvals = ia.getchunk(0, int(npixx))[:, :, 0, 0]
-    imvals = fftshift(imvals)
+    #imvals = fftshift(imvals)
     error += ia.done()
     if verbose:
         peakx, peaky = np.where(imvals.max() == imvals)
@@ -514,16 +519,24 @@ def plot_image(msname, imtype, sr0, verbose=False, outname=None, show=True,
                                                    imvals.shape[1]//2]))
 
     _, ax = plt.subplots(1, 1, figsize=(15, 8))
-    pim = ax.imshow(imvals.transpose(), interpolation='none', origin='lower',
-                    extent=[-imvals.shape[0]/2, imvals.shape[0]/2,
-                            -imvals.shape[1]/2, imvals.shape[1]/2])
+    pim = ax.imshow(
+        imvals.transpose(),
+        interpolation='none',
+        origin='lower',
+        extent=[
+            (-imvals.shape[0]/2*Angle(cellsize)).to_value(u.arcsecond),
+            (imvals.shape[0]/2*Angle(cellsize)).to_value(u.arcsecond),
+            (-imvals.shape[1]/2*Angle(cellsize)).to_value(u.arcsecond),
+            (imvals.shape[1]/2*Angle(cellsize)).to_value(u.arcsecond)
+        ]
+    )
     plt.colorbar(pim)
     ax.axvline(0, color='white', alpha=0.5)
     ax.axhline(0, color='white', alpha=0.5)
     ax.set_xlabel('l (arcsec)')
     ax.set_ylabel('m (arcsec)')
     if outname is not None:
-        plt.savefig('{0}_{1}.png'.format(outname, imtype))
+        plt.savefig('{0}_image.png'.format(outname))
     if not show:
         plt.close()
     if error > 0:
