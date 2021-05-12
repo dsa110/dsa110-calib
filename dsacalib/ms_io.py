@@ -111,6 +111,7 @@ def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
         nchannels=nchannels,
         stokes='XX XY YX YY' if fullpol else 'XX YY'
     )
+    # TODO: use hourangle instead
     sm.settimes(
         integrationtime=integrationtime,
         usehourangle=False,

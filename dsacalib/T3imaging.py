@@ -13,6 +13,8 @@ from antpos.utils import get_itrf
 from dsacalib.dispersion import disperse, dedisperse
 import dsacalib.utils as du
 from dsacalib.ms_io import simulate_ms
+from dsacalib.fringestopping import calc_uvw
+import dsacalib.constants as ct
 
 # TODO: create a single DEDISPERSION table for the MMS
 # TODO: combine applied_dm with dispersion_measure to only read file once
@@ -102,17 +104,48 @@ def T3_initialize_ms(
     source = du.src(
         name=sourcename,
         ra=ra,
-        dec=dec
+        dec=dec,
+        epoch='J2000'
     )
     ant_itrf = get_itrf(
         latlon_center=(ct.OVRO_LAT*u.rad, ct.OVRO_LON*u.rad, ct.OVRO_ALT*u.m)
     ).loc[params['antennas']]
+    fobs = params['f0_GHz']+params['deltaf_MHz']*1e-3*nfint*(
+        np.arange(params['nchan']//nfint)+0.5)
     xx = ant_itrf['dx_m']
     yy = ant_itrf['dy_m']
     zz = ant_itrf['dz_m']
     antenna_names = [str(a) for a in params['antennas']]
-    fobs = params['f0_GHz']+params['deltaf_MHz']*1e-3*nfint*(
-        np.arange(params['nchan']//nfint)+0.5)
+    ant_itrf = get_itrf().loc[params['antennas']]
+    xx = np.array(ant_itrf['dx_m'])
+    yy = np.array(ant_itrf['dy_m'])
+    zz = np.array(ant_itrf['dz_m'])
+    antenna_names = [str(a) for a in params['antennas']]
+    # Get uvw coordinates
+    nants = len(antenna_names)
+    nbls = (nants*(nants+1))//2
+    blen = np.zeros((nbls, 3))
+    k = 0
+    for i in range(len(params['antennas'])):
+        for j in range(i, len(params['antennas'])):
+            blen[k, :] = np.array([
+                xx[i]-xx[j],
+                yy[i]-yy[j],
+                zz[i]-zz[j]
+            ])
+            k += 1
+    time = (tstart.mjd + (
+        (np.arange(params['nsubint']/ntint)+0.5)*params['deltat_s']*ntint
+        )/ct.SECONDS_PER_DAY)
+    # Simulate ms - note only does non-transit observations for some reason
+    bu, bv, bw = calc_uvw(
+        blen,
+        time,
+        'HADEC',
+        np.zeros(len(time))*u.rad,
+        np.ones(len(time))*dec
+    )
+    buvw = np.array([bu, bv, bw]).T.reshape(-1, 3)
     me = cc.measures()
     filenames = []
     for corr, ch0 in params['ch0'].items():
@@ -142,6 +175,11 @@ def T3_initialize_ms(
             autocorr=True,
             fullpol=True
         )
+        with table(
+            '{0}/{1}_{2}.ms'.format(params['msdir'], msname, corr),
+            readonly=False
+        ) as tb:
+            tb.putcol('UVW', buvw)
         filenames += ['{0}/{1}_{2}.ms'.format(params['msdir'], msname, corr)]
     virtualconcat(
         filenames,
