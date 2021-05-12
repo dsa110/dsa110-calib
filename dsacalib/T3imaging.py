@@ -104,7 +104,9 @@ def T3_initialize_ms(
         ra=ra,
         dec=dec
     )
-    ant_itrf = get_itrf().loc[params['antennas']]
+    ant_itrf = get_itrf(
+        latlon_center=(ct.OVRO_LAT*u.rad, ct.OVRO_LON*u.rad, ct.OVRO_ALT*u.m)
+    ).loc[params['antennas']]
     xx = ant_itrf['dx_m']
     yy = ant_itrf['dy_m']
     zz = ant_itrf['dz_m']

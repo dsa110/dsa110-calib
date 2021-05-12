@@ -859,7 +859,9 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
             -1
         ).mean(axis=1)
 
-    antpos_df = get_itrf()
+    antpos_df = get_itrf(
+        latlon_center=(ct.OVRO_LAT*u.rad, ct.OVRO_LON*u.rad, ct.OVRO_ALT*u.m)
+    )
     blen = np.zeros((len(antennas), 3))
     for i, ant in enumerate(antennas):
         blen[i, 0] = antpos_df['x_m'].loc[ant]-antpos_df['x_m'].loc[24]
@@ -1311,7 +1313,9 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     # Set antenna positions
     # This should already be done by the writer but for some reason they
     # are being converted to ICRS
-    df_itrf = get_itrf(height=UV.telescope_location_lat_lon_alt[-1])
+    df_itrf = get_itrf(
+        latlon_center=(ct.OVRO_LAT*u.rad, ct.OVRO_LON*u.rad, ct.OVRO_ALT*u.m)
+    )
     if len(df_itrf['x_m']) != UV.antenna_positions.shape[0]:
         message = 'Mismatch between antennas in current environment ({0}) and correlator environment ({1}) for file {2}'.format(
             len(df_itrf['x_m']),
