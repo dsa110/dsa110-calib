@@ -1062,6 +1062,7 @@ def calibrate_measurement_set(
         # doesn't write a table.
         print('removing files')
         tables_to_remove = [
+            '{0}_{1}_2kcal'.format(msname, cal.name),
             '{0}_{1}_kcal'.format(msname, cal.name),
             '{0}_{1}_bkcal'.format(msname, cal.name),
             '{0}_{1}_gacal'.format(msname, cal.name),
