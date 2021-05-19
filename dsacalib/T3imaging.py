@@ -10,6 +10,7 @@ from casacore.tables import table, tablefromascii
 import casatools as cc
 from casatasks import virtualconcat
 from antpos.utils import get_itrf
+from astropy.time import Time
 from dsacalib.dispersion import disperse, dedisperse
 import dsacalib.utils as du
 from dsacalib.ms_io import simulate_ms
@@ -77,7 +78,7 @@ def T3_dedisperse_ms(
             )
 
 def T3_initialize_ms(
-    paramfile, msname, tstart, sourcename, ra, dec, ntint, nfint
+    paramfile, msname, tstart, sourcename, dec, ntint, nfint
 ):
     """Initialize a ms to write correlated data from the T3 system to.
 
@@ -93,14 +94,16 @@ def T3_initialize_ms(
         The start time of the observation.
     sourcename : str
         The name of the source or field.
-    ra : astropy quantity
-        The right ascension of the pointing, units deg or equivalent.
     dec : astropy quantity
         The declination of the pointing, units deg or equivalent.
     """
     yamlf = open(paramfile)
     params = yaml.load(yamlf, Loader=yaml.FullLoader)['T3corr']
     yamlf.close()
+    ra = (tstart + params['deltat_s']*params['nsubint']*u.s/2).sidereal_time(
+        'apparent',
+        longitude=ct.OVRO_LON*u.rad
+    ).to(u.deg)
     source = du.src(
         name=sourcename,
         ra=ra,
@@ -116,36 +119,9 @@ def T3_initialize_ms(
     yy = ant_itrf['dy_m']
     zz = ant_itrf['dz_m']
     antenna_names = [str(a) for a in params['antennas']]
-    ant_itrf = get_itrf().loc[params['antennas']]
-    xx = np.array(ant_itrf['dx_m'])
-    yy = np.array(ant_itrf['dy_m'])
-    zz = np.array(ant_itrf['dz_m'])
-    antenna_names = [str(a) for a in params['antennas']]
-    # Get uvw coordinates
-    nants = len(antenna_names)
-    nbls = (nants*(nants+1))//2
-    blen = np.zeros((nbls, 3))
-    k = 0
-    for i in range(len(params['antennas'])):
-        for j in range(i, len(params['antennas'])):
-            blen[k, :] = np.array([
-                xx[i]-xx[j],
-                yy[i]-yy[j],
-                zz[i]-zz[j]
-            ])
-            k += 1
-    time = (tstart.mjd + (
-        (np.arange(params['nsubint']/ntint)+0.5)*params['deltat_s']*ntint
-        )/ct.SECONDS_PER_DAY)
+    ntimes = params['nsubint']//ntint
     # Simulate ms - note only does non-transit observations for some reason
-    bu, bv, bw = calc_uvw(
-        blen,
-        time,
-        'HADEC',
-        np.zeros(len(time))*u.rad,
-        np.ones(len(time))*dec
-    )
-    buvw = np.array([bu, bv, bw]).T.reshape(-1, 3)
+    buvw = None
     me = cc.measures()
     filenames = []
     for corr, ch0 in params['ch0'].items():
@@ -175,11 +151,52 @@ def T3_initialize_ms(
             autocorr=True,
             fullpol=True
         )
-        with table(
-            '{0}/{1}_{2}.ms'.format(params['msdir'], msname, corr),
-            readonly=False
-        ) as tb:
-            tb.putcol('UVW', buvw)
+#         with table(
+#             '{0}/{1}_{2}.ms'.format(params['msdir'], msname, corr),
+#             readonly=False
+#         ) as tb:
+#             uvw_time = np.array(tb.TIME[:]).reshape((ntimes, nbls))
+#             assert np.all(np.abs(uvw_time[0, :]-uvw_time[0, 0]) < 1e-9)
+#         if buvw is None:
+#             time = Time(
+#                 uvw_time[:, 0]/ct.SECONDS_PER_SIDEREAL_DAY,
+#                 format='mjd'
+#             )
+#             bu, bv, bw = calc_uvw(
+#                 blen,
+#                 time.mjd,
+#                 'HADEC',
+#                 np.zeros(len(time))*u.rad,
+#                 np.ones(len(time))*dec
+#             )
+#             buvw = np.array([bu, bv, bw]).T.reshape(-1, 3)
+#             ra = time.sidereal_time(
+#                 'apparent',
+#                 longitude=ct.OVRO_LON*u.rad
+#             ).to_value(u.rad)
+#             direction = np.concatenate(
+#                 (
+#                     ra[:, np.newaxis],
+#                     np.ones((len(time), 1))*dec.to_value(u.rad)
+#                 ),
+#                 axis=1
+#             )
+#             direction = np.tile(
+#                 direction[:, np.newaxis, :],
+#                 (1, nants, 1)
+#             ).reshape((ntimes*nants, 1, 2))
+#         with table(
+#             '{0}/{1}_{2}.ms'.format(params['msdir'], msname, corr),
+#             readonly=False
+#         ) as tb:
+#             tb.putcol('UVW', buvw)
+#         with table(
+#             '{0}/{1}_{2}.ms/POINTING'.format(params['msdir'], msname, corr),
+#             readonly=False
+#         ) as tb:
+#             tb.putcol('TRACKING', np.zeros(nants*ntimes, dtype=np.bool))
+#             tb.putcol('TARGET', direction)
+#             tb.putcol('DIRECTION', direction)
         filenames += ['{0}/{1}_{2}.ms'.format(params['msdir'], msname, corr)]
     virtualconcat(
         filenames,
