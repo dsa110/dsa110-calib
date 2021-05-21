@@ -728,15 +728,11 @@ def calculate_sefd(
     ant_gains = np.zeros((nant, npol))
     sefds = np.zeros((nant, npol))
     hwhms = np.zeros((nant, npol))
-    expected_transit_time = ((
-        cal.ra-Time(
-            time[0],
-            format='mjd'
-        ).sidereal_time(
-            'apparent',
-            longitude=ct.OVRO_LON*u.rad
-        )
-    )*u.hour/u.hourangle
+    expected_transit_time = (
+        Time(time[0], format='mjd')
+        -cal.direction.HADEC(
+            obstime=time[0]
+        )[0]*ct.SECONDS_PER_SIDEREAL_DAY*u.s/(2*np.pi)
     ).to_value(u.d)
     max_flux = df.amplitude_sky_model(
         cal,
@@ -1394,12 +1390,9 @@ def get_files_for_cal(
             )
 
             midnight = Time('{0}T00:00:00'.format(date))
-            delta_lst = (
-                Angle(rowra)-midnight.sidereal_time(
-                    'apparent',
-                    longitude=ct.OVRO_LON*u.rad
-                )
-            ).to_value(u.rad)%(2*np.pi)
+            delta_lst = -1*(
+                cal.direction.hadec(midnight.mjd)[0]
+            )%(2*np.pi)
             transit_time = (
                 midnight + delta_lst/(2*np.pi)*ct.SECONDS_PER_SIDEREAL_DAY*u.s
             )

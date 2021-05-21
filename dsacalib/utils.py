@@ -20,6 +20,7 @@ from antpos.utils import get_itrf
 import astropy.units as u
 from astropy.coordinates import Angle
 from dsacalib import constants as ct
+import casatools as cc
 
 def exception_logger(logger, task, exception, throw):
     """Logs exception traceback to syslog using the dsa_syslog module.
@@ -79,15 +80,19 @@ class src():
         """
         self.name = name
         self.I = I
+        assert epoch == 'J2000'
+        self.epoch = 'J2000'
         if isinstance(ra, str):
-            self.ra = to_deg(ra)
-        else:
-            self.ra = ra
+            ra = to_deg(ra)
         if isinstance(dec, str):
-            self.dec = to_deg(dec)
-        else:
-            self.dec = dec
-        self.epoch = epoch
+            dec = to_deg(dec)
+        self.ra = ra
+        self.dec = dec
+        self.direction = direction(
+            'J2000',
+            ra.to_value(u.rad),
+            dec.to_value(u.rad)
+        )
         self.pa = pa
         if maj_axis is None:
             self.maj_axis = None
@@ -312,3 +317,119 @@ def daz_dha(dec, daz=None, dha=None, lat=ct.OVRO_LAT):
     else:
         raise RuntimeError('One of daz or dha must be defined')
     return ans
+
+class direction():
+    """Class for holding sky coordinates and converting between ICRS and FK5.
+ 
+    Parameters
+    ----------
+    epoch : str
+        'J2000' (for ICRS or J2000 coordinates) or 'HADEC' (for FK5 coordinates
+        at an equinox of obstime)
+    lon : float
+        The longitude (right ascension or hour angle) in radians
+    lat : float
+        The latitude (declination) in radians
+    obstime : float
+        The observation time in mjd.
+    observatory : str
+        The name of the observatory
+    """
+    def __init__(self, epoch, lon, lat, obstime=None, observatory='OVRO_MMA'):
+        
+        assert epoch in ['J2000', 'HADEC']
+        if epoch == 'HADEC':
+            assert obstime is not None
+        self.epoch = epoch
+        self.lon = lon
+        self.lat = lat
+        self.obstime = obstime
+        self.observatory = observatory
+    
+    def J2000(self, obstime=None, observatory=None):
+        """Provides direction in J2000 coordinates.
+
+        Parameters
+        ----------
+        obstime : float
+            Time of observation in mjd.
+        location : str
+            Name of the observatory.
+
+        Returns
+        -------
+        tuple
+            ra, dec at J2000 in units of radians.
+        """
+        if self.epoch == 'J2000':
+            return self.lon, self.lat
+
+        assert self.epoch == 'HADEC'
+        if obstime is None:
+            assert self.obstime is not None
+            obstime = self.obstime
+        if observatory is None:
+            assert self.observatory is not None
+            observatory = self.observatory
+
+        me = cc.measures()
+        epoch = me.epoch(
+            'UTC',
+            '{0}d'.format(obstime)
+        )
+        location = me.observatory(observatory)
+        source = me.direction(
+            'HADEC', 
+            '{0}rad'.format(self.lon),
+            '{0}rad'.format(self.lat)
+        )
+        me.doframe(epoch)
+        me.doframe(location)
+        output = me.measure(source, 'J2000')
+        assert output['m0']['unit'] == 'rad'
+        assert output['m1']['unit'] == 'rad'
+        return output['m0']['value'], output['m1']['value']
+
+    def hadec(self, obstime=None, observatory=None):
+        """Provides direction in HADEC (FK5) at `obstime`.
+
+        Parameters
+        ----------
+        obstime : float
+            Time of observation in mjd.
+        location : str
+            Name of the observatory.
+
+        Returns
+        -------
+        tuple
+            ha, dec at obstime in units of radians.
+        """
+        if self.epoch == 'HADEC':
+            assert obstime is None
+            return self.lon, self.lat
+
+        assert self.epoch == 'J2000'
+        if obstime is None:
+            assert self.obstime is not None
+            obstime = self.obstime
+        if observatory is None:
+            assert self.observatory is not None
+            observatory = self.observatory
+        me = cc.measures()
+        epoch = me.epoch(
+            'UTC',
+            '{0}d'.format(obstime)
+        )
+        location = me.observatory(observatory)
+        source = me.direction(
+            'J2000', 
+            '{0}rad'.format(self.lon),
+            '{0}rad'.format(self.lat)
+        )
+        me.doframe(epoch)
+        me.doframe(location)
+        output = me.measure(source, 'HADEC')
+        assert output['m0']['unit'] == 'rad'
+        assert output['m1']['unit'] == 'rad'
+        return output['m0']['value'], output['m1']['value']
