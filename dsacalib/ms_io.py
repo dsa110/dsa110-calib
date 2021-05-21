@@ -1299,13 +1299,19 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     else:
         UV.read(fname, file_type='uvh5', run_check_acceptability=False,
                 strict_uvw_antpos_check=False)
-    print( UV.ant_1_array[UV.ant_1_array==UV.ant_2_array][:25])
+    time = Time(UV.time_array, format='jd')
     pt_dec = UV.extra_keywords['phase_center_dec']*u.rad
+    pointing = du.direction(
+        'HADEC',
+        0.,
+        pt_dec.to_value(u.rad),
+        np.mean(time.mjd)
+    )
     lamb = c.c/(UV.freq_array*u.Hz)
     if ra is None:
-        ra = UV.lst_array[UV.Nblts//2]*u.rad
+        ra = pointing.J2000()[0]*u.rad
     if dec is None:
-        dec = pt_dec
+        dec = pointing.J2000()[1]*u.rad
 
     if dt is not None:
         extract_times(UV, ra, dt)
@@ -1360,7 +1366,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     # Currently using because casa uvws are more accurate than pyuvdatas, which
     # aren't true uvw coordinates.
     blen = np.tile(blen[np.newaxis, :, :], (UV.Ntimes, 1, 1)).reshape(-1, 3)
-    uvw = calc_uvw_blt(blen, time.mjd, 'RADEC', ra.to(u.rad), dec.to(u.rad))
+    uvw = calc_uvw_blt(blen, time.mjd, 'J2000', ra.to(u.rad), dec.to(u.rad))
     dw = (uvw[:, -1] - np.tile(uvw_m[np.newaxis, :, -1], (UV.Ntimes, 1)
                              ).reshape(-1))*u.m
     phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis])
@@ -1411,8 +1417,9 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
 
     UV.write_uvfits('{0}.fits'.format(msname),
                     spoof_nonessential=True,
-                    run_check_acceptability=False
-    )
+                    run_check_acceptability=False,
+                    strict_uvw_antpos_check=False
+                   )
     # Get the model to write to the data
     if flux is not None:
         fobs = UV.freq_array.squeeze()/1e9
