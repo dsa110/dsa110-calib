@@ -76,10 +76,6 @@ def read_hdf5_file(
     tsamp : float
         The sampling time in seconds.
     """
-    if source is not None:
-        lstmid = source.ra.to_value(u.rad)
-        seg_len = (dur/2*(15*u.deg/u.h)).to_value(u.rad)
-
     with h5py.File(fl, 'r') as f:
         antenna_order = list(f['antenna_order'][...])
         nant = len(antenna_order)
@@ -94,6 +90,8 @@ def read_hdf5_file(
             1j*(lst0+2*np.pi/ct.SECONDS_PER_SIDEREAL_DAY*np.arange(nt)*tsamp)))
 
         if source is not None:
+            lstmid = lst0 - source.direction.hadec(obstime=mjd[0])[0]
+            seg_len = (dur/2*(15*u.deg/u.h)).to_value(u.rad)
             if not quiet:
                 print("\n-------------EXTRACT DATA--------------------")
                 print("Extracting data around {0}".format(lstmid*180/np.pi))
