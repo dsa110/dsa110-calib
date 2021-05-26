@@ -1410,7 +1410,9 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         os.remove('{0}.fits'.format(msname))
 
     UV.write_uvfits('{0}.fits'.format(msname),
-                    spoof_nonessential=True)
+                    spoof_nonessential=True,
+                    run_check_acceptability=False
+    )
     # Get the model to write to the data
     if flux is not None:
         fobs = UV.freq_array.squeeze()/1e9
