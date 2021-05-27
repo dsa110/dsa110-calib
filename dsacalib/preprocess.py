@@ -78,6 +78,37 @@ def rsync_file(rsync_string, remove_source_files=True):
     #    print(output)
     return '{0}{1}'.format(fdir, fname)
 
+def remove_outrigger_delays(UVhandler):
+    """Remove outrigger delays from open UV object.
+    """
+    if 'applied_delays_ns' in UVhandler.extra_keywords.keys():
+        applied_delays = np.array(
+            UVhandler.extra_keywords['applied_delays_ns'].split(' ')
+        ).astype(np.int).reshape(-1, 2)
+    else:
+        applied_delays = np.zeros((UVhandler.Nants_telescope, 2), np.int)
+    fobs = UVhandler.freq_array*u.Hz
+    # Remove delays for the outrigger antennas
+    for ant, delay in OUTRIGGER_DELAYS.items():
+        phase_model = np.exp(
+            (
+                2.j*np.pi*fobs*(delay*u.nanosecond)
+            ).to_value(u.dimensionless_unscaled)
+        ).reshape(1, fobs.shape[0], fobs.shape[1], 1)
+        UVhandler.data_array[
+            (UVhandler.ant_1_array!=UVhandler.ant_2_array) &
+            (UVhandler.ant_2_array==ant-1)
+        ] *= phase_model
+        UVhandler.data_array[
+            (UVhandler.ant_1_array!=UVhandler.ant_2_array) &
+            (UVhandler.ant_1_array==ant-1)
+        ] /= phase_model
+        applied_delays[ant-1, :] += int(delay)
+    if 'applied_delays_ns' in UVhandler.extra_keywords.keys():
+        UVhandler.extra_keywords['applied_delays_ns'] = np.string_(
+            ' '.join([str(d) for d in applied_delays.flatten()])
+        )
+
 def fscrunch_file(fname):
     """Removes outrigger delays before averaging in frequency.
 
@@ -95,34 +126,8 @@ def fscrunch_file(fname):
     UV = UVData()
     UV.read_uvh5(fname)
     nint = UV.Nfreqs//NFREQ
-    if 'applied_delays_ns' in UV.extra_keywords.keys():
-        applied_delays = np.array(
-            UV.extra_keywords['applied_delays_ns'].split(' ')
-        ).astype(np.int).reshape(-1, 2)
-    else:
-        applied_delays = np.zeros((UV.Nants_telescope, 2), np.int)
     if nint > 1 and UV.Nfreqs%nint == 0:
-        fobs = UV.freq_array*u.Hz
-        # Remove delays for the outrigger antennas
-        for ant, delay in OUTRIGGER_DELAYS.items():
-            phase_model = np.exp(
-                (
-                    2.j*np.pi*fobs*(delay*u.nanosecond)
-                ).to_value(u.dimensionless_unscaled)
-            ).reshape(1, 1, 384, 1)
-            UV.data_array[
-                (UV.ant_1_array!=UV.ant_2_array) &
-                (UV.ant_2_array==ant-1)
-            ] *= phase_model
-            UV.data_array[
-                (UV.ant_1_array!=UV.ant_2_array) &
-                (UV.ant_1_array==ant-1)
-            ] /= phase_model
-            applied_delays[ant-1, :] += int(delay)
-        if 'applied_delays_ns' in UV.extra_keywords.keys():
-            UV.extra_keywords['applied_delays_ns'] = np.string_(
-                ' '.join([str(d) for d in applied_delays.flatten()])
-            )
+        UV = remove_outrigger_delays(UV)
         # Scrunch in frequency by factor of nint
         UV.frequency_average(n_chan_to_avg=nint)
         if os.path.exists(fname.replace('.hdf5', '_favg.hdf5')):
