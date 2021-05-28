@@ -78,7 +78,7 @@ def rsync_file(rsync_string, remove_source_files=True):
     #    print(output)
     return '{0}{1}'.format(fdir, fname)
 
-def remove_outrigger_delays(UVhandler):
+def remove_outrigger_delays(UVhandler, outrigger_delays=OUTRIGGER_DELAYS):
     """Remove outrigger delays from open UV object.
     """
     if 'applied_delays_ns' in UVhandler.extra_keywords.keys():
@@ -89,7 +89,7 @@ def remove_outrigger_delays(UVhandler):
         applied_delays = np.zeros((UVhandler.Nants_telescope, 2), np.int)
     fobs = UVhandler.freq_array*u.Hz
     # Remove delays for the outrigger antennas
-    for ant, delay in OUTRIGGER_DELAYS.items():
+    for ant, delay in outrigger_delays.items():
         phase_model = np.exp(
             (
                 2.j*np.pi*fobs*(delay*u.nanosecond)
