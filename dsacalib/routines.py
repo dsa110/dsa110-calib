@@ -730,10 +730,10 @@ def calculate_sefd(
     hwhms = np.zeros((nant, npol))
     expected_transit_time = (
         Time(time[0], format='mjd')
-        -cal.direction.HADEC(
+        -cal.direction.hadec(
             obstime=time[0]
         )[0]*ct.SECONDS_PER_SIDEREAL_DAY*u.s/(2*np.pi)
-    ).to_value(u.d)
+    ).mjd
     max_flux = df.amplitude_sky_model(
         cal,
         cal.ra.to_value(u.rad),
