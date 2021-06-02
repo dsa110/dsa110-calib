@@ -733,7 +733,7 @@ def calculate_sefd(
         -cal.direction.hadec(
             obstime=time[0]
         )[0]*ct.SECONDS_PER_SIDEREAL_DAY*u.s/(2*np.pi)
-    ).mjd
+    ).mjd-time[0]
     max_flux = df.amplitude_sky_model(
         cal,
         cal.ra.to_value(u.rad),
