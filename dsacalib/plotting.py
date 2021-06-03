@@ -455,60 +455,10 @@ def plot_delays(vis_ft, labels, delay_arr, bname, nx=None, outname=None,
 
     return delays
 
-def gen_image(msname, imtype, sr0, npix=256, cellsize='0.2arcsec'):
-    """Uses CASA to grid and image visibilities.
-
-    Parameters
-    ----------
-    msname : str
-        The prefix of the measurement set name.  Opens `msname`.ms.
-    imtype : str
-        The visibilities to image.  Can be 'observed', 'corrected', or 'model'.
-    sr0 : src instance
-        The source to use as the phase center in the image.
-    npix : int
-        The number of pixels per side to plot in the image. Defaults 256.
-    cellsize : str
-        The cellsize in a casa-understood unit.
-
-    Returns
-    -------
-    str
-        The name of the image file created.
-    """
-    error = 0
-    im = cc.imager()
-    error += not im.open('{0}.ms'.format(msname))
-    me = cc.measures()
-    qa = cc.quanta()
-    direction = me.direction(sr0.epoch,
-                             qa.quantity(sr0.ra.to_value(u.deg), 'deg'),
-                             qa.quantity(sr0.dec.to_value(u.deg), 'deg'))
-    error += not im.defineimage(nx=npix, ny=npix, cellx=cellsize,
-                                celly=cellsize, phasecenter=direction)
-    error += not im.makeimage(type=imtype,
-                              image='{0}_{1}.im'.format(msname, imtype))
-    error += not im.done()
-    return '{0}_{1}.im'.format(msname, imtype)
-
-def plot_image(imname, verbose=False, outname=None, show=True,
-               cellsize='0.2arcsec'):
+def plot_image(imname, verbose=False, outname=None, show=True, cellsize='0.2arcsec'):
     """Plots an image from the casa-generated image file.
-
-    Parameters
-    ----------
-    imname : str
-        The name of the image file.
-    verbose : bool
-        If True, details including the brightest pixel and max SNR are printed.
-    outname : str
-        The name of the file to save the plot to. Saves to `outname`_image.png.
-    show : bool
-        If False, the plot is closed after saving.
-    cellsize : str
-        The pixel size of the image, in casa-understood units.
     """
-    # TODO: get the cellsize from the metadata in the image.
+    # TODO: Get cell-size from the image data
     error = 0
     ia = cc.image()
     error += not ia.open(imname)
@@ -518,6 +468,7 @@ def plot_image(imname, verbose=False, outname=None, show=True,
     if verbose:
         print('Image shape: {0}'.format(dd['shape']))
     imvals = ia.getchunk(0, int(npixx))[:, :, 0, 0]
+    #imvals = fftshift(imvals)
     error += ia.done()
     if verbose:
         peakx, peaky = np.where(imvals.max() == imvals)
