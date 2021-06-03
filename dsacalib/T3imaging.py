@@ -8,7 +8,7 @@ import astropy.units as u
 from antpos.utils import get_itrf
 from pyuvdata import UVData
 from dsautils import cnf
-from dsamfs.io import initialize_uvh5_file, update_uvh5_file
+from dsamfs.io_nopsrdada import initialize_uvh5_file, update_uvh5_file
 from dsacalib.ms_io import uvh5_to_ms
 from dsacalib.fringestopping import calc_uvw
 import dsacalib.constants as ct
@@ -123,9 +123,9 @@ def generate_T3_ms(name, pt_dec, tstart, ntint, nfint, filelist, params=T3PARAMS
                 np.ones(data.shape, np.float32)
             )
         UV = UVData()
-        UV.read(outname, file_type='uvh5')
+        UV.read(outname, file_type='uvh5', run_check_acceptability=False)
         remove_outrigger_delays(UV)
-        UV.write_uvh5(outname, clobber=True)
+        UV.write_uvh5(outname, clobber=True, run_check_acceptability=False)
         hdf5_files += [outname]
     uvh5_to_ms(
         hdf5_files,
