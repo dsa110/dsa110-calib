@@ -7,7 +7,7 @@ T3corr:
     f0_GHz: 1.53
     deltaf_MHz: -0.030517578125 # native
     deltat_s: 0.000032768 # native
-    nsubint: 122706 #122880 #153306 #122880 # native #153306
+    nsubint: 122880
     antennas:
       - 24
       - 25
