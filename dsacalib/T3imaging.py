@@ -53,7 +53,7 @@ def get_blen(antennas):
             k += 1
     return blen, bname
 
-def generate_T3_ms(name, pt_dec, tstart, ntint, nfint, filelist, params=T3PARAMS):
+def generate_T3_ms(name, pt_dec, tstart, ntint, nfint, filelist, params=T3PARAMS, start_offset=None, end_offset=None):
     """Generates a measurement set from the T3 correlations.
     
     Parameters
@@ -84,6 +84,9 @@ def generate_T3_ms(name, pt_dec, tstart, ntint, nfint, filelist, params=T3PARAMS
     nbls = (nant*(nant+1))//2
     tsamp = params['deltat_s']*ntint*u.s
     tobs = tstart + (np.arange(params['nsubint']//ntint)+0.5)*tsamp
+    if start_offset is not None:
+        assert end_offset is not None
+        tobs = tobs[start_offset:end_offset]
     blen, bname = get_blen(params['antennas'])
     bu, bv, bw = calc_uvw(
         blen,
@@ -103,6 +106,8 @@ def generate_T3_ms(name, pt_dec, tstart, ntint, nfint, filelist, params=T3PARAMS
         data = data.reshape(-1, 2)
         data = data[..., 0] + 1.j*data[..., 1]
         data = data.reshape(-1, nbls, len(fobs_corr), 4)[..., [0, -1]]
+        if start_offset is not None:
+            data = data[start_offset:end_offset, ...]
         outname = '{2}/{1}_{0}.hdf5'.format(corr, name, params['msdir'])
         with h5py.File(outname, 'w') as fhdf5:
             initialize_uvh5_file(
