@@ -12,9 +12,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import astropy.units as u
 import scipy # pylint: disable=unused-import
-import casatools as cc
 from casacore.tables import table
-from astropy.coordinates import Angle
 from dsacalib.ms_io import read_caltable, extract_vis_from_ms
 import dsacalib.constants as ct
 
@@ -455,54 +453,6 @@ def plot_delays(vis_ft, labels, delay_arr, bname, nx=None, outname=None,
 
     return delays
 
-def plot_image(imname, verbose=False, outname=None, show=True, cellsize='0.2arcsec'):
-    """Plots an image from the casa-generated image file.
-    """
-    # TODO: Get cell-size from the image data
-    error = 0
-    ia = cc.image()
-    error += not ia.open(imname)
-    dd = ia.summary()
-    # dd has shape npixx, npixy, nch, npol
-    npixx = dd['shape'][0]
-    if verbose:
-        print('Image shape: {0}'.format(dd['shape']))
-    imvals = ia.getchunk(0, int(npixx))[:, :, 0, 0]
-    #imvals = fftshift(imvals)
-    error += ia.done()
-    if verbose:
-        peakx, peaky = np.where(imvals.max() == imvals)
-        print('Peak SNR at pix ({0},{1}) = {2}'.format(peakx[0], peaky[0],
-                                                       imvals.max()/
-                                                       imvals.std()))
-        print('Value at peak: {0}'.format(imvals.max()))
-        print('Value at origin: {0}'.format(imvals[imvals.shape[0]//2,
-                                                   imvals.shape[1]//2]))
-
-    _, ax = plt.subplots(1, 1, figsize=(15, 8))
-    pim = ax.imshow(
-        imvals.transpose(),
-        interpolation='none',
-        origin='lower',
-        extent=[
-            (-imvals.shape[0]/2*Angle(cellsize)).to_value(u.arcsecond),
-            (imvals.shape[0]/2*Angle(cellsize)).to_value(u.arcsecond),
-            (-imvals.shape[1]/2*Angle(cellsize)).to_value(u.arcsecond),
-            (imvals.shape[1]/2*Angle(cellsize)).to_value(u.arcsecond)
-        ]
-    )
-    plt.colorbar(pim)
-    ax.axvline(0, color='white', alpha=0.5)
-    ax.axhline(0, color='white', alpha=0.5)
-    ax.set_xlabel('l (arcsec)')
-    ax.set_ylabel('m (arcsec)')
-    if outname is not None:
-        plt.savefig('{0}_image.png'.format(outname))
-    if not show:
-        plt.close()
-    if error > 0:
-        print('{0} errors occured during imaging'.format(error))
-
 def plot_antenna_delays(msname, calname, plabels=None, outname=None, show=True):
     r"""Plots antenna delay variations between two delay calibrations.
 
@@ -577,15 +527,23 @@ def plot_antenna_delays(msname, calname, plabels=None, outname=None, show=True):
     lcyc = ['.', 'x']
     for i, bidx in enumerate(idx_to_plot):
         for j in range(npol):
-            ax[i//10].plot(tplot, val_to_plot[bidx, :, j],
-                    marker=lcyc[j%len(lcyc)],
-                    label='{0} {1}'.format(antenna_order[bidx]+1, plabels[j]),
-                    alpha=0.5, color=ccyc[i%len(ccyc)])
+            ax[i//10].plot(
+                tplot,
+                val_to_plot[bidx, :, j],
+                marker=lcyc[j%len(lcyc)],
+                label='{0} {1}'.format(antenna_order[bidx]+1, plabels[j]),
+                alpha=0.5,
+                color=ccyc[i%len(ccyc)]
+            )
     for i in range(ny):
         ax[i].set_ylim(-5, 5)
         ax[i].set_ylabel('delay (ns)')
-        ax[i].legend(ncol=len(idx_to_plot)//15+1, fontsize='small',
-                  bbox_to_anchor=(1.05, 1), loc='upper left')
+        ax[i].legend(
+            ncol=len(idx_to_plot)//15+1,
+            fontsize='small',
+            bbox_to_anchor=(1.05, 1),
+            loc='upper left'
+        )
         ax[i].set_xlabel('time (min)')
         ax[i].axhline(1.5)
         ax[i].axhline(-1.5)
@@ -641,7 +599,7 @@ def plot_gain_calibration(msname, calname, plabels=None, outname=None,
     gain_phase = gain_phase.squeeze(axis=3)
     gain_phase = gain_phase.mean(axis=2)
     npol = gain_phase.shape[-1]
-    if np.all(ant2==ant2[0]):
+    if np.all(ant2 == ant2[0]):
         labels = ant1
     else:
         labels = np.array([ant1, ant2]).T
@@ -756,7 +714,7 @@ def plot_bandpass(msname, calname,
     else:
         fobs_plot = fobs.copy()
 
-    if np.all(ant2==ant2[0]):
+    if np.all(ant2 == ant2[0]):
         labels = ant1+1
     else:
         labels = np.array([ant1+1, ant2+1]).T
@@ -801,26 +759,30 @@ def plot_autocorr(UV):
     ant2 = UV.ant_2_array.reshape(UV.Ntimes, -1)[0, :]
     time = UV.time_array.reshape(UV.Ntimes, -1)[:, 0]
     vis = UV.data_array.reshape(UV.Ntimes, -1, UV.Nfreqs, UV.Npols)
-    autocorrs = np.where(ant1==ant2)[0]
+    autocorrs = np.where(ant1 == ant2)[0]
     ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    _, ax = plt.subplots(len(autocorrs)//len(ccyc)+1, 1,
-                           figsize=(8, 4*len(autocorrs)//len(ccyc)+1),
-                           sharex=True, sharey=True)
+    _, ax = plt.subplots(
+        len(autocorrs)//len(ccyc)+1,
+        1,
+        figsize=(8, 4*len(autocorrs)//len(ccyc)+1),
+        sharex=True,
+        sharey=True
+    )
     for j in range(len(autocorrs)//len(ccyc)+1):
         for i, ac in enumerate(autocorrs[len(ccyc)*j:len(ccyc)*(j+1)]):
             ax[j].plot(
                 freq.squeeze()/1e9,
-                np.abs(np.nanmean(vis[:, ac, ..., 0],axis=0)),
+                np.abs(np.nanmean(vis[:, ac, ..., 0], axis=0)),
                 alpha=0.5,
-                color = ccyc[i%len(ccyc)],
+                color=ccyc[i%len(ccyc)],
                 ls='-',
                 label=ant1[ac]+1
             )
             ax[j].plot(
                 freq.squeeze()/1e9,
-                np.abs(np.nanmean(vis[:, ac, ..., 1],axis=0)),
+                np.abs(np.nanmean(vis[:, ac, ..., 1], axis=0)),
                 alpha=0.5,
-                color = ccyc[i%len(ccyc)],
+                color=ccyc[i%len(ccyc)],
                 ls=':'
             )
         ax[j].legend()
@@ -841,7 +803,7 @@ def plot_autocorr(UV):
                 (time-time[0])*24*60,
                 np.abs(vis[:, ac, ..., 0].mean(axis=1)),
                 alpha=0.5,
-                color = ccyc[i%len(ccyc)],
+                color=ccyc[i%len(ccyc)],
                 ls='-',
                 label=ant1[ac]+1
             )
@@ -849,7 +811,7 @@ def plot_autocorr(UV):
                 (time-time[0])*24*60,
                 np.abs(vis[:, ac, ..., 1].mean(axis=1)),
                 alpha=0.5,
-                color = ccyc[i%len(ccyc)],
+                color=ccyc[i%len(ccyc)],
                 ls=':'
             )
         ax[j].legend()
@@ -923,7 +885,9 @@ def summary_plot(msname, calname, npol, plabels, antennas):
         ax[0, 0, 1].legend(ncol=3, loc='upper left', bbox_to_anchor=(-1, 1))
 
     if os.path.exists('{0}_{1}_bcal'.format(
-        msname, calname)):
+            msname,
+            calname
+    )):
         bpass, _tbpass, _flags, ant1, ant2 = read_caltable(
             '{0}_{1}_bcal'.format(
                 msname, calname
@@ -1000,7 +964,7 @@ def summary_plot(msname, calname, npol, plabels, antennas):
         t0 = None
 
     vis, time, fobs, _, ant1, ant2, _, _, _ = extract_vis_from_ms(msname)
-    autocorr_idx = np.where(ant1==ant2)[0]
+    autocorr_idx = np.where(ant1 == ant2)[0]
     vis_autocorr = vis[autocorr_idx, ...]
     vis_time = np.median(
         vis_autocorr.reshape(
@@ -1017,7 +981,7 @@ def summary_plot(msname, calname, npol, plabels, antennas):
     time = ((time-t0)*u.d).to_value(u.min)
     vis_ant_order = ant1[autocorr_idx]
     for i, ant in enumerate(antennas):
-        vis_idx = np.where(vis_ant_order==ant-1)[0]
+        vis_idx = np.where(vis_ant_order == ant-1)[0]
         if len(vis_idx) > 0:
             vis_idx = vis_idx[0]
             for pidx in range(npol):
@@ -1054,10 +1018,10 @@ def summary_plot(msname, calname, npol, plabels, antennas):
     return fig
 
 def plot_current_beamformer_solutions(
-    filenames, calname, date, beamformer_name, corrlist=np.arange(1, 16+1),
-    antennas_to_plot=None, antennas=None, outname=None, show=True,
-    gaindir='/home/user/beamformer_weights/',
-    hdf5dir='/mnt/data/dsa110/correlator/'
+        filenames, calname, date, beamformer_name, corrlist=np.arange(1, 16+1),
+        antennas_to_plot=None, antennas=None, outname=None, show=True,
+        gaindir='/home/user/beamformer_weights/',
+        hdf5dir='/mnt/data/dsa110/correlator/'
 ):
     r"""Plots the phase difference between the two polarizations.
 
@@ -1111,11 +1075,13 @@ def plot_current_beamformer_solutions(
              32, 33, 34, 35
             ])
     if antennas is None:
-        antennas = np.concatenate((np.array(
-            [24, 25, 26, 27, 28, 29, 30, 31, 32,
-             33, 34, 35, 20, 19, 18, 17, 16, 15,
-             14, 13, 100, 101, 102, 116, 103]),
-            np.arange(36, 36+39)))
+        antennas = np.concatenate(
+            (np.array(
+                [24, 25, 26, 27, 28, 29, 30, 31, 32,
+                 33, 34, 35, 20, 19, 18, 17, 16, 15,
+                 14, 13, 100, 101, 102, 116, 103]),
+             np.arange(36, 36+39))
+        )
     else:
         assert len(antennas) == 64
     # Should be generalized to different times, baselines
@@ -1145,20 +1111,20 @@ def plot_current_beamformer_solutions(
         ant1 = ant1.reshape(-1, 325)[0, :]
         ant2 = ant2.reshape(-1, 325)[0, :]
         with open(
-            '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
-                gaindir,
-                corr,
-                beamformer_name
-            ),
-            'rb'
+                '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
+                    gaindir,
+                    corr,
+                    beamformer_name
+                ),
+                'rb'
         ) as f:
             data = np.fromfile(f, '<f4')
         gains = data[64:].reshape(64, 48, 2, 2)
         gains = gains[..., 0]+1.0j*gains[..., 1]
         my_gains = np.zeros((325, 48, 2), dtype=np.complex)
         for i in range(325):
-            idx1 = np.where(antennas==ant1[i]+1)[0][0]
-            idx2 = np.where(antennas==ant2[i]+1)[0][0]
+            idx1 = np.where(antennas == ant1[i]+1)[0][0]
+            idx2 = np.where(antennas == ant2[i]+1)[0][0]
             my_gains[i, ...] = np.conjugate(gains[idx1, ...])*gains[idx2, ...]
         visdata_corr[:, :, corridx, ...] = (
             visdata*my_gains[np.newaxis, :, :, :]
@@ -1172,7 +1138,7 @@ def plot_current_beamformer_solutions(
         axi.set_ylabel('time bin')
     ax = ax.flatten()
     for i, ant in enumerate(antennas_to_plot-1):
-        idx = np.where((ant1==23) & (ant2==ant))[0][0]
+        idx = np.where((ant1 == 23) & (ant2 == ant))[0][0]
         ax[i].imshow(
             np.angle(
                 visdata_corr[:, idx, :, 0]/visdata_corr[:, idx, :, 1]
@@ -1201,8 +1167,8 @@ def plot_current_beamformer_solutions(
         plt.close()
 
 def plot_bandpass_phases(
-    filenames, antennas, refant=24, outname=None, show=True,
-    msdir='/mnt/data/dsa110/calibration/'
+        filenames, antennas, refant=24, outname=None, show=True,
+        msdir='/mnt/data/dsa110/calibration/'
 ):
     r"""Plot the bandpass phase observed over multiple calibrators.
 
@@ -1279,14 +1245,14 @@ def plot_bandpass_phases(
         plt.close()
 
 def plot_beamformer_weights(
-    beamformer_names,
-    corrlist=np.arange(1, 16+1),
-    antennas_to_plot=None,
-    antennas=None,
-    outname=None,
-    pols=None,
-    show=True,
-    gaindir='/home/user/beamformer_weights/'
+        beamformer_names,
+        corrlist=np.arange(1, 16+1),
+        antennas_to_plot=None,
+        antennas=None,
+        outname=None,
+        pols=None,
+        show=True,
+        gaindir='/home/user/beamformer_weights/'
 ):
     """Plot beamformer weights from a number of beamformer solutions.
 
@@ -1331,11 +1297,13 @@ def plot_beamformer_weights(
     if len(antennas_to_plot)%nx != 0:
         ny += 1
     if antennas is None:
-        antennas = np.concatenate((np.array(
-            [24, 25, 26, 27, 28, 29, 30, 31, 32,
-             33, 34, 35, 20, 19, 18, 17, 16, 15,
-             14, 13, 100, 101, 102, 116, 103]),
-            np.arange(36, 36+39)))
+        antennas = np.concatenate(
+            (np.array(
+                [24, 25, 26, 27, 28, 29, 30, 31, 32,
+                 33, 34, 35, 20, 19, 18, 17, 16, 15,
+                 14, 13, 100, 101, 102, 116, 103]),
+             np.arange(36, 36+39))
+        )
     gains = np.zeros(
         (len(beamformer_names), len(antennas), len(corrlist), 48, 2),
         dtype=np.complex
@@ -1343,12 +1311,12 @@ def plot_beamformer_weights(
     for i, beamformer_name in enumerate(beamformer_names):
         for corridx, corr in enumerate(corrlist):
             with open(
-                '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
-                    gaindir,
-                    corr,
-                    beamformer_name
-                ),
-                'rb'
+                    '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
+                        gaindir,
+                        corr,
+                        beamformer_name
+                    ),
+                    'rb'
             ) as f:
                 data = np.fromfile(f, '<f4')
             temp = data[64:].reshape(64, 48, 2, 2)
