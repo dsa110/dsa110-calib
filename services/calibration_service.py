@@ -460,7 +460,8 @@ def calibrate_file(etcd_dict):
                 beamformer_names,
                 antennas_to_plot=ANTENNAS_PLOT,
                 outname='{0}/figures/{1}'.format(MSDIR, ttime),
-                corrlist=np.array(CORR_LIST)
+                corrlist=np.array(CORR_LIST),
+                show=False
             )
         # Plot evolution of the phase over the day
         calibrate_phases(filenames, REFANTS[0])
