@@ -258,16 +258,16 @@ if __name__=="__main__":
             'nthreads': 1,
             'task_fn': rsync_file,
             'queue': RSYNC_Q,
-            'outqueue': FSCRUNCH_Q,
+            'outqueue': GATHER_Q, #FSCRUNCH_Q,
             'processes': []
         },
-        'fscrunch': {
-            'nthreads': 4,
-            'task_fn': fscrunch_file,
-            'queue': FSCRUNCH_Q,
-            'outqueue': GATHER_Q,
-            'processes': []
-        },
+        # 'fscrunch': {
+        #     'nthreads': 4,
+        #     'task_fn': fscrunch_file,
+        #     'queue': FSCRUNCH_Q,
+        #     'outqueue': GATHER_Q,
+        #     'processes': []
+        # },
     }
     # Start etcd watch
     ETCD.add_watch('/cmd/cal', populate_queue)
