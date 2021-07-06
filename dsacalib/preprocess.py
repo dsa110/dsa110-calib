@@ -124,7 +124,7 @@ def fscrunch_file(fname):
     # Process the file
     # print(fname)
     UV = UVData()
-    UV.read_uvh5(fname)
+    UV.read_uvh5(fname, run_check_acceptability=False)
     nint = UV.Nfreqs//NFREQ
     if nint > 1 and UV.Nfreqs%nint == 0:
         UV = remove_outrigger_delays(UV)
