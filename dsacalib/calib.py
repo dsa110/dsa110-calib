@@ -633,6 +633,7 @@ def reset_flags(msname, datacolumn=None):
     rec['mode'] = 'unflag'
     if datacolumn is not None:
         rec['datacolumn'] = datacolumn
+    rec['antenna'] = ''
     error += not ag.parseagentparameters(rec)
     error += not ag.init()
     error += not ag.run()
