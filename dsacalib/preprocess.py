@@ -127,12 +127,12 @@ def fscrunch_file(fname):
     UV.read_uvh5(fname, run_check_acceptability=False)
     nint = UV.Nfreqs//NFREQ
     if nint > 1 and UV.Nfreqs%nint == 0:
-        UV = remove_outrigger_delays(UV)
+        remove_outrigger_delays(UV)
         # Scrunch in frequency by factor of nint
         UV.frequency_average(n_chan_to_avg=nint)
         if os.path.exists(fname.replace('.hdf5', '_favg.hdf5')):
             os.remove(fname.replace('.hdf5', '_favg.hdf5'))
-        UV.write_uvh5(fname.replace('.hdf5', '_favg.hdf5'))
+        UV.write_uvh5(fname.replace('.hdf5', '_favg.hdf5'), run_check_acceptability=False)
         # Move the original data to a new directory
         corrname = re.findall('corr\d\d', fname)[0]
         os.rename(
