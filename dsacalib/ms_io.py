@@ -1259,7 +1259,7 @@ def convert_calibrator_pass_to_ms(
         print(message)
 
 def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
-               flux=None, logger=None):
+               flux=None, fringestop=True, logger=None):
     """
     Converts a uvh5 data to a uvfits file.
 
@@ -1372,7 +1372,8 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis])
                          .to_value(u.dimensionless_unscaled))
     UV.uvw_array = uvw
-    UV.data_array = UV.data_array/phase_model[..., np.newaxis]
+    if fringestop:
+        UV.data_array = UV.data_array/phase_model[..., np.newaxis]
     UV.phase_type = 'phased'
     UV.phase_center_dec = dec.to_value(u.rad)
     UV.phase_center_ra = ra.to_value(u.rad)
