@@ -1122,14 +1122,14 @@ def calibrate_measurement_set(
         if manual_flags is not None:
             for entry in manual_flags:
                 dc.flag_manual(msname, entry[0], entry[1])
-        print('flagging rfi')
-        flag_pixels(msname)
-        if error > 0:
-            message = 'Non-fatal error occured in flagging bad pixels of {0}.'.format(msname)
-            if logger is not None:
-                logger.warning(message)
-            else:
-                print(message)
+        #print('flagging rfi')
+        #flag_pixels(msname)
+        #if error > 0:
+        #    message = 'Non-fatal error occured in flagging bad pixels of {0}.'.format(msname)
+        #    if logger is not None:
+        #        logger.warning(message)
+        #    else:
+        #        print(message)
         print('delay cal')
         # Antenna-based delay calibration
         calstring = 'delay calibration'

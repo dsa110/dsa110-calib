@@ -49,11 +49,7 @@ MSDIR = CAL_PARAMS['msdir']
 BEAMFORMER_DIR = CAL_PARAMS['beamformer_dir']
 HDF5DIR = CAL_PARAMS['hdf5_dir']
 # This should be made more general for more antennas
-ANTENNAS_PLOT = np.array(list(CORR_PARAMS['antenna_order'].values()))
-ANTENNAS = np.concatenate((
-    ANTENNAS_PLOT,
-    np.arange(36, 36+39)
-))
+ANTENNAS = list(CORR_PARAMS['antenna_order'].values())
 POLS = CORR_PARAMS['pols_voltage']
 ANTENNAS_NOT_IN_BF = ['103 A', '103 B', '101 A', '101 B', '100 A', '100 B',
                       '116 A', '116 B', '102 A', '102 B']
@@ -203,7 +199,7 @@ def extract_applied_delays(file):
             applied_delays = np.array(
                 delaystring.split(' ')
             ).astype(np.int).reshape(-1, 2)
-            applied_delays = applied_delays[ANTENNAS-1, :]
+            applied_delays = applied_delays[np.array(ANTENNAS)-1, :]
         else:
             current_solns = '{0}/beamformer_weights.yaml'.format(BEAMFORMER_DIR)
             with open(current_solns) as yamlfile:
@@ -242,7 +238,7 @@ def calibrate_file(etcd_dict):
         with h5py.File(first_true(flist), mode='r') as h5file:
             pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value*u.rad
         caltable = update_caltable(pt_dec)
-        LOGGER.info('Creating {0}.ms'.format(msname))
+        LOGGER.info('Creating {0}.ms at dec {1}'.format(msname, pt_dec))
         filenames = get_files_for_cal(
             caltable,
             REFCORR,
@@ -315,13 +311,13 @@ def calibrate_file(etcd_dict):
         figure_path = '{0}/figures/{1}_{2}'.format(MSDIR, date, calname)
         try:
             with PdfPages('{0}.pdf'.format(figure_path)) as pdf:
-                for j in range(len(ANTENNAS_PLOT)//10+1):
+                for j in range(len(ANTENNAS)//10+1):
                     fig = summary_plot(
                         msname,
                         calname,
                         2,
                         ['B', 'A'],
-                        ANTENNAS_PLOT[j*10:(j+1)*10]
+                        ANTENNAS[j*10:(j+1)*10]
                     )
                     pdf.savefig(fig)
                     plt.close()
@@ -458,7 +454,7 @@ def calibrate_file(etcd_dict):
             beamformer_names += [averaged_files[0].split('_')[-1].strip(".dat")]
             _ = plot_beamformer_weights(
                 beamformer_names,
-                antennas_to_plot=ANTENNAS_PLOT,
+                antennas_to_plot=ANTENNAS,
                 outname='{0}/figures/{1}'.format(MSDIR, ttime),
                 corrlist=np.array(CORR_LIST),
                 show=False
@@ -467,7 +463,7 @@ def calibrate_file(etcd_dict):
         calibrate_phases(filenames, REFANTS[0])
         plot_bandpass_phases(
             filenames,
-            ANTENNAS_PLOT,
+            ANTENNAS,
             outname='{0}/figures/{1}'.format(MSDIR, ttime)
         )
         plt.close('all')

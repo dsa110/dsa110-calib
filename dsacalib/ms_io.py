@@ -1176,15 +1176,22 @@ def convert_calibrator_pass_to_ms(
     msname = '{0}/{1}_{2}'.format(msdir, date, cal.name)
     if len(files) == 1:
         try:
+            reftime = Time(files[0])
+            hdf5files = []
+            for hdf5f in sorted(glob.glob(
+                '{0}/corr??/{1}*.hdf5'.format(hdf5dir, files[0][:-4])
+            )):
+                filetime = Time(hdf5f.strip('.hdf5').split('/')[-1])
+                if abs(filetime-reftime) < 1*u.min:
+                    hdf5files += [hdf5f]
+            assert len(hdf5files) < 17
             uvh5_to_ms(
-                sorted(glob.glob(
-                    '{0}/corr??/{1}*.hdf5'.format(hdf5dir, files[0][:-4])
-                )),
+                hdf5files,
                 msname,
                 ra=cal.ra,
                 dec=cal.dec,
-                flux=cal.I,
-                dt=duration,
+                # flux=cal.I,
+                # dt=duration,
                 logger=logger
             )
             message = 'Wrote {0}.ms'.format(msname)
@@ -1202,20 +1209,22 @@ def convert_calibrator_pass_to_ms(
         msnames = []
         for filename in files:
             try:
+                reftime = Time(filename)
+                hdf5files = []
+                for hdf5f in sorted(glob.glob(
+                        '{0}/corr??/{1}*.hdf5'.format(hdf5dir, filename[:-4])
+                )):
+                    filetime = Time(hdf5f.strip('.hdf5').split('/')[-1])
+                    if abs(filetime-reftime) < 1*u.min:
+                        hdf5files += [hdf5f]
+                assert len(hdf5files) < 17
                 uvh5_to_ms(
-                    sorted(
-                        glob.glob(
-                            '{0}/corr??/{1}*.hdf5'.format(
-                                hdf5dir,
-                                filename[:-4]
-                            )
-                        )
-                    ),
+                    hdf5files,
                     '{0}/{1}'.format(msdir, filename),
                     ra=cal.ra,
                     dec=cal.dec,
-                    flux=cal.I,
-                    dt=duration,
+                    # flux=cal.I,
+                    # dt=duration,
                     logger=logger
                 )
                 msnames += ['{0}/{1}'.format(msdir, filename)]
