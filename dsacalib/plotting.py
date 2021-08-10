@@ -15,6 +15,8 @@ import scipy # pylint: disable=unused-import
 from casacore.tables import table
 from dsacalib.ms_io import read_caltable, extract_vis_from_ms
 import dsacalib.constants as ct
+from dsautils import cnf
+CONF = cnf.Conf()
 
 def plot_dyn_spec(vis, fobs, mjd, bname, normalize=False, outname=None,
                   show=True, nx=None):
@@ -1049,11 +1051,10 @@ def plot_current_beamformer_solutions(
         through 16.
     antennas_to_plot : array(int)
         The names of the antennas to plot beamformer solutions for. Defaults to
-        antennas 13 through 35, with 21, 22, 23 omitted.
+        `antennas`.
     antennas : array(int)
         The names of the antennas for which beamformer solutions were
-        generated.  Defaults to 24 through 36, 20 through 13 (descending
-        order), then 36 through 74.  Must be 64 long.
+        generated.  Defaults to values in dsautils.cnf
     outname : str
         The base to use for the name of the png file the plot is saved to. The
         plot is saved to `outname`\_beamformerweights.png if `outname` is not
@@ -1068,22 +1069,11 @@ def plot_current_beamformer_solutions(
         The full path to the directory in which the correlated hdf5 files are
         stored. Files were be searched for in `hdf5dir`/corr??/
     """
-    if antennas_to_plot is None:
-        antennas_to_plot = np.array(
-            [13, 14, 15, 16, 17, 18, 19, 20,
-             24, 25, 26, 27, 28, 29, 30, 31,
-             32, 33, 34, 35
-            ])
     if antennas is None:
-        antennas = np.concatenate(
-            (np.array(
-                [24, 25, 26, 27, 28, 29, 30, 31, 32,
-                 33, 34, 35, 20, 19, 18, 17, 16, 15,
-                 14, 13, 100, 101, 102, 116, 103]),
-             np.arange(36, 36+39))
-        )
-    else:
-        assert len(antennas) == 64
+        antennas = np.array(list(CONF.get('corr')['antenna_order'].values))
+    assert len(antennas) == 64
+    if antennas_to_plot is None:
+        antennas_to_plot = antennas
     # Should be generalized to different times, baselines
     visdata_corr = np.zeros(
         (len(filenames)*280, 325, 16, 48, 2),
@@ -1265,9 +1255,10 @@ def plot_beamformer_weights(
     corrlist : list(int)
         The corrnode numbers.
     antennas_to_plot : list(int)
-        The names of the antennas to plot.
+        The names of the antennas to plot. Defaults to `antennas`.
     antennas : list(int)
-        The names of the antennas in the beamformer weight files.
+        The names of the antennas in the beamformer weight files. Defaults to
+        list in dsautils.cnf
     outname : str
         The prefix of the file to save the plot to. If None, no figure is saved.
     pols : list(str)
@@ -1284,26 +1275,17 @@ def plot_beamformer_weights(
     """
     if pols is None:
         pols = ['B', 'A']
+    if antennas is None:
+        antennas = np.array(list(CONF.get('corr')['antenna_order'].values))
+    assert len(antennas) == 64
     if antennas_to_plot is None:
-        antennas_to_plot = np.array(
-            [13, 14, 15, 16, 17, 18, 19, 20,
-             24, 25, 26, 27, 28, 29, 30, 31,
-             32, 33, 34, 35
-            ])
+        antennas_to_plot = antennas
     # Set shape of the figure
     nplots = 4
     nx = 5
     ny = len(antennas_to_plot)//nx
     if len(antennas_to_plot)%nx != 0:
         ny += 1
-    if antennas is None:
-        antennas = np.concatenate(
-            (np.array(
-                [24, 25, 26, 27, 28, 29, 30, 31, 32,
-                 33, 34, 35, 20, 19, 18, 17, 16, 15,
-                 14, 13, 100, 101, 102, 116, 103]),
-             np.arange(36, 36+39))
-        )
     gains = np.zeros(
         (len(beamformer_names), len(antennas), len(corrlist), 48, 2),
         dtype=np.complex
