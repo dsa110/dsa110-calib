@@ -51,8 +51,7 @@ HDF5DIR = CAL_PARAMS['hdf5_dir']
 # This should be made more general for more antennas
 ANTENNAS = list(CORR_PARAMS['antenna_order'].values())
 POLS = CORR_PARAMS['pols_voltage']
-ANTENNAS_NOT_IN_BF = ['103 A', '103 B', '101 A', '101 B', '100 A', '100 B',
-                      '116 A', '116 B', '102 A', '102 B']
+ANTENNAS_NOT_IN_BF = CAL_PARAMS['antennas_not_in_bf']
 CORR_LIST = list(CORR_PARAMS['ch0'].keys())
 CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
 REFCORR = '{0:02d}'.format(CORR_LIST[0])
