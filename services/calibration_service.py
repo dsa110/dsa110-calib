@@ -453,7 +453,7 @@ def calibrate_file(etcd_dict):
             beamformer_names += [averaged_files[0].split('_')[-1].strip(".dat")]
             _ = plot_beamformer_weights(
                 beamformer_names,
-                antennas_to_plot=ANTENNAS,
+                antennas_to_plot=np.array(ANTENNAS)s,
                 outname='{0}/figures/{1}'.format(MSDIR, ttime),
                 corrlist=np.array(CORR_LIST),
                 show=False
@@ -462,7 +462,7 @@ def calibrate_file(etcd_dict):
         calibrate_phases(filenames, REFANTS[0])
         plot_bandpass_phases(
             filenames,
-            ANTENNAS,
+            np.array(ANTENNAS),
             outname='{0}/figures/{1}'.format(MSDIR, ttime)
         )
         plt.close('all')
