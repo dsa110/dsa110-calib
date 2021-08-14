@@ -51,6 +51,7 @@ HDF5DIR = CAL_PARAMS['hdf5_dir']
 # This should be made more general for more antennas
 ANTENNAS = list(CORR_PARAMS['antenna_order'].values())
 POLS = CORR_PARAMS['pols_voltage']
+ANTENNAS_IN_MS = CAL_PARAMS['antennas_in_ms']
 ANTENNAS_NOT_IN_BF = CAL_PARAMS['antennas_not_in_bf']
 CORR_LIST = list(CORR_PARAMS['ch0'].keys())
 CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
@@ -267,6 +268,7 @@ def calibrate_file(etcd_dict):
             date=date,
             files=filenames[date][calname]['files'],
             duration=CALTIME,
+            antenna_list=ANTENNAS_IN_MS,
             logger=LOGGER,
             msdir=MSDIR
         )
@@ -453,7 +455,7 @@ def calibrate_file(etcd_dict):
             beamformer_names += [averaged_files[0].split('_')[-1].strip(".dat")]
             _ = plot_beamformer_weights(
                 beamformer_names,
-                antennas_to_plot=np.array(ANTENNAS)s,
+                antennas_to_plot=np.array(ANTENNAS),
                 outname='{0}/figures/{1}'.format(MSDIR, ttime),
                 corrlist=np.array(CORR_LIST),
                 show=False
