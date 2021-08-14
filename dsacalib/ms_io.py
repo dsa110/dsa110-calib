@@ -927,34 +927,6 @@ def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
             idx = np.where(antennas==antid+1)[0][0]
             weights[:, idx, ...] = gains[i, ...]
 
-#     # interpolate over missing values
-#     # Not needed anymore because we are interpolating the bandpass solutions
-#     med = np.nanmedian(weights, axis=2, keepdims=True)
-#     std = np.nanstd(weights.real, axis=2, keepdims=True)+\
-#         1j*np.std(weights.imag, axis=2, keepdims=True)
-#     weights[np.abs((weights-med).real) > 3*std.real] = np.nan
-#     weights[np.abs((weights-med).imag) > 3*std.imag] = np.nan
-#     for i in range(weights.shape[0]):
-#         for j in range(weights.shape[1]):
-#             for k in range(weights.shape[-1]):
-#                 idx = np.where(np.isnan(weights[i, j, :, k]))[0]
-#                 if len(idx) > 0:
-#                     x = np.where(~np.isnan(weights[i, j, :, k]))[0]
-#                     if len(x) > 24:
-#                         fr = interp1d(
-#                             x,
-#                             weights[i, j, x, k].real,
-#                             bounds_error=False,
-#                             kind='nearest'
-#                         )
-#                         fi = interp1d(
-#                             x,
-#                             weights[i, j, x, k].imag,
-#                             bounds_error=False,
-#                             kind='nearest'
-#                         )
-#                         weights[i, j, idx, k] = fr(idx) + 1j*fi(idx)
-#     weights[np.isnan(weights)] = 0.
     fracflagged = np.sum(np.sum(np.isnan(weights), axis=2), axis=0)\
         /(weights.shape[0]*weights.shape[2])
     antenna_flags_badsolns = fracflagged > tol
@@ -1146,9 +1118,9 @@ def write_beamformer_solutions(
     return flags
 
 def convert_calibrator_pass_to_ms(
-    cal, date, files, duration, msdir='/mnt/data/dsa110/calibration/',
-    hdf5dir='/mnt/data/dsa110/correlator/',
-    logger=None
+        cal, date, files, duration, msdir='/mnt/data/dsa110/calibration/',
+        hdf5dir='/mnt/data/dsa110/correlator/', antenna_list=None,
+        logger=None
 ):
     r"""Converts hdf5 files near a calibrator pass to a CASA ms.
 
@@ -1170,6 +1142,12 @@ def convert_calibrator_pass_to_ms(
     msdir : str
         The full path to the directory to place the measurement set in. The ms
         will be written to `msdir`/`date`\_`cal.name`.ms
+    hdf5dir : str
+        The full path to the directory containing subdirectories with correlated
+        hdf5 data.
+    antenna_list : list
+        The names of the antennas to include in the measurement set. Names should
+        be strings.  If not passed, all antennas in the hdf5 files are included.
     logger : dsautils.dsa_syslog.DsaSyslogger() instance
         Logger to write messages too. If None, messages are printed.
     """
@@ -1179,7 +1157,7 @@ def convert_calibrator_pass_to_ms(
             reftime = Time(files[0])
             hdf5files = []
             for hdf5f in sorted(glob.glob(
-                '{0}/corr??/{1}*.hdf5'.format(hdf5dir, files[0][:-4])
+                '{0}/corr??/{1}*.hdf5'.format(hdf5dir, files[0][:-3])
             )):
                 filetime = Time(hdf5f.strip('.hdf5').split('/')[-1])
                 if abs(filetime-reftime) < 1*u.min:
@@ -1190,8 +1168,9 @@ def convert_calibrator_pass_to_ms(
                 msname,
                 ra=cal.ra,
                 dec=cal.dec,
-                # flux=cal.I,
+                flux=cal.I,
                 # dt=duration,
+                antenna_list=antenna_list,
                 logger=logger
             )
             message = 'Wrote {0}.ms'.format(msname)
@@ -1223,8 +1202,9 @@ def convert_calibrator_pass_to_ms(
                     '{0}/{1}'.format(msdir, filename),
                     ra=cal.ra,
                     dec=cal.dec,
-                    # flux=cal.I,
+                    flux=cal.I,
                     # dt=duration,
+                    antenna_list=antenna_list,
                     logger=logger
                 )
                 msnames += ['{0}/{1}'.format(msdir, filename)]

@@ -1276,7 +1276,7 @@ def plot_beamformer_weights(
     if pols is None:
         pols = ['B', 'A']
     if antennas is None:
-        antennas = np.array(list(CONF.get('corr')['antenna_order'].values))
+        antennas = np.array(list(CONF.get('corr')['antenna_order'].values()))
     assert len(antennas) == 64
     if antennas_to_plot is None:
         antennas_to_plot = antennas

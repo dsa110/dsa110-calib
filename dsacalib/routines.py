@@ -894,7 +894,7 @@ def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
     for tbl in ['gacal', 'gpcal', 'bcal']:
         _check_path('{0}_{1}_{2}'.format(msname, cal.name, tbl))
 
-def flag_pixels(msname, thresh=6.0):
+def flag_pixels(msname, thresh=6.0, logger=None):
     """Flags pixels using dsautils.mask_bad_pixels.
 
     Parameters
@@ -906,32 +906,33 @@ def flag_pixels(msname, thresh=6.0):
         thresh*stddev + mean will be flagged.
     """
     # Flag RFI - only for single spw
-    vis, _, _, flags, _, _, _, _, _ = extract_vis_from_ms(
-        msname
+    vis, _, _, flags, ant1, ant2, _, _, orig_shape = extract_vis_from_ms(
+        msname,
     )
-    good_pixels, _fraction_flagged = du.mask_bad_pixels(
+    good_pixels, fraction_flagged = du.mask_bad_pixels(
         vis.squeeze(2),
         mask=~flags.squeeze(2),
         thresh=thresh
     )
 
-#     (idx1s, idx2s) = np.where(fraction_flagged > 0.3)
-#     for idx1 in idx1s:
-#         for idx2 in idx2s:
-#             message = \
-#                 'Baseline {0}-{1} {2}: {3} percent of data flagged'.format(
-#                     ant1[idx1],
-#                     ant2[idx1],
-#                     'A' if idx2==1 else 'B',
-#                     fraction_flagged[idx1, idx2]*100
-#                 )
-#             if logger is not None:
-#                 logger.info(message)
-#             else:
-#                 print(message)
+    # # Not properly account for shape - getting repeat messages
+    # (idx1s, idx2s) = np.where(fraction_flagged > 0.3)
+    # for idx1 in idx1s:
+    #     for idx2 in idx2s:
+    #         message = \
+    #             'Baseline {0}-{1} {2}: {3} percent of data flagged'.format(
+    #                 ant1[idx1],
+    #                 ant2[idx1],
+    #                 'A' if idx2==1 else 'B',
+    #                 fraction_flagged[idx1, idx2]*100
+    #             )
+    #         if logger is not None:
+    #             logger.info(message)
+    #         else:
+    #             print(message)
 
-    flags = ~good_pixels
-    if flags.shape[0]==vis.shape[1]:
+    flags = flags + ~good_pixels[:, :, np.newaxis, :, :]
+    if orig_shape[0] == 'time':
         flags = flags.swapaxes(0, 1)
     with table('{0}.ms'.format(msname), readonly=False) as tb:
         shape = np.array(tb.getcol('FLAG')[:]).shape
@@ -1122,14 +1123,14 @@ def calibrate_measurement_set(
         if manual_flags is not None:
             for entry in manual_flags:
                 dc.flag_manual(msname, entry[0], entry[1])
-        #print('flagging rfi')
-        #flag_pixels(msname)
-        #if error > 0:
-        #    message = 'Non-fatal error occured in flagging bad pixels of {0}.'.format(msname)
-        #    if logger is not None:
-        #        logger.warning(message)
-        #    else:
-        #        print(message)
+        print('flagging rfi')
+        flag_pixels(msname)
+        if error > 0:
+            message = 'Non-fatal error occured in flagging bad pixels of {0}.'.format(msname)
+            if logger is not None:
+                logger.warning(message)
+            else:
+                print(message)
         print('delay cal')
         # Antenna-based delay calibration
         calstring = 'delay calibration'
