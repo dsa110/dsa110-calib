@@ -1186,7 +1186,10 @@ def plot_bandpass_phases(
 
     i = 0
     for date in filenames.keys():
-        for cal in filenames[date].keys():
+        cals = filenames[date].keys()
+        transit_times = [filenames[date][cal]['transit_time'] for cal in cals]
+        transit_times, cals = zip(*sorted(zip(transit_times, cals)))
+        for cal in cals:
             calnames[i] = cal
             msname = '{0}/{1}_{2}'.format(msdir, date, cal)
             if os.path.exists('{0}_{1}_bpcal'.format(msname, cal)):
