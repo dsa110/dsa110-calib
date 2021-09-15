@@ -1286,3 +1286,17 @@ def calibrate_phases(filenames, refant, msdir='/mnt/data/dsa110/calibration/'):
                 )
                 cb.solve()
                 cb.close()
+
+def calibrate_phase_single_ms(msname, refant, calname):
+    cb = cc.calibrater()
+    cb.open('{0}.ms'.format(msname))
+    cb.setsolve(
+        type='B',
+        combine='field,scan,obs',
+        table='{0}_{1}_bpcal'.format(msname, calname),
+        refant=refant,
+        apmode='p',
+        t='inf'
+    )
+    cb.solve()
+    cb.close()
