@@ -14,7 +14,7 @@ import dsautils.dsa_syslog as dsl
 import dsautils.cnf as dsc
 from dsacalib.preprocess import first_true, update_caltable
 from dsacalib.utils import exception_logger
-from dsacalib.calib import calibrate_phases
+from dsacalib.calib import calibrate_phases, calibrate_phase_single_ms
 from dsacalib.routines import get_files_for_cal, calibrate_measurement_set
 from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd, \
     write_beamformer_solutions, average_beamformer_solutions
@@ -461,7 +461,7 @@ def calibrate_file(etcd_dict):
                 show=False
             )
         # Plot evolution of the phase over the day
-        calibrate_phases(filenames, REFANTS[0])
+        calibrate_phase_single_ms(msname, REFANTS[0], calname)
         plot_bandpass_phases(
             filenames,
             np.array(ANTENNAS),
