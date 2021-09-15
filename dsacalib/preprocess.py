@@ -296,7 +296,7 @@ def update_caltable(pt_dec):
     """
     csv_string = 'data/calibrator_sources_dec{0}{1}.csv'.format(
         '+' if pt_dec.to_value(u.deg) >= 0 else '-',
-        '{0:05.2f}'.format(pt_dec.to_value(u.deg)).replace('.', 'p')
+        '{0:05.1f}'.format(pt_dec.to_value(u.deg)).replace('.', 'p')
     )
     if not resource_exists('dsacalib', csv_string):
         generate_caltable(pt_dec, csv_string)
