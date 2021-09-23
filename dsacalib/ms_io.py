@@ -13,6 +13,7 @@ Routines to interact with CASA measurement sets and calibration tables.
 import shutil
 import os
 import glob
+import traceback
 #from scipy.interpolate import interp1d
 import numpy as np
 #from pkg_resources import resource_filename
@@ -1152,6 +1153,7 @@ def convert_calibrator_pass_to_ms(
         Logger to write messages too. If None, messages are printed.
     """
     msname = '{0}/{1}_{2}'.format(msdir, date, cal.name)
+    print('looking for files: {0}'.format(' '.join(files)))
     if len(files) == 1:
         try:
             reftime = Time(files[0])
@@ -1159,10 +1161,12 @@ def convert_calibrator_pass_to_ms(
             for hdf5f in sorted(glob.glob(
                 '{0}/corr??/{1}*.hdf5'.format(hdf5dir, files[0][:-3])
             )):
-                filetime = Time(hdf5f.strip('.hdf5').split('/')[-1])
+                filetime = Time(hdf5f[:-5].split('/')[-1])
                 if abs(filetime-reftime) < 1*u.min:
                     hdf5files += [hdf5f]
             assert len(hdf5files) < 17
+            assert len(hdf5files) > 1
+            print(f'found {len(hdf5files)} hdf5files for {files[0]}')
             uvh5_to_ms(
                 hdf5files,
                 msname,
@@ -1178,8 +1182,15 @@ def convert_calibrator_pass_to_ms(
                 logger.info(message)
             #else:
             print(message)
-        except (ValueError, IndexError):
-            message = 'No data for {0} transit on {1}'.format(date, cal.name)
+        except (ValueError, IndexError) as exception:
+            message = 'No data for {0} transit on {1}. Error {2}. Traceback: {3}'.format(
+                date,
+                cal.name,
+                type(exception).__name__,
+                ''.join(
+                    traceback.format_tb(exception.__traceback__)
+                )
+            )
             if logger is not None:
                 logger.info(message)
             #else:
@@ -1187,16 +1198,19 @@ def convert_calibrator_pass_to_ms(
     elif len(files) > 0:
         msnames = []
         for filename in files:
+            print(filename)
             try:
                 reftime = Time(filename)
                 hdf5files = []
                 for hdf5f in sorted(glob.glob(
                         '{0}/corr??/{1}*.hdf5'.format(hdf5dir, filename[:-4])
                 )):
-                    filetime = Time(hdf5f.strip('.hdf5').split('/')[-1])
+                    filetime = Time(hdf5f[:-5].split('/')[-1])
                     if abs(filetime-reftime) < 1*u.min:
                         hdf5files += [hdf5f]
-                assert len(hdf5files) < 17
+                #assert len(hdf5files) < 17
+                #assert len(hdf5files) > 1
+                print(f'found {len(hdf5files)} hdf5files for {filename}')
                 uvh5_to_ms(
                     hdf5files,
                     '{0}/{1}'.format(msdir, filename),
@@ -1208,8 +1222,18 @@ def convert_calibrator_pass_to_ms(
                     logger=logger
                 )
                 msnames += ['{0}/{1}'.format(msdir, filename)]
-            except (ValueError, IndexError):
-                pass
+            except (ValueError, IndexError) as exception:
+                message = 'No data for {0}. Error {1}. Traceback: {2}'.format(
+                    filename,
+                    type(exception).__name__,
+                    ''.join(
+                        traceback.format_tb(exception.__traceback__)
+                    )
+                )
+                if logger is not None:
+                    logger.info(message)
+                #else:
+                print(message)
         if os.path.exists('{0}.ms'.format(msname)):
             for root, _dirs, walkfiles in os.walk(
                 '{0}.ms'.format(msname),
