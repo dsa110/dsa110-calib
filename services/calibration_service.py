@@ -54,8 +54,10 @@ POLS = CORR_PARAMS['pols_voltage']
 ANTENNAS_IN_MS = CAL_PARAMS['antennas_in_ms']
 ANTENNAS_NOT_IN_BF = CAL_PARAMS['antennas_not_in_bf']
 CORR_LIST = list(CORR_PARAMS['ch0'].keys())
-CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
+CORR_LIST = [int(cl.strip('corr')) for in CORR_LIST]
 REFCORR = '{0:02d}'.format(CORR_LIST[0])
+WEBPLOTS = '/mnt/data/dsa110/webPLOTS/calibration/'
+PLOTDIR = f'{WEBPLOTS}/allpngs/'
 
 def sort_filenames(filenames):
     """Sort list of calibrator passes.
@@ -309,7 +311,7 @@ def calibrate_file(etcd_dict):
             .format(msname, status)
         )
         print('creating figures')
-        figure_path = '{0}/figures/{1}_{2}'.format(MSDIR, date, calname)
+        figure_path = '{0}/{1}_{2}'.format(PLOTDIR, date, calname)
         try:
             with PdfPages('{0}.pdf'.format(figure_path)) as pdf:
                 for j in range(len(ANTENNAS)//10+1):
@@ -322,6 +324,13 @@ def calibrate_file(etcd_dict):
                     )
                     pdf.savefig(fig)
                     plt.close()
+            target = f'{WEBPLOTS}/summary_current.pdf'
+            if os.path.exists(target):
+                os.unlink(target)
+            os.symlink(
+                f'{PLOTDIR}/{date}_{calname}.pdf',
+                target
+            )
 # TODO: Get beamformer weight filenames from etcd
 #             # Index error occured - some files could not be found. corr04
 #             plot_current_beamformer_solutions(
@@ -456,18 +465,32 @@ def calibrate_file(etcd_dict):
             _ = plot_beamformer_weights(
                 beamformer_names,
                 antennas_to_plot=np.array(ANTENNAS),
-                outname='{0}/figures/{1}'.format(MSDIR, ttime),
+                outname='{0}/{1}'.format(PLOTDIR, ttime),
                 corrlist=np.array(CORR_LIST),
                 show=False
+            )
+            target = f'{WEBPLOTS}/bfw_current.png'
+            if os.path.exists(target):
+                os.unlink(target)
+            os.symlink(
+                f'{PLOTDIR}/{ttime}_averagedweights.png',
+                target
             )
         # Plot evolution of the phase over the day
         calibrate_phase_single_ms(msname, REFANTS[0], calname)
         plot_bandpass_phases(
             filenames,
             np.array(ANTENNAS),
-            outname='{0}/figures/{1}'.format(MSDIR, ttime)
+            outname='{0}/{1}'.format(PLOTDIR, ttime)
         )
         plt.close('all')
+        target = f'{WEBPLOTS}/phase_current.png'
+        if os.path.exists(target):
+            os.unlink(target)
+        os.symlink(
+            f'{PLOTDIR}/{ttime}_phases.png',
+            target
+        )
 
 if __name__=="__main__":
     ETCD.add_watch('/cmd/cal', calibrate_file)
