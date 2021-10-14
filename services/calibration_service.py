@@ -1,6 +1,7 @@
 """A service to create measurement sets and calibrate data.
 """
 import os
+import shutil
 import warnings
 import datetime
 import time
@@ -54,7 +55,7 @@ POLS = CORR_PARAMS['pols_voltage']
 ANTENNAS_IN_MS = CAL_PARAMS['antennas_in_ms']
 ANTENNAS_NOT_IN_BF = CAL_PARAMS['antennas_not_in_bf']
 CORR_LIST = list(CORR_PARAMS['ch0'].keys())
-CORR_LIST = [int(cl.strip('corr')) for in CORR_LIST]
+CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
 REFCORR = '{0:02d}'.format(CORR_LIST[0])
 WEBPLOTS = '/mnt/data/dsa110/webPLOTS/calibration/'
 PLOTDIR = f'{WEBPLOTS}/allpngs/'
@@ -327,7 +328,7 @@ def calibrate_file(etcd_dict):
             target = f'{WEBPLOTS}/summary_current.pdf'
             if os.path.exists(target):
                 os.unlink(target)
-            os.symlink(
+            shutil.copyfile(
                 f'{PLOTDIR}/{date}_{calname}.pdf',
                 target
             )
@@ -472,7 +473,7 @@ def calibrate_file(etcd_dict):
             target = f'{WEBPLOTS}/bfw_current.png'
             if os.path.exists(target):
                 os.unlink(target)
-            os.symlink(
+            shutil.copyfile(
                 f'{PLOTDIR}/{ttime}_averagedweights.png',
                 target
             )
@@ -487,7 +488,7 @@ def calibrate_file(etcd_dict):
         target = f'{WEBPLOTS}/phase_current.png'
         if os.path.exists(target):
             os.unlink(target)
-        os.symlink(
+        shutil.copyfile(
             f'{PLOTDIR}/{ttime}_phases.png',
             target
         )
