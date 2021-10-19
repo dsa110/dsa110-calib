@@ -998,11 +998,11 @@ def get_delays(antennas, msname, calname, applied_delays):
     idx = [ant1.index(ant-1) for ant in antennas]
     delays = delays[idx]
     flags = flags[idx]
-    delays = delays + applied_delays
-    delays = delays - np.nanmin(delays)
-    delays = (np.rint(delays/2)*2)
+    newdelays = applied_delays-delays
+    newdelays = newdelays - np.nanmin(newdelays)
+    newdelays = (np.rint(newdelays/2)*2)
     # delays[flags] = 0
-    return delays.astype(np.int), flags
+    return newdelays.astype(np.int), flags
 
 def write_beamformer_solutions(
     msname, calname, caltime, antennas, applied_delays,
