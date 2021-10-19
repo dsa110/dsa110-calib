@@ -28,11 +28,8 @@ CAL_PARAMS = CONF.get('cal')
 CORR_LIST = list(CORR_PARAMS['ch0'].keys())
 CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
 
-ANTENNAS_PLOT = np.array(list(CORR_PARAMS['antenna_order'].values()))
-ANTENNAS = list(np.concatenate((
-    ANTENNAS_PLOT,
-    np.arange(36, 36+39))
-))
+ANTENNAS_PLOT = list(CORR_PARAMS['antenna_order'].values())
+ANTENNAS = ANTENNAS_PLOT
 BFDIR = CAL_PARAMS['beamformer_dir']
 WEIGHTFILE = CAL_PARAMS['weightfile']
 FLAGFILE = CAL_PARAMS['flagfile']
@@ -51,9 +48,11 @@ def update_beamformer_weights(etcd_dict):
         # Put antenna flags in the way needed by the bf
         antenna_flags = np.zeros((len(ANTENNAS)), np.int)
         for key in bfsolns['flagged_antennas']:
-            antenna_flags[
-               ANTENNAS.index(int(key.split(' ')[0]))
-            ] = 1
+            ant = int(key.split(' ')[0])
+            if ant in ANTENNAS:
+                antenna_flags[
+                   ANTENNAS.index(ant)
+                ] = 1
         antenna_flags = np.where(antenna_flags)[0]
         with open('antenna_flags.txt', 'w') as f:
             f.write('\n'.join([str(af) for af in antenna_flags]))
