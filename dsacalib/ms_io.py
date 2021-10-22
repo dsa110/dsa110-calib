@@ -1363,7 +1363,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
 
     uvw_m = calc_uvw_blt(
         blen,
-        refmjd,
+        np.ones(UV.Nbls)*refmjd,
         'HADEC',
         np.zeros(UV.Nbls)*u.rad,
         np.ones(UV.Nbls)*pt_dec
