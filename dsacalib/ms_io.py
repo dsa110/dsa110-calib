@@ -42,6 +42,7 @@ de = dsa_store.DsaStore()
 
 CONF = dsc.Conf()
 CORR_PARAMS = CONF.get('corr')
+REFMJD = CONF.get('fringe')['refmjd']
 
 def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
                 freq, deltafreq, freqresolution, nchannels, integrationtime,
@@ -1272,7 +1273,7 @@ def convert_calibrator_pass_to_ms(
         print(message)
 
 def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
-               flux=None, fringestop=True, logger=None):
+               flux=None, fringestop=True, logger=None, refmjd=REFMJD):
     """
     Converts a uvh5 data to a uvfits file.
 
@@ -1300,6 +1301,8 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         frequency and time will be written instead of the primary beam model.
     logger : dsautils.dsa_syslog.DsaSyslogger() instance
         Logger to write messages too. If None, messages are printed.
+    refmjd : float
+        The mjd used in the fringestopper.
     """
     print(fname)
     # zenith_dec = 0.6503903199825691*u.rad
@@ -1358,8 +1361,13 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         blen[i, ...] = UV.antenna_positions[ant2, :] - \
             UV.antenna_positions[ant1, :]
 
-    uvw_m = calc_uvw_blt(blen, time[:UV.Nbls].mjd, 'HADEC',
-                         np.zeros(UV.Nbls)*u.rad, np.ones(UV.Nbls)*pt_dec)
+    uvw_m = calc_uvw_blt(
+        blen,
+        refmjd,
+        'HADEC',
+        np.zeros(UV.Nbls)*u.rad,
+        np.ones(UV.Nbls)*pt_dec
+    )
 
     # Use antenna positions since CASA uvws are slightly off from pyuvdatas
     # uvw_z = calc_uvw_blt(blen, time[:UV.Nbls].mjd, 'HADEC',
