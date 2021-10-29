@@ -1358,14 +1358,14 @@ def generate_phase_model_antbased(blen, mjds, nbls, nts, pt_dec, ra, dec, lamb, 
         ra.to(u.rad),
         dec.to(u.rad)
     )
-    uvw_delays = uvw.reshape((nbls, nts, 3))
-    antenna_w = uvw_delays[refidxs, :, -1]
-    antenna_dw = antenna_w-antenna_w_m[:, np.newaxis]
-    dw = np.zeros((nbls, nts))
+    uvw_delays = uvw.reshape((nts, nbls, 3))
+    antenna_w = uvw_delays[:, refidxs, -1]
+    antenna_dw = antenna_w-antenna_w_m[np.newaxis, :]
+    dw = np.zeros((nts, nbls))
     for i, a1 in enumerate(ant1):
         a2 = ant2[i]
-        dw[i, :] = antenna_dw[antenna_order.index(a2)] - \
-                   antenna_dw[antenna_order.index(a1)]
+        dw[:, i] = antenna_dw[:, antenna_order.index(a2)] - \
+                   antenna_dw[:, antenna_order.index(a1)]
     dw = dw.reshape(-1)*u.m
     phase_model = np.exp((
         2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
@@ -1432,7 +1432,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
 
     if dt is not None:
         extract_times(UV, ra, dt)
-    time = Time(UV.time_array, format='jd')
+        time = Time(UV.time_array, format='jd')
 
     # Set antenna positions
     # This should already be done by the writer but for some reason they
@@ -1461,10 +1461,10 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         ant2 = UV.ant_2_array[i]
         blen[i, ...] = UV.antenna_positions[ant2, :] - \
             UV.antenna_positions[ant1, :]
-    uvw, phase_model = generate_phase_model_antbased(
+    uvw, phase_model = generate_phase_model(
          blen, time.mjd, UV.Nbls, UV.Ntimes, pt_dec,
          ra, dec, lamb,
-         UV.ant_1_array[:UV.Nbls], UV.ant_2_array[:UV.Nbls]
+         # UV.ant_1_array[:UV.Nbls], UV.ant_2_array[:UV.Nbls]
     )
     if fringestop:
         UV.data_array = UV.data_array/phase_model[..., np.newaxis]
