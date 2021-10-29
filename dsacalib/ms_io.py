@@ -1269,8 +1269,109 @@ def convert_calibrator_pass_to_ms(
         message = 'No data for {0} transit on {1}'.format(date, cal.name)
         if logger is not None:
             logger.info(message)
-        #else:
         print(message)
+
+def generate_phase_model(blen, mjds, nbls, nts, pt_dec, ra, dec, lamb):
+    """Generates a phase model to apply.
+
+    Parameters
+    ----------
+    blen : ndarray(float)
+        The lengths of all baselines, shape (nbls, 3)
+    mjds : array(float)
+        The mjd of every sample, shape (nts*nbls)
+    nbls, nts : int
+        The number of unique baselines, times.
+    pt_dec : astropy quantity
+        The pointing declination of the array.
+    ra, dec : astropy quantities
+        The position to phase to in J2000 RA, DEC
+    """
+    uvw_m = calc_uvw_blt(
+        blen,
+        mjds[:nbls],
+        'HADEC',
+        np.zeros(nbls)*u.rad,
+        np.ones(nbls)*pt_dec
+    )
+    blen = np.tile(
+        blen[np.newaxis, :, :],
+        (nts, 1, 1)
+    ).reshape(-1, 3)
+    uvw = calc_uvw_blt(
+        blen,
+        mjds,
+        'RADEC',
+        ra.to(u.rad),
+        dec.to(u.rad)
+    )
+    dw = (
+        uvw[:, -1] - np.tile(
+            uvw_m[np.newaxis, :, -1],
+            (nts, 1)
+        ).reshape(-1)
+    )*u.m
+    phase_model = np.exp((
+        2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
+    ).to_value(u.dimensionless_unscaled))
+    return uvw, phase_model
+        
+def generate_phase_model_antbased(blen, mjds, nbls, nts, pt_dec, ra, dec, lamb, ant1, ant2):
+    """Generates a phase model to apply.
+
+    Parameters
+    ----------
+    blen : ndarray(float)
+        The lengths of all baselines, shape (nbls, 3)
+    mjds : array(float)
+        The mjd of every sample, shape (nts*nbls)
+    nbls, nts : int
+        The number of unique baselines, times.
+    pt_dec : astropy quantity
+        The pointing declination of the array.
+    ra, dec : astropy quantities
+        The position to phase to in J2000 RA, DEC
+    ant1, ant2 : list
+        The antenna indices in order
+    """
+    uvw_m = calc_uvw_blt(
+        blen,
+        mjds[:nbls],
+        'HADEC',
+        np.zeros(nbls)*u.rad,
+        np.ones(nbls)*pt_dec
+    )
+    # Need ant1 and ant2 to be passed here
+    # Need to check that this gets the correct refidxs
+    refant = ant1[0]
+    refidxs = np.where(ant1==refant)[0]
+    antenna_order = list(ant2[refidxs])
+    antenna_w_m = uvw_m[refidxs, -1]
+    blen = np.tile(
+        blen[np.newaxis, :, :],
+        (nts, 1, 1)
+    ).reshape(-1, 3)
+    uvw = calc_uvw_blt(
+        blen,
+        mjds,
+        'RADEC',
+        ra.to(u.rad),
+        dec.to(u.rad)
+    )
+    uvw_delays = uvw.reshape((nbls, nts, 3))
+    antenna_w = uvw_delays[refidxs, :, -1]
+    antenna_dw = antenna_w-antenna_w_m[:, np.newaxis]
+    dw = np.zeros((nbls, nts))
+    for i, a1 in enumerate(ant1):
+        a2 = ant2[i]
+        dw[i, :] = antenna_dw[antenna_order.index(a2)] - \
+                   antenna_dw[antenna_order.index(a1)]
+    dw = dw.reshape(-1)*u.m
+    phase_model = np.exp((
+        2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
+    ).to_value(u.dimensionless_unscaled))
+    return uvw, phase_model
+
 
 def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
                flux=None, fringestop=True, logger=None, refmjd=REFMJD):
@@ -1360,39 +1461,11 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         ant2 = UV.ant_2_array[i]
         blen[i, ...] = UV.antenna_positions[ant2, :] - \
             UV.antenna_positions[ant1, :]
-
-    uvw_m = calc_uvw_blt(
-        blen,
-        np.ones(UV.Nbls)*refmjd,
-        'HADEC',
-        np.zeros(UV.Nbls)*u.rad,
-        np.ones(UV.Nbls)*pt_dec
+    uvw, phase_model = generate_phase_model_antbased(
+         blen, time.mjd, UV.Nbls, UV.Ntimes, pt_dec,
+         ra, dec, lamb,
+         UV.ant_1_array[:UV.Nbls], UV.ant_2_array[:UV.Nbls]
     )
-
-    # Use antenna positions since CASA uvws are slightly off from pyuvdatas
-    # uvw_z = calc_uvw_blt(blen, time[:UV.Nbls].mjd, 'HADEC',
-    #                      np.zeros(UV.Nbls)*u.rad, np.ones(UV.Nbls)*zenith_dec)
-    # dw = (uvw_z[:, -1] - uvw_m[:, -1])*u.m
-    # phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis])
-    #                      .to_value(u.dimensionless_unscaled))
-    # UV.uvw_array = np.tile(uvw_z[np.newaxis, :, :], (UV.Ntimes, 1, 1)
-    #                    ).reshape(-1, 3)
-    # UV.data_array = (UV.data_array.reshape(
-    #     UV.Ntimes, UV.Nbls, UV.Nspws,UV.Nfreqs, UV.Npols
-    # )/phase_model[np.newaxis, ..., np.newaxis]).reshape(
-    #     UV.Nblts, UV.Nspws, UV.Nfreqs, UV.Npols
-    # )
-    # UV.phase(ra.to_value(u.rad), dec.to_value(u.rad), use_ant_pos=True)
-    # Below is the manual calibration which can be used instead.
-    # Currently using because casa uvws are more accurate than pyuvdatas, which
-    # aren't true uvw coordinates.
-    blen = np.tile(blen[np.newaxis, :, :], (UV.Ntimes, 1, 1)).reshape(-1, 3)
-    uvw = calc_uvw_blt(blen, time.mjd, 'J2000', ra.to(u.rad), dec.to(u.rad))
-    dw = (uvw[:, -1] - np.tile(uvw_m[np.newaxis, :, -1], (UV.Ntimes, 1)
-                             ).reshape(-1))*u.m
-    phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis])
-                         .to_value(u.dimensionless_unscaled))
-    UV.uvw_array = uvw
     if fringestop:
         UV.data_array = UV.data_array/phase_model[..., np.newaxis]
     UV.phase_type = 'phased'
