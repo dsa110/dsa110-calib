@@ -20,7 +20,8 @@ CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
 
 
 def get_bfnames(select=None):
-    """ Run on dsa-storage to get file anmes for beamformer weight files.
+    """ Run on dsa-storage to get file names for beamformer weight files.
+    Returns list of calibrator-times that are used in data file name.
     """
 
     fn_dat = glob.glob(os.path.join(BEAMFORMER_DIR, 'beamformer_weights*corr07*.dat'))
@@ -35,13 +36,17 @@ def get_bfnames(select=None):
 
     # select subset
     if select is not None:
-        return [bfn for bfn in bfnames if select in bfn]
+        bfnames2 = [bfn for bfn in bfnames if select in bfn]
+        print(f'Selecting {len(bfnames2)} from {len(bfnames)} gain files.')
+        return bfnames2
     else:
+        print(f'Selecting all {len(bfnames)} gain files.')
         return bfnames
 
 
 def read_gains(bfnames):
-    """
+    """ Reads gain for each of the data files in bfnames.
+    Returns gain array with same length as bfnames.
     """
 
     gains = np.zeros((len(bfnames), len(ANTENNAS), len(CORR_LIST), 48, 2),
@@ -57,16 +62,18 @@ def read_gains(bfnames):
             temp = data[64:].reshape(64, 48, 2, 2)
             gains[i, :, corridx, :, :] = temp[..., 0]+1.0j*temp[..., 1]
     gains = gains.reshape((len(bfnames), len(ANTENNAS), len(CORR_LIST)*48, 2))
-    return bfnames, gains
+    print(f'Using {len(bfnames)} to get gain array of shape {gains.shape}.')
+    return gains
 
 
-def get_good(bfnames, gains, threshold=60):
-    """ Select good 
+def find_good_solutions(bfnames, gains, threshold=60, plot=False):
+    """ Given names and gain array, calc good set.
+    Returns indices of bfnames argument that are good.
     """
 
-    grads = np.zeros((len(ANTENNAS), len(bfnames2)))
+    grads = np.zeros((len(ANTENNAS), len(bfnames)))
     for i in np.arange(len(ANTENNAS)):
-        for j in np.arange(len(bfnames2)):
+        for j in np.arange(len(bfnames)):
             ss = gains[:, 0, :, 0].sum()
             if ss != 0.+0j:
                 angle = np.angle(gains[:, i, :, 0]/gains[:, 0, :, 0])
@@ -77,18 +84,22 @@ def get_good(bfnames, gains, threshold=60):
 
     # select good sets
     keep = []
-    for j in np.arange(len(bfnames2)):
+    for j in np.arange(len(bfnames)):
         ngood = len(ANTENNAS)-sum(grads[:, j].mask)
-        print(j, bfnames2[j], ngood)
+        print(j, bfnames[j], ngood)
         if ngood > threshold:
             keep.append(j)
+            print(f'{bfnames[j]}: good')
+        else:
+            print(f'{bfnames[j]}: rejected')
 
     if plot:
         # visualize grads
         plt.imshow(grads.transpose(), origin='lower')
         plt.xlabel('antenna')
         plt.ylabel('calibrator')
-
+        plt.show()
+        
     return keep
 
 
@@ -115,3 +126,25 @@ def show_gains(bfnames, gains, keep):
                      cmap=plt.get_cmap('RdBu'))
         ax[i].annotate('{0}'.format(ANTENNAS[i]), (0, 1), xycoords='axes fraction')
         ax[i].set_xlabel('Frequency channel')
+    plt.show()
+
+
+def get_good_solution(select=None, plot=False):
+    """ Find good set of solutions and calculate average gains.
+    TODO: go from good bfnames to average gains.
+    """
+
+    from datetime import date
+
+    if select is None:
+        today = date.today()
+        select = f'{today.year}-{today.month}-{today.day:02}'
+
+    print(f'Selecting for string {select}')
+    bfnames = weights.get_bfnames(select=select)
+    gains = weights.read_gains(bfnames)
+    good = weights.find_good_solutions(bfnames, gains, plot=plot, threshold=60)
+    if plot:
+        weights.show_gains(bfnames, gains, good)
+
+    return bfnames[good]
