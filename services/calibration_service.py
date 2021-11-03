@@ -20,7 +20,7 @@ from dsacalib.routines import get_files_for_cal, calibrate_measurement_set
 from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd, \
     write_beamformer_solutions, average_beamformer_solutions
 from dsacalib.plotting import summary_plot, plot_bandpass_phases, \
-    plot_beamformer_weights #, plot_current_beamformer_solutions
+    plot_beamformer_weights
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -324,7 +324,7 @@ def calibrate_file(etcd_dict):
                         ANTENNAS[j*10:(j+1)*10]
                     )
                     pdf.savefig(fig)
-                    plt.close()
+                    plt.close(fig)
             target = f'{WEBPLOTS}/summary_current.pdf'
             if os.path.exists(target):
                 os.unlink(target)
@@ -332,17 +332,6 @@ def calibrate_file(etcd_dict):
                 f'{PLOTDIR}/{date}_{calname}.pdf',
                 target
             )
-# TODO: Get beamformer weight filenames from etcd
-#             # Index error occured - some files could not be found. corr04
-#             plot_current_beamformer_solutions(
-#                 filenames[date][calname]['files'],
-#                 calname,
-#                 date,
-#                 # beamformer name,
-#                 corrlist=CORR_LIST,
-#                 outname=figure_path,
-#                 show=False
-#             )
         except Exception as exc:
             exception_logger(
                 LOGGER,
@@ -482,7 +471,8 @@ def calibrate_file(etcd_dict):
         plot_bandpass_phases(
             filenames,
             np.array(ANTENNAS),
-            outname='{0}/{1}'.format(PLOTDIR, ttime)
+            outname='{0}/{1}'.format(PLOTDIR, ttime),
+            show=False
         )
         plt.close('all')
         target = f'{WEBPLOTS}/phase_current.png'

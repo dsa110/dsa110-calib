@@ -1205,7 +1205,7 @@ def plot_bandpass_phases(
     ny = len(antennas)//nx
     if len(antennas)%nx > 0:
         ny += 1
-    _, ax = plt.subplots(
+    fig, ax = plt.subplots(
         ny,
         nx,
         figsize=(3*nx, 3*ny),
@@ -1235,7 +1235,7 @@ def plot_bandpass_phases(
     if outname is not None:
         plt.savefig('{0}_phases.png'.format(outname))
     if not show:
-        plt.close()
+        plt.close(fig)
 
 def plot_beamformer_weights(
         beamformer_names,
@@ -1312,7 +1312,7 @@ def plot_beamformer_weights(
     #ymax = np.nanmax(np.log10(np.abs(gains)))
     #ymin = np.nanmin(np.log10(np.abs(gains)))
     # Phase, polarization B
-    _fig, ax = plt.subplots(
+    fig, ax = plt.subplots(
         nplots*ny,
         nx,
         figsize=(6*nx, 2.5*ny*nplots),
@@ -1351,5 +1351,5 @@ def plot_beamformer_weights(
     if outname is not None:
         plt.savefig('{0}_averagedweights.png'.format(outname))
     if not show:
-        plt.close()
+        plt.close(fig)
     return gains
