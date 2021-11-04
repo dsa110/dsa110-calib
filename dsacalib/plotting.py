@@ -1187,6 +1187,8 @@ def plot_bandpass_phases(
     i = 0
     for date in filenames.keys():
         cals = filenames[date].keys()
+        if len(cals) < 1:
+            return
         transit_times = [filenames[date][cal]['transit_time'] for cal in cals]
         transit_times, cals = zip(*sorted(zip(transit_times, cals)))
         for cal in cals:
