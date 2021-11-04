@@ -22,25 +22,26 @@ ANTENNAS = np.array(list(CORR_PARAMS['antenna_order'].values()))
 POLS = CORR_PARAMS['pols_voltage']
 ANTENNAS_NOT_IN_BF = CAL_PARAMS['antennas_not_in_bf']
 CORR_LIST = list(CORR_PARAMS['ch0'].keys())
+REFCORR = CORR_LIST[0]
 CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
+REFMJD = MFS_PARAMS['refmjd']
 
 
 def get_bfnames(select=None):
     """ Run on dsa-storage to get file names for beamformer weight files.
     Returns list of calibrator-times that are used in data file name.
     """
-    # TODO: Use refcorr
+    # Use first corr to be robust against corr name changes
     fn_dat = glob.glob(
-        os.path.join(BEAMFORMER_DIR, 'beamformer_weights*corr07*.dat')
+        os.path.join(BEAMFORMER_DIR, f'beamformer_weights*{REFCORR}*.dat')
     )
 
     bfnames = []
     for fn in fn_dat:
-        sp = fn.split('_corr07_')
+        sp = fn.split(f'_{REFCORR}_')
         if len(sp) > 1:
             if '_' in sp[1]:
                 bfnames.append(sp[1].rstrip('.dat'))
-    bfnames = sorted(bfnames, reverse=True)
 
     # select subset
     if select is not None:
@@ -56,7 +57,6 @@ def read_gains(bfnames):
     """ Reads gain for each of the data files in bfnames.
     Returns gain array with same length as bfnames.
     """
-    # TODO: Needs to not throw an error if a corr doesn't exist
     gains = np.zeros((len(bfnames), len(ANTENNAS), len(CORR_LIST), 48, 2),
                      dtype=np.complex)
 
@@ -146,22 +146,44 @@ def get_good_solution(select=None, plot=False):
     """ Find good set of solutions and calculate average gains.
     TODO: go from good bfnames to average gains.
     """
-    # TODO: Needs to include the past 24 hours, not just today.
-    # Can include more than the past 24 hours, as this can be filtered later.
-    from datetime import date
+    from datetime import date, timedelta
 
     if select is None:
         today = date.today()
-        select = f'{today.year}-{today.month}-{today.day:02}'
+        select = [f'{today.year}-{today.month}-{today.day:02}']
+        today = today-timedelta(days=1)
+        select += [f'{today.year}-{today.month}-{today.day:02}']
 
     print(f'Selecting for string {select}')
-    bfnames = get_bfnames(select=select)
+    if isinstance(select, str):
+        bfnames = get_bfnames(select=select)
+    else:
+        bfnames = get_bfnames(select=select[0])
+        if len(select) > 1:
+            for sel in select[1:]:
+                bfnames += get_bfnames(select=sel)
+    times = [bfname.split('_')[1] for bfname in bfnames]
+    times, bfnames = zip(*sorted(zip(times, bfnames), reverse=True))
     gains = read_gains(bfnames)
     good = find_good_solutions(bfnames, gains, plot=plot, threshold=60)
     if plot:
         show_gains(bfnames, gains, good)
 
-    return bfnames[good]
+    return [bfnames[gidx] for gidx in good]
+
+def calc_eastings(antennas):
+    antpos_df = get_itrf(
+        latlon_center=(ct.OVRO_LAT*u.rad, ct.OVRO_LON*u.rad, ct.OVRO_ALT*u.m)
+    )
+    blen = np.zeros((len(antennas), 3))
+    for i, ant in enumerate(antennas):
+        blen[i, 0] = antpos_df['x_m'].loc[ant]-antpos_df['x_m'].loc[24]
+        blen[i, 1] = antpos_df['y_m'].loc[ant]-antpos_df['y_m'].loc[24]
+        blen[i, 2] = antpos_df['z_m'].loc[ant]-antpos_df['z_m'].loc[24]
+    bu, _, _ = calc_uvw(blen, REFMJD, 'HADEC', 0.*u.rad, 0.6*u.rad)
+    bu = bu.squeeze().astype(np.float32)
+    return bu
+
 
 def filter_beamformer_solutions(beamformer_names, start_time):
     """Removes beamformer solutions inconsistent with the latest solution.
@@ -236,7 +258,6 @@ def average_beamformer_solutions(
         ]
     gains = read_gains(fnames)
     antenna_flags = [None]*len(fnames)
-    eastings = None
     for i, fname in enumerate(fnames):
         tmp_antflags = []
         filepath = f'{BEAMFORMER_DIR}/beamformer_weights_{fname}.yaml'
@@ -252,15 +273,7 @@ def average_beamformer_solutions(
                     tmp_antflags.append(antenna_order.index(antname))
         antenna_flags[i] = sorted(tmp_antflags)
         gains[i, :, antenna_flags[i], ... ] = np.nan
-
-    j=0
-    while j < len(corridxs) and eastings is None:
-        corr = corridxs[j]
-        filepath = f'{BEAMFORMER_DIR}/beamformer_weights_corr{corr:02d}_{fnames[0]}.dat'
-        if os.path.exists(filepath):
-            with open(filepath) as f:
-                data = np.fromfile(f, '<f4')
-                eastings = data[:64]
+    eastings = calc_eastings(antenna_order)
 
     gains = np.nanmean(gains, axis=0)
     fracflagged = np.sum(np.sum(np.sum(
@@ -339,18 +352,7 @@ def write_beamformer_weights(msname, calname, caltime, antennas,
             -1
         ).mean(axis=1)
 
-    # TODO: move to eastings function
-    # TODO: Use reftime to calc uvw coords
-    antpos_df = get_itrf(
-        latlon_center=(ct.OVRO_LAT*u.rad, ct.OVRO_LON*u.rad, ct.OVRO_ALT*u.m)
-    )
-    blen = np.zeros((len(antennas), 3))
-    for i, ant in enumerate(antennas):
-        blen[i, 0] = antpos_df['x_m'].loc[ant]-antpos_df['x_m'].loc[24]
-        blen[i, 1] = antpos_df['y_m'].loc[ant]-antpos_df['y_m'].loc[24]
-        blen[i, 2] = antpos_df['z_m'].loc[ant]-antpos_df['z_m'].loc[24]
-    bu, _, _ = calc_uvw(blen, 59000., 'HADEC', 0.*u.rad, 0.6*u.rad)
-    bu = bu.squeeze().astype(np.float32)
+    bu = calc_eastings(antennas)
 
     with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
         fobs = np.array(tb.CHAN_FREQ[:])/1e9
