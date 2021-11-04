@@ -224,7 +224,7 @@ def calibrate_file(etcd_dict):
         # start by updating our list with calibrators from the day before
         beamformer_names = get_good_solution()
         beamformer_names, latest_solns = filter_beamformer_solutions(
-            beamformer_names, ttime, start_time
+            beamformer_names, start_time.mjd
         )
         # Average beamformer solutions
         if len(beamformer_names) > 0:
