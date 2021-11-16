@@ -316,7 +316,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         'Measurement set start time does not agree with input tstart'
     print('Visibilities writing to ms {0}.ms'.format(ofile))
 
-def extract_vis_from_ms(msname, data='data', swapaxes=True):
+def extract_vis_from_ms(msname, data='data', swapaxes=True, metadataonly=False):
     """Extracts visibilities from a CASA measurement set.
 
     Parameters
@@ -349,8 +349,12 @@ def extract_vis_from_ms(msname, data='data', swapaxes=True):
     with table('{0}.ms'.format(msname)) as tb:
         ant1 = np.array(tb.ANTENNA1[:])
         ant2 = np.array(tb.ANTENNA2[:])
-        vals = np.array(tb.getcol(data.upper())[:])
-        flags = np.array(tb.FLAG[:])
+        if metadataonly:
+            vals = None
+            flags = None
+        else:
+            vals = np.array(tb.getcol(data.upper())[:])
+            flags = np.array(tb.FLAG[:])
         time = np.array(tb.TIME[:])
         spw = np.array(tb.DATA_DESC_ID[:])
     with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
@@ -446,21 +450,25 @@ def reshape_calibration_data(
     orig_shape : list
         The original order of the time, baseline and spw axes in the ms.
     """
+    if vals is None:
+        assert flags is None
     if len(np.unique(ant1))==len(np.unique(ant2)):
         nbl = len(np.unique(baseline))
     else:
         nbl = max([len(np.unique(ant1)), len(np.unique(ant2))])
     nspw = len(np.unique(spw))
     ntime = len(time)//nbl//nspw
-    nfreq = vals.shape[-2]
-    npol = vals.shape[-1]
+    nfreq = vals.shape[-2] if vals is not None else 1
+    npol = vals.shape[-1] if vals is not None else 1
     if np.all(baseline[:ntime*nspw] == baseline[0]):
         if np.all(time[:nspw] == time[0]):
             orig_shape = ['baseline', 'time', 'spw']
             # baseline, time, spw
             time = time.reshape(nbl, ntime, nspw)[0, :, 0]
-            vals = vals.reshape(nbl, ntime, nspw, nfreq, npol)
-            flags = flags.reshape(nbl, ntime, nspw, nfreq, npol)
+            if vals is not None:
+                vals = vals.reshape(nbl, ntime, nspw, nfreq, npol)
+            if flags is not None:
+                flags = flags.reshape(nbl, ntime, nspw, nfreq, npol)
             ant1 = ant1.reshape(nbl, ntime, nspw)[:, 0, 0]
             ant2 = ant2.reshape(nbl, ntime, nspw)[:, 0, 0]
             spw = spw.reshape(nbl, ntime, nspw)[0, 0, :]
@@ -469,11 +477,15 @@ def reshape_calibration_data(
             orig_shape = ['baseline', 'spw', 'time']
             assert np.all(spw[:ntime] == spw[0])
             time = time.reshape(nbl, nspw, ntime)[0, 0, :]
-            vals = vals.reshape(nbl, nspw, ntime, nfreq, npol)
-            flags = flags.reshape(nbl, nspw, ntime, nfreq, npol)
+            if vals is not None:
+                vals = vals.reshape(nbl, nspw, ntime, nfreq, npol)
+            if flags is not None:
+                flags = flags.reshape(nbl, nspw, ntime, nfreq, npol)
             if swapaxes:
-                vals = vals.swapaxes(1, 2)
-                flags = flags.swapaxes(1, 2)
+                if vals is not None:
+                    vals = vals.swapaxes(1, 2)
+                if flags is not None:
+                    flags = flags.swapaxes(1, 2)
             ant1 = ant1.reshape(nbl, nspw, ntime)[:, 0, 0]
             ant2 = ant2.reshape(nbl, nspw, ntime)[:, 0, 0]
             spw = spw.reshape(nbl, nspw, ntime)[0, :, 0]
@@ -482,11 +494,15 @@ def reshape_calibration_data(
             # time, baseline, spw
             orig_shape = ['time', 'baseline', 'spw']
             time = time.reshape(ntime, nbl, nspw)[:, 0, 0]
-            vals = vals.reshape(ntime, nbl, nspw, nfreq, npol)
-            flags = flags.reshape(ntime, nbl, nspw, nfreq, npol)
+            if vals is not None:
+                vals = vals.reshape(ntime, nbl, nspw, nfreq, npol)
+            if flags is not None:
+                flags = flags.reshape(ntime, nbl, nspw, nfreq, npol)
             if swapaxes:
-                vals = vals.swapaxes(0, 1)
-                flags = flags.swapaxes(0, 1)
+                if vals is not None:
+                    vals = vals.swapaxes(0, 1)
+                if flags is not None:
+                    flags = flags.swapaxes(0, 1)
             ant1 = ant1.reshape(ntime, nbl, nspw)[0, :, 0]
             ant2 = ant2.reshape(ntime, nbl, nspw)[0, :, 0]
             spw = spw.reshape(ntime, nbl, nspw)[0, 0, :]
@@ -494,11 +510,15 @@ def reshape_calibration_data(
             orig_shape = ['time', 'spw', 'baseline']
             assert np.all(spw[:nbl] == spw[0])
             time = time.reshape(ntime, nspw, nbl)[:, 0, 0]
-            vals = vals.reshape(ntime, nspw, nbl, nfreq, npol)
-            flags = flags.reshape(ntime, nspw, nbl, nfreq, npol)
+            if vals is not None:
+                vals = vals.reshape(ntime, nspw, nbl, nfreq, npol)
+            if flags is not None:
+                flags = flags.reshape(ntime, nspw, nbl, nfreq, npol)
             if swapaxes:
-                vals = vals.swapaxes(1, 2).swapaxes(0, 1)
-                flags = flags.swapaxes(1, 2).swapaxes(0, 1)
+                if vals is not None:
+                    vals = vals.swapaxes(1, 2).swapaxes(0, 1)
+                if flags is not None:
+                    flags = flags.swapaxes(1, 2).swapaxes(0, 1)
             ant1 = ant1.reshape(ntime, nspw, nbl)[0, 0, :]
             ant2 = ant2.reshape(ntime, nspw, nbl)[0, 0, :]
             spw = spw.reshape(ntime, nspw, nbl)[0, :, 0]
@@ -508,11 +528,15 @@ def reshape_calibration_data(
             # spw, baseline, time
             orig_shape = ['spw', 'baseline', 'time']
             time = time.reshape(nspw, nbl, ntime)[0, 0, :]
-            vals = vals.reshape(nspw, nbl, ntime, nfreq, npol)
-            flags = flags.reshape(nspw, nbl, ntime, nfreq, npol)
+            if vals is not None:
+                vals = vals.reshape(nspw, nbl, ntime, nfreq, npol)
+            if flags is not None:
+                flags = flags.reshape(nspw, nbl, ntime, nfreq, npol)
             if swapaxes:
-                vals = vals.swapaxes(0, 1).swapaxes(1, 2)
-                flags = flags.swapaxes(0, 1).swapaxes(1, 2)
+                if vals is not None:
+                    vals = vals.swapaxes(0, 1).swapaxes(1, 2)
+                if flags is not None:
+                    flags = flags.swapaxes(0, 1).swapaxes(1, 2)
             ant1 = ant1.reshape(nspw, nbl, ntime)[0, :, 0]
             ant2 = ant2.reshape(nspw, nbl, ntime)[0, :, 0]
             spw = spw.reshape(nspw, nbl, ntime)[:, 0, 0]
@@ -521,11 +545,15 @@ def reshape_calibration_data(
             # spw, time, bl
             orig_shape = ['spw', 'time', 'baseline']
             time = time.reshape(nspw, ntime, nbl)[0, :, 0]
-            vals = vals.reshape(nspw, ntime, nbl, nfreq, npol)
-            flags = flags.reshape(nspw, ntime, nbl, nfreq, npol)
+            if vals is not None:
+                vals = vals.reshape(nspw, ntime, nbl, nfreq, npol)
+            if flags is not None:
+                flags = flags.reshape(nspw, ntime, nbl, nfreq, npol)
             if swapaxes:
-                vals = vals.swapaxes(0, 2)
-                flags = flags.swapaxes(0, 2)
+                if vals is not None:
+                    vals = vals.swapaxes(0, 2)
+                if flags is not None:
+                    flags = flags.swapaxes(0, 2)
             ant1 = ant1.reshape(nspw, ntime, nbl)[0, 0, :]
             ant2 = ant2.reshape(nspw, ntime, nbl)[0, 0, :]
             spw = spw.reshape(nspw, ntime, nbl)[:, 0, 0]
@@ -844,7 +872,7 @@ def get_delays(antennas, msname, calname, applied_delays):
 def convert_calibrator_pass_to_ms(
         cal, date, files, duration, msdir='/mnt/data/dsa110/calibration/',
         hdf5dir='/mnt/data/dsa110/correlator/', antenna_list=None,
-        logger=None
+        logger=None, overwrite=True
 ):
     r"""Converts hdf5 files near a calibrator pass to a CASA ms.
 
@@ -906,57 +934,50 @@ def convert_calibrator_pass_to_ms(
             #else:
             print(message)
         except (ValueError, IndexError) as exception:
-            message = 'No data for {0} transit on {1}. Error {2}. Traceback: {3}'.format(
-                date,
-                cal.name,
-                type(exception).__name__,
-                ''.join(
-                    traceback.format_tb(exception.__traceback__)
-                )
-            )
+            tbmsg = ''.join(traceback.format_tb(exception.__traceback__))
+            message = f'No data for {date} transit on {calname}. Error {type(exception).__name__}. Traceback: {tbmsg}'
             if logger is not None:
                 logger.info(message)
-            #else:
             print(message)
     elif len(files) > 0:
         msnames = []
         for filename in files:
             print(filename)
-            try:
-                reftime = Time(filename)
-                hdf5files = []
-                for hdf5f in sorted(glob.glob(
-                        '{0}/corr??/{1}*.hdf5'.format(hdf5dir, filename[:-4])
-                )):
-                    filetime = Time(hdf5f[:-5].split('/')[-1])
-                    if abs(filetime-reftime) < 1*u.min:
-                        hdf5files += [hdf5f]
-                #assert len(hdf5files) < 17
-                #assert len(hdf5files) > 1
-                print(f'found {len(hdf5files)} hdf5files for {filename}')
-                uvh5_to_ms(
-                    hdf5files,
-                    '{0}/{1}'.format(msdir, filename),
-                    ra=cal.ra,
-                    dec=cal.dec,
-                    flux=cal.I,
-                    # dt=duration,
-                    antenna_list=antenna_list,
-                    logger=logger
-                )
-                msnames += ['{0}/{1}'.format(msdir, filename)]
-            except (ValueError, IndexError) as exception:
-                message = 'No data for {0}. Error {1}. Traceback: {2}'.format(
-                    filename,
-                    type(exception).__name__,
-                    ''.join(
-                        traceback.format_tb(exception.__traceback__)
+            if overwrite or not os.path.exists(f'{msdir}/{filename}.ms'):
+                try:
+                    reftime = Time(filename)
+                    hdf5files = []
+                    for hdf5f in sorted(glob.glob(
+                            '{0}/corr??/{1}*.hdf5'.format(hdf5dir, filename[:-4])
+                    )):
+                        filetime = Time(hdf5f[:-5].split('/')[-1])
+                        if abs(filetime-reftime) < 1*u.min:
+                            hdf5files += [hdf5f]
+                    print(f'found {len(hdf5files)} hdf5files for {filename}')
+                    uvh5_to_ms(
+                        hdf5files,
+                        '{0}/{1}'.format(msdir, filename),
+                        ra=cal.ra,
+                        dec=cal.dec,
+                        flux=cal.I,
+                        # dt=duration,
+                        antenna_list=antenna_list,
+                        logger=logger
                     )
-                )
-                if logger is not None:
-                    logger.info(message)
-                #else:
-                print(message)
+                    msnames += ['{0}/{1}'.format(msdir, filename)]
+                except (ValueError, IndexError) as exception:
+                    message = 'No data for {0}. Error {1}. Traceback: {2}'.format(
+                        filename,
+                        type(exception).__name__,
+                        ''.join(
+                            traceback.format_tb(exception.__traceback__)
+                        )
+                    )
+                    if logger is not None:
+                        logger.info(message)
+                    print(message)
+            else:
+                print(f'Not doing {filename}')
         if os.path.exists('{0}.ms'.format(msname)):
             for root, _dirs, walkfiles in os.walk(
                 '{0}.ms'.format(msname),
