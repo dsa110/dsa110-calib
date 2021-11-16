@@ -146,10 +146,10 @@ def get_good_solution(select=None, plot=False):
     """ Find good set of solutions and calculate average gains.
     TODO: go from good bfnames to average gains.
     """
-    from datetime import date, timedelta
+    from datetime import datetime, timedelta, timezone
 
     if select is None:
-        today = date.today()
+        today = datetime.now(timezone.utc)
         select = [f'{today.year}-{today.month}-{today.day:02}']
         today = today-timedelta(days=1)
         select += [f'{today.year}-{today.month}-{today.day:02}']
@@ -257,6 +257,7 @@ def average_beamformer_solutions(
             1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
         ]
     gains = read_gains(fnames)
+    print(gains.shape)
     antenna_flags = [None]*len(fnames)
     for i, fname in enumerate(fnames):
         tmp_antflags = []
@@ -272,21 +273,20 @@ def average_beamformer_solutions(
                     antname = int(key.split(' ')[0])
                     tmp_antflags.append(antenna_order.index(antname))
         antenna_flags[i] = sorted(tmp_antflags)
-        gains[i, :, antenna_flags[i], ... ] = np.nan
+        gains[i, antenna_flags[i], ... ] = np.nan
     eastings = calc_eastings(antenna_order)
-
+    
     gains = np.nanmean(gains, axis=0)
-    fracflagged = np.sum(np.sum(np.sum(
-        np.isnan(gains),
-        axis=4), axis=2), axis=0)\
-        /(gains.shape[0]*gains.shape[2]*gains.shape[4])
+    fracflagged = np.sum(np.isnan(gains), axis=1)/(gains.shape[1])
     antenna_flags_badsolns = fracflagged > tol
     gains[np.isnan(gains)] = 0.
+    gains = gains.astype(np.complex64).view(np.float32).reshape(64, 16, 48, 2, 2)
+    print(gains.shape)
     written_files = []
     if eastings is not None:
         for i, corr in enumerate(corridxs):
             fnameout = f'beamformer_weights_corr{corr:02d}_{ttime.isot}'
-            wcorr = gains[i, ...].flatten()
+            wcorr = gains[:, i, ...].flatten()
             wcorr = np.concatenate([eastings, wcorr], axis=0)
             with open(f'{BEAMFORMER_DIR}/{fnameout}.dat', 'wb') as f:
                 f.write(bytes(wcorr))
@@ -495,19 +495,20 @@ def write_beamformer_solutions(
             flags[antennas==ant, pols==pol] = 1
             beamformer_flags['{0} {1}'.format(ant, pol)] = ['flagged by user']
     delays = delays-np.min(delays[~flags])
-    while not np.all(delays[~flags] < 1024):
-        if np.sum(delays[~flags] > 1024) < np.nansum(delays[~flags] < 1024):
-            argflag = np.argmax(delays[~flags])
-        else:
-            argflag = np.argmin(delays[~flags])
-        argflag = np.where(~flags.flatten())[0][argflag]
-        flag_idxs = np.unravel_index(argflag, flags.shape)
-        flags[np.unravel_index(argflag, flags.shape)] = 1
-        key = '{0} {1}'.format(antennas[flag_idxs[0]], pols[flag_idxs[1]])
-        if key not in beamformer_flags.keys():
-            beamformer_flags[key] = []
-        beamformer_flags[key] += ['delay exceeds snap capabilities']
-        delays = delays-np.min(delays[~flags])
+    # TODO: this is currently flagging antennas that it shouldn't be
+    #while not np.all(delays[~flags] < 1024):
+    #    if np.sum(delays[~flags] > 1024) < np.nansum(delays[~flags] < 1024):
+    #        argflag = np.argmax(delays[~flags])
+    #    else:
+    #        argflag = np.argmin(delays[~flags])
+    #    argflag = np.where(~flags.flatten())[0][argflag]
+    #    flag_idxs = np.unravel_index(argflag, flags.shape)
+    #    flags[np.unravel_index(argflag, flags.shape)] = 1
+    #    key = '{0} {1}'.format(antennas[flag_idxs[0]], pols[flag_idxs[1]])
+    #    if key not in beamformer_flags.keys():
+    #        beamformer_flags[key] = []
+    #    beamformer_flags[key] += ['delay exceeds snap capabilities']
+    #    delays = delays-np.min(delays[~flags])
 
     caltime.precision = 0
     corr_list, eastings, _fobs, weights_files, flags_badsolns = \
