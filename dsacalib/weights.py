@@ -142,7 +142,7 @@ def show_gains(bfnames, gains, keep):
     plt.show()
 
 
-def get_good_solution(select=None, plot=False):
+def get_good_solution(select=None, plot=False, threshold=60):
     """ Find good set of solutions and calculate average gains.
     TODO: go from good bfnames to average gains.
     """
@@ -165,7 +165,7 @@ def get_good_solution(select=None, plot=False):
     times = [bfname.split('_')[1] for bfname in bfnames]
     times, bfnames = zip(*sorted(zip(times, bfnames), reverse=True))
     gains = read_gains(bfnames)
-    good = find_good_solutions(bfnames, gains, plot=plot, threshold=60)
+    good = find_good_solutions(bfnames, gains, plot=plot, threshold=threshold)
     if plot:
         show_gains(bfnames, gains, good)
 
