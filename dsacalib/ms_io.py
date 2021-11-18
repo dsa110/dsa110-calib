@@ -910,7 +910,7 @@ def convert_calibrator_pass_to_ms(
             reftime = Time(files[0])
             hdf5files = []
             for hdf5f in sorted(glob.glob(
-                '{0}/corr??/{1}*.hdf5'.format(hdf5dir, files[0][:-3])
+                '{0}/corr??/{1}*.hdf5'.format(hdf5dir, files[0][:-4])
             )):
                 filetime = Time(hdf5f[:-5].split('/')[-1])
                 if abs(filetime-reftime) < 1*u.min:
@@ -1012,7 +1012,6 @@ def convert_calibrator_pass_to_ms(
         message = 'No data for {0} transit on {1}'.format(date, cal.name)
         if logger is not None:
             logger.info(message)
-        #else:
         print(message)
 
 def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
@@ -1154,6 +1153,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         UV.freq_array = UV.freq_array[:, ::-1]
         UV.data_array = UV.data_array[:, :, ::-1, :]
         freq = UV.freq_array.squeeze()
+    # TODO: Need to update this for missing on either side as well
     UV.channel_width = np.abs(UV.channel_width)
     # Are there missing channels?
     if not np.all(np.diff(freq)-UV.channel_width < 1e-5):
