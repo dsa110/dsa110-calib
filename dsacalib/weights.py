@@ -77,19 +77,28 @@ def read_gains(bfnames):
     return gains
 
 
-def find_good_solutions(bfnames, gains, threshold=60, plot=False):
+def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=1, plot=False):
     """ Given names and gain array, calc good set.
     Returns indices of bfnames argument that are good.
     """
 
-    grads = np.zeros((len(ANTENNAS), len(bfnames)))
-    for i in np.arange(len(ANTENNAS)):
-        for j in np.arange(len(bfnames)):
-            ss = gains[:, 0, :, 0].sum()
-            if ss != 0.+0j:
-                angle = np.angle(gains[:, i, :, 0]/gains[:, 0, :, 0])
-                medgrad = np.median(np.gradient(angle[j]))
-                grads[i, j] = medgrad
+    nchan = gains.shape[2]
+    grads = np.zeros((len(bfnames), len(ANTENNAS), 2))
+    for i in np.arange(2):
+        for j in np.arange(len(ANTENNAS)):
+            angles = np.zeros((len(bfnames), nchan))
+            for k in np.arange(len(bfnames)):
+                ss = gains[k, j, :, i].sum()
+                if ss != 0.+0j:
+                    angle = np.angle(gains[k, j, :, i]/gains[k, 0, :, i])
+                    angles[k] = angle
+                    medgrad = np.median(np.gradient(angle))
+                    grads[k, j, i] = medgrad
+            angles = np.ma.masked_equal(angles, 0)
+            angles = np.ma.masked_invalid(angles, 0)
+            for k in np.arange(len(bfnames)):
+                if np.mean(angles[k] - angles.mean(axis=0)) > threshold_angle:
+                    grads[k, j, i] = 0
     grads = np.ma.masked_equal(grads, 0)
     grads = np.ma.masked_invalid(grads)
 
@@ -98,7 +107,7 @@ def find_good_solutions(bfnames, gains, threshold=60, plot=False):
     for j in np.arange(len(bfnames)):
         ngood = len(ANTENNAS)-sum(grads[:, j].mask)
         print(j, bfnames[j], ngood)
-        if ngood > threshold:
+        if ngood > threshold_ants:
             keep.append(j)
             print(f'{bfnames[j]}: good')
         else:
