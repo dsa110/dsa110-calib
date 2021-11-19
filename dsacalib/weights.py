@@ -77,7 +77,7 @@ def read_gains(bfnames):
     return gains
 
 
-def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=1, plot=False):
+def find_good_solutions(bfnames, gains, threshold_ants=60, mask_bothpols=True, plot=False):
     """ Given names and gain array, calc good set.
     Returns indices of bfnames argument that are good.
     """
@@ -86,26 +86,31 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=1, pl
     grads = np.zeros((len(bfnames), len(ANTENNAS), 2))
     for i in np.arange(2):
         for j in np.arange(len(ANTENNAS)):
-            angles = np.zeros((len(bfnames), nchan))
+#            angles = np.zeros((len(bfnames), nchan))
             for k in np.arange(len(bfnames)):
-                ss = gains[k, j, :, i].sum()
-                if ss != 0.+0j:
+                if gains[k, j, :, i].any():
                     angle = np.angle(gains[k, j, :, i]/gains[k, 0, :, i])
-                    angles[k] = angle
+#                    angles[k] = angle
                     medgrad = np.median(np.gradient(angle))
                     grads[k, j, i] = medgrad
-            angles = np.ma.masked_equal(angles, 0)
-            angles = np.ma.masked_invalid(angles, 0)
-            for k in np.arange(len(bfnames)):
-                if np.mean(angles[k] - angles.mean(axis=0)) > threshold_angle:
-                    grads[k, j, i] = 0
+#            angles = np.ma.masked_equal(angles, 0)
+#            angles = np.ma.masked_invalid(angles, 0)
+            # TODO: find bad k from comparing over all k
+            # for k in np.arange(len(bfnames)):
     grads = np.ma.masked_equal(grads, 0)
     grads = np.ma.masked_invalid(grads)
+
+    if mask_bothpols:
+        maskor = np.ma.mask_or(grads.mask[:,:,0], grads.mask[:,:,1])
+        grads.mask[:,:,0] = maskor
+        grads.mask[:,:,1] = maskor
 
     # select good sets
     keep = []
     for j in np.arange(len(bfnames)):
-        ngood = len(ANTENNAS)-sum(grads[:, j].mask)
+        ngood = len(ANTENNAS)-sum(grads[j, :, 0].mask)  # assumes pol=0 has useful flagging info
+
+
         print(j, bfnames[j], ngood)
         if ngood > threshold_ants:
             keep.append(j)
@@ -115,9 +120,13 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=1, pl
 
     if plot:
         # visualize grads
-        plt.imshow(grads.transpose(), origin='lower')
-        plt.xlabel('antenna')
-        plt.ylabel('calibrator')
+        pl, (ax0, ax1) = plt.subplots(1,2)
+        ax0.imshow(grads[:,:,0].transpose(), origin='lower')
+        ax0.set_xlabel('antenna (pol 0)')
+        ax0.set_ylabel('calibrator')
+        ax1.imshow(grads[:,:,1].transpose(), origin='lower')
+        ax1.set_xlabel('antenna (pol 1)')
+        ax1.set_ylabel('calibrator')
         plt.show()
 
     return keep
@@ -151,7 +160,7 @@ def show_gains(bfnames, gains, keep):
     plt.show()
 
 
-def get_good_solution(select=None, plot=False, threshold=60):
+def get_good_solution(select=None, plot=False, threshold_ants=60):
     """ Find good set of solutions and calculate average gains.
     TODO: go from good bfnames to average gains.
     """
@@ -174,7 +183,7 @@ def get_good_solution(select=None, plot=False, threshold=60):
     times = [bfname.split('_')[1] for bfname in bfnames]
     times, bfnames = zip(*sorted(zip(times, bfnames), reverse=True))
     gains = read_gains(bfnames)
-    good = find_good_solutions(bfnames, gains, plot=plot, threshold=threshold)
+    good = find_good_solutions(bfnames, gains, plot=plot, threshold_ants=threshold_ants)
     if plot:
         show_gains(bfnames, gains, good)
 
