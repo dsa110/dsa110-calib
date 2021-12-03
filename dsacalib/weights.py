@@ -27,6 +27,36 @@ CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
 REFMJD = MFS_PARAMS['refmjd']
 
 
+def get_good_solution(select=None, plot=False, threshold_ants=60):
+    """ Find good set of solutions and calculate average gains.
+    TODO: go from good bfnames to average gains.
+    """
+    from datetime import datetime, timedelta, timezone
+
+    if select is None:
+        today = datetime.now(timezone.utc)
+        select = [f'{today.year}-{today.month}-{today.day:02}']
+        today = today-timedelta(days=1)
+        select += [f'{today.year}-{today.month}-{today.day:02}']
+
+    print(f'Selecting for string {select}')
+    if isinstance(select, str):
+        bfnames = get_bfnames(select=select)
+    else:
+        bfnames = get_bfnames(select=select[0])
+        if len(select) > 1:
+            for sel in select[1:]:
+                bfnames += get_bfnames(select=sel)
+    times = [bfname.split('_')[1] for bfname in bfnames]
+    times, bfnames = zip(*sorted(zip(times, bfnames), reverse=True))
+    gains = read_gains(bfnames)
+    good = find_good_solutions(bfnames, gains, plot=plot, threshold_ants=threshold_ants)
+    if plot:
+        show_gains(bfnames, gains, good)
+
+    return [bfnames[gidx] for gidx in good]
+
+
 def get_bfnames(select=None):
     """ Run on dsa-storage to get file names for beamformer weight files.
     Returns list of calibrator-times that are used in data file name.
@@ -77,7 +107,7 @@ def read_gains(bfnames):
     return gains
 
 
-def find_good_solutions(bfnames, gains, threshold_ants=60, mask_bothpols=True, plot=False):
+def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=20, mask_bothpols=True, plot=False):
     """ Given names and gain array, calc good set.
     Returns indices of bfnames argument that are good.
     """
@@ -89,6 +119,7 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, mask_bothpols=True, p
 #            angles = np.zeros((len(bfnames), nchan))
             for k in np.arange(len(bfnames)):
                 if gains[k, j, :, i].any():
+#                    angle = np.angle(gains[k, j, :, i]/gains[0, j, :, i])
                     angle = np.angle(gains[k, j, :, i]/gains[k, 0, :, i])
 #                    angles[k] = angle
                     medgrad = np.median(np.gradient(angle))
@@ -107,24 +138,39 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, mask_bothpols=True, p
 
     # select good sets
     keep = []
-    for j in np.arange(len(bfnames)):
-        ngood = len(ANTENNAS)-sum(grads[j, :, 0].mask)  # assumes pol=0 has useful flagging info
+    for k in np.arange(len(bfnames)):
+        ngood = len(ANTENNAS)-sum(grads[k, :, 0].mask)  # assumes pol=0 has useful flagging info
 
-
-        print(j, bfnames[j], ngood)
+        print(f'Good phase gradients: {k}, {bfnames[k]}, {ngood} antennas')
         if ngood > threshold_ants:
-            keep.append(j)
-            print(f'{bfnames[j]}: good')
+            keep.append(k)
+            print(f'{bfnames[k]}: good')
         else:
-            print(f'{bfnames[j]}: rejected')
+            print(f'{bfnames[k]}: rejected')
 
+    gains = np.ma.masked_array(gains)
+    for i in range(nchan):
+        gains[...,i,:].mask = grads.mask
+
+    #    for i in np.arange(2):
+    for k in np.arange(len(bfnames)):
+        if k not in keep:
+            continue
+        angle = np.degrees(np.angle(gains[k, :, :, 0]/gains[keep[0], :, :, 0]).mean())
+        print(f'Good phase relative to latest cal: {k}, {bfnames[k]}, {angle} degrees')
+        if angle > threshold_angle:
+            print(f'{bfnames[k]}: rejected')
+            keep.remove(k)
+        else:
+            print(f'{bfnames[k]}: good')
+            
     if plot:
         # visualize grads
         pl, (ax0, ax1) = plt.subplots(1,2)
-        ax0.imshow(grads[:,:,0].transpose(), origin='lower')
+        ax0.imshow(grads[:,:,0], origin='lower')
         ax0.set_xlabel('antenna (pol 0)')
         ax0.set_ylabel('calibrator')
-        ax1.imshow(grads[:,:,1].transpose(), origin='lower')
+        ax1.imshow(grads[:,:,1], origin='lower')
         ax1.set_xlabel('antenna (pol 1)')
         ax1.set_ylabel('calibrator')
         plt.show()
@@ -159,35 +205,6 @@ def show_gains(bfnames, gains, keep):
         ax[i].set_xlabel('Frequency channel')
     plt.show()
 
-
-def get_good_solution(select=None, plot=False, threshold_ants=60):
-    """ Find good set of solutions and calculate average gains.
-    TODO: go from good bfnames to average gains.
-    """
-    from datetime import datetime, timedelta, timezone
-
-    if select is None:
-        today = datetime.now(timezone.utc)
-        select = [f'{today.year}-{today.month}-{today.day:02}']
-        today = today-timedelta(days=1)
-        select += [f'{today.year}-{today.month}-{today.day:02}']
-
-    print(f'Selecting for string {select}')
-    if isinstance(select, str):
-        bfnames = get_bfnames(select=select)
-    else:
-        bfnames = get_bfnames(select=select[0])
-        if len(select) > 1:
-            for sel in select[1:]:
-                bfnames += get_bfnames(select=sel)
-    times = [bfname.split('_')[1] for bfname in bfnames]
-    times, bfnames = zip(*sorted(zip(times, bfnames), reverse=True))
-    gains = read_gains(bfnames)
-    good = find_good_solutions(bfnames, gains, plot=plot, threshold_ants=threshold_ants)
-    if plot:
-        show_gains(bfnames, gains, good)
-
-    return [bfnames[gidx] for gidx in good]
 
 def calc_eastings(antennas):
     antpos_df = get_itrf(
