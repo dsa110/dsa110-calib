@@ -714,7 +714,7 @@ def calibrate_measurement_set(
     msname, cal, refants, throw_exceptions=True, bad_antennas=None,
     bad_uvrange='2~27m', keepdelays=False, forsystemhealth=False,
     interp_thresh=1.5, interp_polyorder=7, blbased=False, manual_flags=None,
-    logger=None
+    logger=None, t2='60s'
 ):
     r"""Calibrates the measurement set.
 
@@ -881,7 +881,8 @@ def calibrate_measurement_set(
         error = dc.delay_calibration(
             msname,
             cal.name,
-            refants=refants
+            refants=refants,
+            t2=t2
         )
         if error > 0:
             status = cs.update(status, cs.DELAY_CAL_ERR )
@@ -936,7 +937,7 @@ def calibrate_measurement_set(
         )
         shutil.rmtree('{0}_{1}_kcal'.format(msname, cal.name))
         shutil.rmtree('{0}_{1}_2kcal'.format(msname, cal.name))
-        error = dc.delay_calibration(msname, cal.name, refants=refants)
+        error = dc.delay_calibration(msname, cal.name, refants=refants, t2=t2)
         if error > 0:
             status = cs.update(status, cs.DELAY_CAL_ERR )
             message = 'Non-fatal error occured in delay calibration ' + \
@@ -966,7 +967,8 @@ def calibrate_measurement_set(
             forsystemhealth=forsystemhealth,
             keepdelays=keepdelays,
             interp_thresh=interp_thresh,
-            interp_polyorder=interp_polyorder
+            interp_polyorder=interp_polyorder,
+            tbeam=t2
         )
         if error > 0:
             status = cs.update(status, cs.GAIN_BP_CAL_ERR)
