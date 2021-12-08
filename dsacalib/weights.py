@@ -47,6 +47,8 @@ def get_good_solution(select=None, plot=False, threshold_ants=60):
         if len(select) > 1:
             for sel in select[1:]:
                 bfnames += get_bfnames(select=sel)
+    if not len(bfnames):
+        return bfnames
     times = [bfname.split('_')[1] for bfname in bfnames]
     times, bfnames = zip(*sorted(zip(times, bfnames), reverse=True))
     gains = read_gains(bfnames)
