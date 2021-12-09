@@ -114,6 +114,7 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=20, m
     Returns indices of bfnames argument that are good.
     """
 
+    refant_ind = ANTENNAS.tolist().index(int(REFANTS[0]))
     nchan = gains.shape[2]
     grads = np.zeros((len(bfnames), len(ANTENNAS), 2))
     for i in np.arange(2):
@@ -122,7 +123,7 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=20, m
             for k in np.arange(len(bfnames)):
                 if gains[k, j, :, i].any():
 #                    angle = np.angle(gains[k, j, :, i]/gains[0, j, :, i])
-                    angle = np.angle(gains[k, j, :, i]/gains[k, 0, :, i])
+                    angle = np.angle(gains[k, j, :, i]/gains[k, refant_ind, :, i])
 #                    angles[k] = angle
                     medgrad = np.median(np.gradient(angle))
                     grads[k, j, i] = medgrad
@@ -144,7 +145,7 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=20, m
         ngood = len(ANTENNAS)-sum(grads[k, :, 0].mask)  # assumes pol=0 has useful flagging info
 
         print(f'Good phase gradients: {k}, {bfnames[k]}, {ngood} antennas')
-        if ngood > threshold_ants:
+        if ngood >= threshold_ants:
             keep.append(k)
             print(f'{bfnames[k]}: good')
         else:
@@ -154,17 +155,25 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=20, m
     for i in range(nchan):
         gains[...,i,:].mask = grads.mask
 
+    # calc relative phase change across all pairs of solutions to find outliers
     #    for i in np.arange(2):
+    bad = []
     for k in np.arange(len(bfnames)):
-        if k not in keep:
-            continue
-        angle = np.degrees(np.angle(gains[k, :, :, 0]/gains[keep[0], :, :, 0]).mean())
-        print(f'Good phase relative to latest cal: {k}, {bfnames[k]}, {angle} degrees')
-        if angle > threshold_angle:
-            print(f'{bfnames[k]}: rejected')
-            keep.remove(k)
-        else:
-            print(f'{bfnames[k]}: good')
+        for j in np.arange(k+1, len(bfnames)):
+            if k not in keep or j not in keep:
+                continue
+            angle = np.degrees(np.angle(gains[k, :, :, 0]/gains[j, :, :, 0]).mean())
+            print(f'Good phase relative to cal pairs ({k}, {j}), ({bfnames[k]}, {bfnames[j]}): {angle} degrees')
+            if angle >= threshold_angle:
+                bad.append(k)
+                bad.append(j)
+    if len(bad):
+        for k in np.arange(len(bfnames)):
+            if bad.count(k) >= len(bfnames)-1:
+                keep.remove(k)
+                print(f'{bfnames[k]}: rejected')
+            else:
+                print(f'{bfnames[k]}: good')
             
     if plot:
         # visualize grads
@@ -184,7 +193,7 @@ def show_gains(bfnames, gains, keep):
     """ Given bfnames and gains, plot the good gains.
     """
 
-    refant = 24
+    refant_ind = ANTENNAS.tolist().index(int(REFANTS[0]))
     nx = 4
     ny = len(ANTENNAS)//nx
     if len(ANTENNAS)%nx > 0:
@@ -199,7 +208,7 @@ def show_gains(bfnames, gains, keep):
 
     for i in np.arange(len(ANTENNAS)):
         ax[i].imshow(
-            np.angle(gains[:, i, :, 0]/gains[:, 0, :, 0]).take(keep, axis=0),
+            np.angle(gains[:, i, :, 0]/gains[:, refant_ind, :, 0]).take(keep, axis=0),
             vmin=-np.pi, vmax=np.pi, aspect='auto', origin='lower',
             interpolation='None', cmap=plt.get_cmap('RdBu')
         )
