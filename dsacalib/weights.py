@@ -27,7 +27,7 @@ CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
 REFMJD = MFS_PARAMS['refmjd']
 
 
-def get_good_solution(select=None, plot=False, threshold_ants=60):
+def get_good_solution(select=None, plot=False, threshold_ants=60, threshold_angle=10):
     """ Find good set of solutions and calculate average gains.
     TODO: go from good bfnames to average gains.
     """
@@ -52,7 +52,7 @@ def get_good_solution(select=None, plot=False, threshold_ants=60):
     times = [bfname.split('_')[1] for bfname in bfnames]
     times, bfnames = zip(*sorted(zip(times, bfnames), reverse=True))
     gains = read_gains(bfnames)
-    good = find_good_solutions(bfnames, gains, plot=plot, threshold_ants=threshold_ants)
+    good = find_good_solutions(bfnames, gains, plot=plot, threshold_ants=threshold_ants, threshold_angle=threshold_angle)
     if plot:
         show_gains(bfnames, gains, good)
 
@@ -109,7 +109,7 @@ def read_gains(bfnames):
     return gains
 
 
-def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=20, mask_bothpols=True, plot=False):
+def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=10, mask_bothpols=True, plot=False):
     """ Given names and gain array, calc good set.
     Returns indices of bfnames argument that are good.
     """
@@ -169,6 +169,7 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=20, m
                 bad.append(j)
     if len(bad):
         for k in np.arange(len(bfnames)):
+            print(f'{bfnames[k]} has {bad.count(k)} bad relative gains')
             if bad.count(k) >= len(bfnames)-1:
                 keep.remove(k)
                 print(f'{bfnames[k]}: rejected')
