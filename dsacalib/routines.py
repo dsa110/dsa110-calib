@@ -6,8 +6,6 @@ import shutil
 import os
 import glob
 import numpy as np
-from scipy.optimize import curve_fit
-import matplotlib.pyplot as plt
 from astropy.coordinates import Angle
 import pandas
 import scipy # pylint: disable=unused-import
@@ -566,271 +564,6 @@ def calibration_head(obs_params, ant_params, write_to_etcd=False,
         )
     return status
 
-def _gauss_offset(xvals, amp, mean, sigma, offset):
-    """Calculates the value of a Gaussian at the locations `x`.
-
-    Parameters
-    ----------
-    xvals : array
-        The x values at which to evaluate the Gaussian.
-    amp, mean, sigma, offset : float
-        Define the Gaussian: amp * exp(-(x-mean)**2/(2 sigma**2)) + offset
-
-    Returns
-    -------
-    array
-        The values of the Gaussian function defined evaluated at xvals.
-    """
-    return amp*np.exp(-(xvals-mean)**2/(2*sigma**2))+offset
-
-def _gauss(xvals, amp, mean, sigma):
-    """Calculates the value of a Gaussian at the locations `x`.
-
-
-    Parameters
-    ----------
-    xvals : array
-        The x values at which to evaluate the Gaussian.
-    amp, mean, sigma : float
-        Define the Gaussian: amp * exp(-(x-mean)**2/(2 sigma**2))
-
-    Returns
-    -------
-    array
-        The values of the Gaussian function defined evaluated at xvals.
-    """
-    return _gauss_offset(xvals, amp, mean, sigma, 0.)
-
-def calculate_sefd(
-    msname, cal, fmin=None, fmax=None, baseline_cal=False, showplots=False,
-    msname_delaycal=None, calname_delaycal=None, halfpower=False, pols=None
-    ):
-    r"""Calculates the SEFD from a measurement set.
-
-    The measurement set must have been calibrated against a model of ones and
-    must include autocorrelations.
-
-    Parameters
-    ----------
-    msname : str
-        The measurement set name.  The measurement set `msname`.ms will
-        be opened.
-    cal : src class instance
-        The calibrator source.  Will be used to identify the correct
-        calibration tables.  The table `msname`\_`cal.name`\_gacal will
-        be opened.
-    fmin : float
-        The lowest frequency to consider when calculating the off-source power
-        to use in the SEFD calculation, in GHz. Channels below this frequency
-        will be flagged. Defaults 1.35.
-    fmax : float
-        The greatest frequency to consider when calculating the off-source
-        power to use in the SEFD calculation, in GHz.  Channels above this
-        frequency will be flagged.  Defaults 1.45.
-    baseline_cal : Boolean
-        Set to ``True`` if the gain tables were derived using baseline-based
-        calibration. Set to ``False`` if the gain tables were derived using
-        antenna-based calibration. Defaults ``True``.
-    showplots : Boolean
-        If set to ``True``, plots will be generated that show the Gaussian fits
-        to the gains. Defaults ``False``.
-    msname_delaycal : str
-        The name of the measurement set from which delay solutions should be
-        applied. Defaults to `msname`.
-    calname_delaycal : str
-        The name of the calibrator source from which delay solutions should be
-        applied. Defaults to `calname`.
-    halfpower : Boolean
-        If True, will calculate the sefd using the half-power point instead of
-        using the off-source power.  Defaults False.
-    pols : list
-        The labels of the polarization axes. Defaults ['B', 'A'].
-
-    Returns
-    -------
-    antenna_names : list
-        The names of the antennas in their order in `sefds`.
-    sefds : ndarray
-        The SEFD of each antenna/polarization pair, in Jy. Dimensions (antenna,
-        polarization).
-    ant_gains : ndarray
-        The antenna gains in 1/Jy. Dimensions (antenna, polarization).
-    ant_transit_time : ndarray
-        The meridian transit time of the source as seen by each antenna/
-        polarization pair, in MJD. Dimensions (antenna, polarization).
-    fref : float
-        The reference frequency of the SEFD measurements in GHz.
-    hwhms : float
-        The hwhms of the calibrator transits in days.
-    """
-    # Change so figures saved if showplots is False
-    if pols is None:
-        pols = ['B', 'A']
-    if msname_delaycal is None:
-        msname_delaycal = msname
-    if calname_delaycal is None:
-        calname_delaycal = cal.name
-    npol = 2
-
-    # Get the visibilities (for autocorrs)
-    dc.apply_delay_bp_cal(msname, calname_delaycal, msnamecal=msname_delaycal,
-                         blbased=baseline_cal)
-    vis, tvis, fvis, flag, ant1, ant2, pt_dec, _, _ = dmsio.extract_vis_from_ms(
-        msname, 'CORRECTED_DATA')
-    mask = (1-flag).astype(float)
-    mask[mask < 0.5] = np.nan
-    vis = vis*mask
-    vis = vis[ant1 == ant2, ...]
-    antenna_order = ant1[ant1 == ant2]
-    nant = len(antenna_order)
-    # Note that these are antenna idxs, not names
-
-    # Open the gain files and read in the gains
-    gain, time, flag, ant1, ant2 = dmsio.read_caltable(
-        '{0}_{1}_2gcal'.format(msname, cal.name), cparam=True)
-    gain[flag] = np.nan
-    antenna, gain = dmsio.get_antenna_gains(gain, ant1, ant2)
-    gain = 1/gain
-    antenna = list(antenna)
-    idxs = [antenna.index(ant) for ant in antenna_order]
-    gain = gain[idxs, ...]
-    assert gain.shape[0] == nant
-    gain = np.abs(gain*np.conjugate(gain))
-    gain = np.abs(np.nanmean(gain, axis=2)).squeeze(axis=2)
-    idxl = np.searchsorted(fvis, fmin) if fmin is not None else 0
-    idxr = np.searchsorted(fvis, fmax) if fmax is not None else vis.shape[-2]
-    fref = np.median(fvis[idxl:idxr])
-
-    if idxl < idxr:
-        vis = vis[..., idxl:idxr, :]
-    else:
-        vis = vis[..., idxr:idxl, :]
-#     imag_fraction = np.nanmean((vis.imag/vis.real).reshape(nant, -1),
-#                                axis=-1)
-#     assert np.nanmax(np.abs(imag_fraction) < 1e-4), ("Autocorrelations have "
-#                                            "non-negligable imaginary "
-#                                            "components.")
-    vis = np.abs(vis)
-
-    # Complex gain includes an extra relative delay term
-    # in the phase, but we really only want the amplitude
-    # We will ignore the phase for now
-
-    ant_gains_on = np.zeros((nant, npol))
-    eant_gains_on = np.zeros((nant, npol))
-    ant_transit_time = np.zeros((nant, npol))
-    eant_transit_time = np.zeros((nant, npol))
-    ant_transit_width = np.zeros((nant, npol))
-    eant_transit_width = np.zeros((nant, npol))
-    offbins_before = np.zeros((nant, npol), dtype=int)
-    offbins_after = np.zeros((nant, npol), dtype=int)
-    autocorr_gains_off = np.zeros((nant, npol))
-    ant_gains = np.zeros((nant, npol))
-    sefds = np.zeros((nant, npol))
-    hwhms = np.zeros((nant, npol))
-    expected_transit_time = (
-        Time(time[0], format='mjd')
-        -cal.direction.hadec(
-            obstime=time[0]
-        )[0]*ct.SECONDS_PER_SIDEREAL_DAY*u.s/(2*np.pi)
-    ).mjd-time[0]
-    max_flux = df.amplitude_sky_model(
-        cal,
-        cal.ra.to_value(u.rad),
-        pt_dec,
-        fref
-    )
-
-    if showplots:
-        nx = 3
-        ny = nant//nx
-        if nant%nx != 0:
-            ny += 1
-        _fig, ax = plt.subplots(
-            ny, nx, figsize=(8*nx, 8*ny), sharey=True
-        )
-        ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
-        ax = ax.flatten()
-
-    # Fit a Gaussian to the gains
-    for i in range(nant):
-        for j in range(npol):
-            if showplots:
-                ax[i].plot(time-time[0], gain[i, :, j], '.', color=ccyc[j])
-            initial_params = [np.max(gain[i, :, j]), expected_transit_time,
-                              0.0035] #, 0]
-            try:
-                x = time-time[0]
-                y = gain[i, :, j]
-                idx = ~np.isnan(y)
-                assert len(idx) >= 4
-                params, cov = curve_fit(_gauss, x[idx], y[idx],
-                                    p0=initial_params)
-            except (RuntimeError, ValueError, AssertionError):
-                params = initial_params.copy()
-                cov = np.zeros((len(params), len(params)))
-
-            ant_gains_on[i, j] = params[0]#+params[3]
-            ant_gains[i, j] = ant_gains_on[i, j]/max_flux
-            eant_gains_on[i, j] = np.sqrt(cov[0, 0])#+np.sqrt(cov[3, 3])
-
-            ant_transit_time[i, j] = time[0]+params[1]
-            eant_transit_time[i, j] = np.sqrt(cov[1, 1])
-            ant_transit_width[i, j] = params[2]
-            eant_transit_width[i, j] = np.sqrt(cov[2, 2])
-            if not halfpower:
-                offbins_before[i, j] = np.searchsorted(
-                    time, ant_transit_time[i, j]-ant_transit_width[i, j]*3)
-                offbins_after[i, j] = len(time)-np.searchsorted(
-                    time, ant_transit_time[i, j]+ant_transit_width[i, j]*3)
-                idxl = np.searchsorted(
-                    tvis, ant_transit_time[i, j]-ant_transit_width[i, j]*3)
-                idxr = np.searchsorted(
-                    tvis, ant_transit_time[i, j]+ant_transit_width[i, j]*3)
-                autocorr_gains_off[i, j] = np.nanmedian(
-                    np.concatenate(
-                        (vis[i, :idxl, :, j], vis[i, idxr:, :, j]), axis=0))
-                sefds[i, j] = autocorr_gains_off[i, j]/ant_gains[i, j]
-            else:
-                hwhm = np.sqrt(2*np.log(2))*ant_transit_width[i, j]
-                idxl = np.searchsorted(tvis, ant_transit_time[i, j]-hwhm)
-                idxr = np.searchsorted(tvis, ant_transit_time[i, j]+hwhm)
-                autocorr_gains_off[i, j] = np.nanmedian(
-                    np.concatenate(
-                        (vis[i, idxl-10:idxl+10, :, j],
-                         vis[i, idxr-10:idxr+10, :, j]), axis=0))
-                sefds[i, j] = (
-                    autocorr_gains_off[i, j]/ant_gains[i, j]- max_flux/2
-                )
-                hwhms[i, j] = hwhm
-            if showplots:
-                ax[i].plot(
-                    time-time[0],
-                    _gauss(time-time[0], *params),
-                    '-',
-                    color=ccyc[j],
-                    label='{0} {1}: {2:.0f} Jy; {3:.03f} min'.format(
-                        antenna_order[i]+1,
-                        pols[j],
-                        sefds[i, j],
-                        (
-                            ant_transit_time[i, j]
-                            -time[0]
-                            -expected_transit_time
-                        )*ct.SECONDS_PER_DAY/60
-                    )
-                )
-                ax[i].legend()
-                # ax[i].axvline(expected_transit_time, color='k')
-                ax[i].set_xlabel("Time (d)")
-                ax[i].set_ylabel("Unnormalized power")
-
-    if showplots:
-        max_gain = np.nanmax(ant_gains_on)
-        ax[0].set_ylim(-0.1*max_gain, 1.1*max_gain)
-
-    return antenna_order+1, sefds, ant_gains, ant_transit_time, fref, hwhms
-
 def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
     """Calibrate dsa10 data.
 
@@ -981,7 +714,7 @@ def calibrate_measurement_set(
     msname, cal, refants, throw_exceptions=True, bad_antennas=None,
     bad_uvrange='2~27m', keepdelays=False, forsystemhealth=False,
     interp_thresh=1.5, interp_polyorder=7, blbased=False, manual_flags=None,
-    logger=None
+    logger=None, t2='60s'
 ):
     r"""Calibrates the measurement set.
 
@@ -1148,7 +881,8 @@ def calibrate_measurement_set(
         error = dc.delay_calibration(
             msname,
             cal.name,
-            refants=refants
+            refants=refants,
+            t2=t2
         )
         if error > 0:
             status = cs.update(status, cs.DELAY_CAL_ERR )
@@ -1203,7 +937,7 @@ def calibrate_measurement_set(
         )
         shutil.rmtree('{0}_{1}_kcal'.format(msname, cal.name))
         shutil.rmtree('{0}_{1}_2kcal'.format(msname, cal.name))
-        error = dc.delay_calibration(msname, cal.name, refants=refants)
+        error = dc.delay_calibration(msname, cal.name, refants=refants, t2=t2)
         if error > 0:
             status = cs.update(status, cs.DELAY_CAL_ERR )
             message = 'Non-fatal error occured in delay calibration ' + \
@@ -1233,7 +967,8 @@ def calibrate_measurement_set(
             forsystemhealth=forsystemhealth,
             keepdelays=keepdelays,
             interp_thresh=interp_thresh,
-            interp_polyorder=interp_polyorder
+            interp_polyorder=interp_polyorder,
+            tbeam=t2
         )
         if error > 0:
             status = cs.update(status, cs.GAIN_BP_CAL_ERR)
