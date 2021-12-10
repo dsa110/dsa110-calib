@@ -205,3 +205,32 @@ def initialize_hdf5_file(
     t_ds = fhdf.create_dataset("time_seconds", (0, ), maxshape=(None, ),
                                dtype=np.float32, chunks=True, data=None)
     return vis_ds, t_ds
+
+def extract_applied_delays(file, antennas):
+    """Extracts the current snap delays from the hdf5 file.
+
+    If delays are not set in the hdf5 file, uses the most recent delays in
+    the beamformer weights directory instead.
+
+    Parameters
+    ----------
+    file : str
+        The full path to the hdf5 file.
+    antennas : list
+        Order of antennas in the hdf5 file.
+
+    Returns
+    -------
+    ndarray
+        The applied delays in ns.
+    """
+    with h5py.File(file, 'r') as f:
+        delaystring = (
+            f['Header']['extra_keywords']['applied_delays_ns']
+            [()]
+        ).astype(np.str)
+        applied_delays = np.array(
+            delaystring.split(' ')
+        ).astype(np.int).reshape(-1, 2)
+        applied_delays = applied_delays[np.array(antennas)-1, :]
+    return applied_delays
