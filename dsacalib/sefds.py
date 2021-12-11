@@ -217,56 +217,6 @@ def get_autocorr_gains_off(msname, tvis, antenna_order, ant1, ant2, nspw, idxl0,
 
     return autocorr_gains_off, eautocorr_gains_off
 
-def get_visiblities_time(msname, a1, a2, time, duration, datacolumn='CORRECTED', npol=2):
-    """Calculates the off-source gains from the autocorrs in the ms.
-
-    Parameters
-    ----------
-    msname : str
-        The path to the measurement set, with the .ms extension omitted.
-    time : astropy.time.Time
-        Time around which to extract in days.
-    duration : astropy Quantity
-        Amount of data to extract.
-    npol : int
-        The number of polarizations.
-
-    Returns
-    -------
-    ndarray
-        The visibilities. Same dimensions as `ant_transit_time`.
-    """
-    _, tvis, fvis, _, ant1, ant2, pt_dec, spw, orig_shape = \
-        extract_vis_from_ms(msname, 'CORRECTED_DATA', metadataonly=True)
-    assert orig_shape == ['time', 'baseline', 'spw']
-    nspw = len(spw)
-    assert nspw == 1
-    antenna_order = ant1[ant1 == ant2]
-    nant = len(antenna_order)
-    nbls = len(ant1)
-    nfreqs = len(fvis)
-
-    idx0 = np.argmin(np.abs(tvis - (time-duration//2).mjd))
-    idx1 = np.argmin(np.abs(tvis - (time+duration//2).mjd))
-    ntimes = idx1-idx0
-    tidxs = np.arange(idx0, idx1)
-
-    blidx = np.where((ant1==ant) & (ant2==ant))
-
-    vis = np.zeros((ntimes, nfreqs, npol), dtype=complex)
-    with table(f'{msname}.ms') as tb:
-        for j, tidx in enumerate(tidxs):
-            idx = int(tidx*(nbls*nspw)+blidx*nspw)
-            try:
-                tmp = tb.CORRECTED_DATA[idx]
-            except IndexError:
-                vis[j, :, :] = np.nan
-                print(f'No data for tidx {tidx}, blidx {blidx}')
-            else:
-                vis[j, :, :] = tmp
-
-    return vis
-
 def calculate_sefd(
     msname, cal, fmin=None, fmax=None, nfint=1, showplots=False,
     msname_delaycal=None, calname_delaycal=None, repeat=False, refant=REFANT
