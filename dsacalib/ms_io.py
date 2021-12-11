@@ -110,7 +110,6 @@ def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
         nchannels=nchannels,
         stokes='XX XY YX YY' if fullpol else 'XX YY'
     )
-    # TODO: use hourangle instead
     sm.settimes(
         integrationtime=integrationtime,
         usehourangle=False,
@@ -316,6 +315,62 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         'Measurement set start time does not agree with input tstart'
     print('Visibilities writing to ms {0}.ms'.format(ofile))
 
+def get_visiblities_time(msname, a1, a2, time, duration, datacolumn='CORRECTED_DATA', npol=2):
+    """Calculates the off-source gains from the autocorrs in the ms.
+
+    Parameters
+    ----------
+    msname : str
+        The path to the measurement set, with the .ms extension omitted.
+    time : astropy.time.Time
+        Time around which to extract in days.
+    duration : astropy Quantity
+        Amount of data to extract.
+    npol : int
+        The number of polarizations.
+
+    Returns
+    -------
+    ndarray
+        The visibilities. Same dimensions as `ant_transit_time`.
+    """
+    _, tvis, fvis, _, ant1, ant2, _pt_dec, spw, orig_shape = \
+        extract_vis_from_ms(msname, datacolumn.upper(), metadataonly=True)
+    assert orig_shape == ['time', 'baseline', 'spw']
+    nspw = len(spw)
+    assert nspw == 1
+    antenna_order = ant1[ant1 == ant2]
+    nbls = len(ant1)
+    nfreqs = len(fvis)
+
+    idx0 = np.argmin(np.abs(tvis - (time-duration//2).mjd))
+    idx1 = np.argmin(np.abs(tvis - (time+duration//2).mjd))
+    ntimes = idx1-idx0
+    tidxs = np.arange(idx0, idx1)
+
+    blidx = np.where((ant1==a1) & (ant2==a2))[0][0]
+
+    vis = np.zeros((ntimes, nfreqs, npol), dtype=complex)
+    with table(f'{msname}.ms') as tb:
+        for j, tidx in enumerate(tidxs):
+            idx = int(tidx*(nbls*nspw)+blidx*nspw)
+            try:
+                if datacolumn.upper() == 'CORRECTED_DATA':
+                    tmp = tb.CORRECTED_DATA[idx]
+                elif datacolumn.upper() == 'DATA':
+                    tmp = tb.DATA[idx]
+                elif datacolumn.upper() == 'MODEL_DATA':
+                    tmp = tb.MODEL_DATA[idx]
+                else:
+                    raise RuntimeError(f'No column {datacolumn} in {msname}.ms')
+            except IndexError:
+                vis[j, :, :] = np.nan
+                print(f'No data for tidx {tidx}, blidx {blidx}')
+            else:
+                vis[j, :, :] = tmp
+
+    return vis
+
 def extract_vis_from_ms(msname, data='data', swapaxes=True, metadataonly=False):
     """Extracts visibilities from a CASA measurement set.
 
@@ -467,7 +522,6 @@ def reshape_calibration_data(
             time = time.reshape(nbl, ntime, nspw)[0, :, 0]
             if vals is not None:
                 vals = vals.reshape(nbl, ntime, nspw, nfreq, npol)
-            if flags is not None:
                 flags = flags.reshape(nbl, ntime, nspw, nfreq, npol)
             ant1 = ant1.reshape(nbl, ntime, nspw)[:, 0, 0]
             ant2 = ant2.reshape(nbl, ntime, nspw)[:, 0, 0]
@@ -479,12 +533,10 @@ def reshape_calibration_data(
             time = time.reshape(nbl, nspw, ntime)[0, 0, :]
             if vals is not None:
                 vals = vals.reshape(nbl, nspw, ntime, nfreq, npol)
-            if flags is not None:
                 flags = flags.reshape(nbl, nspw, ntime, nfreq, npol)
             if swapaxes:
                 if vals is not None:
                     vals = vals.swapaxes(1, 2)
-                if flags is not None:
                     flags = flags.swapaxes(1, 2)
             ant1 = ant1.reshape(nbl, nspw, ntime)[:, 0, 0]
             ant2 = ant2.reshape(nbl, nspw, ntime)[:, 0, 0]
@@ -496,12 +548,10 @@ def reshape_calibration_data(
             time = time.reshape(ntime, nbl, nspw)[:, 0, 0]
             if vals is not None:
                 vals = vals.reshape(ntime, nbl, nspw, nfreq, npol)
-            if flags is not None:
                 flags = flags.reshape(ntime, nbl, nspw, nfreq, npol)
             if swapaxes:
                 if vals is not None:
                     vals = vals.swapaxes(0, 1)
-                if flags is not None:
                     flags = flags.swapaxes(0, 1)
             ant1 = ant1.reshape(ntime, nbl, nspw)[0, :, 0]
             ant2 = ant2.reshape(ntime, nbl, nspw)[0, :, 0]
@@ -512,12 +562,10 @@ def reshape_calibration_data(
             time = time.reshape(ntime, nspw, nbl)[:, 0, 0]
             if vals is not None:
                 vals = vals.reshape(ntime, nspw, nbl, nfreq, npol)
-            if flags is not None:
                 flags = flags.reshape(ntime, nspw, nbl, nfreq, npol)
             if swapaxes:
                 if vals is not None:
                     vals = vals.swapaxes(1, 2).swapaxes(0, 1)
-                if flags is not None:
                     flags = flags.swapaxes(1, 2).swapaxes(0, 1)
             ant1 = ant1.reshape(ntime, nspw, nbl)[0, 0, :]
             ant2 = ant2.reshape(ntime, nspw, nbl)[0, 0, :]
@@ -530,12 +578,10 @@ def reshape_calibration_data(
             time = time.reshape(nspw, nbl, ntime)[0, 0, :]
             if vals is not None:
                 vals = vals.reshape(nspw, nbl, ntime, nfreq, npol)
-            if flags is not None:
                 flags = flags.reshape(nspw, nbl, ntime, nfreq, npol)
             if swapaxes:
                 if vals is not None:
                     vals = vals.swapaxes(0, 1).swapaxes(1, 2)
-                if flags is not None:
                     flags = flags.swapaxes(0, 1).swapaxes(1, 2)
             ant1 = ant1.reshape(nspw, nbl, ntime)[0, :, 0]
             ant2 = ant2.reshape(nspw, nbl, ntime)[0, :, 0]
@@ -547,12 +593,10 @@ def reshape_calibration_data(
             time = time.reshape(nspw, ntime, nbl)[0, :, 0]
             if vals is not None:
                 vals = vals.reshape(nspw, ntime, nbl, nfreq, npol)
-            if flags is not None:
                 flags = flags.reshape(nspw, ntime, nbl, nfreq, npol)
             if swapaxes:
                 if vals is not None:
                     vals = vals.swapaxes(0, 2)
-                if flags is not None:
                     flags = flags.swapaxes(0, 2)
             ant1 = ant1.reshape(nspw, ntime, nbl)[0, 0, :]
             ant2 = ant2.reshape(nspw, ntime, nbl)[0, 0, :]
@@ -1058,7 +1102,7 @@ def generate_phase_model(blen, mjds, nbls, nts, pt_dec, ra, dec, lamb):
         2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
     ).to_value(u.dimensionless_unscaled))
     return uvw, phase_model
-        
+
 def generate_phase_model_antbased(blen, mjds, nbls, nts, pt_dec, ra, dec, lamb, ant1, ant2):
     """Generates a phase model to apply.
 
@@ -1117,7 +1161,7 @@ def generate_phase_model_antbased(blen, mjds, nbls, nts, pt_dec, ra, dec, lamb, 
 
 
 def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
-               flux=None, fringestop=True, logger=None, refmjd=REFMJD):
+               flux=None, fringestop=True, logger=None):
     """
     Converts a uvh5 data to a uvfits file.
 
@@ -1148,8 +1192,6 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     refmjd : float
         The mjd used in the fringestopper.
     """
-    print(fname)
-    # zenith_dec = 0.6503903199825691*u.rad
     UV = UVData()
 
     # Read in the data
@@ -1204,11 +1246,13 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         ant2 = UV.ant_2_array[i]
         blen[i, ...] = UV.antenna_positions[ant2, :] - \
             UV.antenna_positions[ant1, :]
-    uvw, phase_model = generate_phase_model(
+    uvw, phase_model = generate_phase_model_antbased(
          blen, time.mjd, UV.Nbls, UV.Ntimes, pt_dec,
          ra, dec, lamb,
-         # UV.ant_1_array[:UV.Nbls], UV.ant_2_array[:UV.Nbls]
+         UV.ant_1_array[:UV.Nbls],
+         UV.ant_2_array[:UV.Nbls]
     )
+    UV.uvw_array = uvw
     if fringestop:
         UV.data_array = UV.data_array/phase_model[..., np.newaxis]
     UV.phase_type = 'phased'
