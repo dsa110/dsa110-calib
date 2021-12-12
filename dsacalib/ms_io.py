@@ -14,10 +14,7 @@ import shutil
 import os
 import glob
 import traceback
-#from scipy.interpolate import interp1d
 import numpy as np
-#from pkg_resources import resource_filename
-import yaml
 import scipy # pylint: disable=unused-import
 import astropy.units as u
 import astropy.constants as c
@@ -31,7 +28,7 @@ import dsautils.cnf as dsc
 from dsamfs.fringestopping import calc_uvw_blt
 from dsacalib import constants as ct
 import dsacalib.utils as du
-from dsacalib.fringestopping import calc_uvw, amplitude_sky_model
+from dsacalib.fringestopping import amplitude_sky_model
 from antpos.utils import get_itrf # pylint: disable=wrong-import-order
 from astropy.utils import iers # pylint: disable=wrong-import-order
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
@@ -113,7 +110,6 @@ def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
         nchannels=nchannels,
         stokes='XX XY YX YY' if fullpol else 'XX YY'
     )
-    # TODO: use hourangle instead
     sm.settimes(
         integrationtime=integrationtime,
         usehourangle=False,
@@ -319,7 +315,63 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         'Measurement set start time does not agree with input tstart'
     print('Visibilities writing to ms {0}.ms'.format(ofile))
 
-def extract_vis_from_ms(msname, data='data', swapaxes=True):
+def get_visiblities_time(msname, a1, a2, time, duration, datacolumn='CORRECTED_DATA', npol=2):
+    """Calculates the off-source gains from the autocorrs in the ms.
+
+    Parameters
+    ----------
+    msname : str
+        The path to the measurement set, with the .ms extension omitted.
+    time : astropy.time.Time
+        Time around which to extract in days.
+    duration : astropy Quantity
+        Amount of data to extract.
+    npol : int
+        The number of polarizations.
+
+    Returns
+    -------
+    ndarray
+        The visibilities. Same dimensions as `ant_transit_time`.
+    """
+    _, tvis, fvis, _, ant1, ant2, _pt_dec, spw, orig_shape = \
+        extract_vis_from_ms(msname, datacolumn.upper(), metadataonly=True)
+    assert orig_shape == ['time', 'baseline', 'spw']
+    nspw = len(spw)
+    assert nspw == 1
+    antenna_order = ant1[ant1 == ant2]
+    nbls = len(ant1)
+    nfreqs = len(fvis)
+
+    idx0 = np.argmin(np.abs(tvis - (time-duration//2).mjd))
+    idx1 = np.argmin(np.abs(tvis - (time+duration//2).mjd))
+    ntimes = idx1-idx0
+    tidxs = np.arange(idx0, idx1)
+
+    blidx = np.where((ant1==a1) & (ant2==a2))[0][0]
+
+    vis = np.zeros((ntimes, nfreqs, npol), dtype=complex)
+    with table(f'{msname}.ms') as tb:
+        for j, tidx in enumerate(tidxs):
+            idx = int(tidx*(nbls*nspw)+blidx*nspw)
+            try:
+                if datacolumn.upper() == 'CORRECTED_DATA':
+                    tmp = tb.CORRECTED_DATA[idx]
+                elif datacolumn.upper() == 'DATA':
+                    tmp = tb.DATA[idx]
+                elif datacolumn.upper() == 'MODEL_DATA':
+                    tmp = tb.MODEL_DATA[idx]
+                else:
+                    raise RuntimeError(f'No column {datacolumn} in {msname}.ms')
+            except IndexError:
+                vis[j, :, :] = np.nan
+                print(f'No data for tidx {tidx}, blidx {blidx}')
+            else:
+                vis[j, :, :] = tmp
+
+    return vis
+
+def extract_vis_from_ms(msname, data='data', swapaxes=True, metadataonly=False):
     """Extracts visibilities from a CASA measurement set.
 
     Parameters
@@ -352,8 +404,12 @@ def extract_vis_from_ms(msname, data='data', swapaxes=True):
     with table('{0}.ms'.format(msname)) as tb:
         ant1 = np.array(tb.ANTENNA1[:])
         ant2 = np.array(tb.ANTENNA2[:])
-        vals = np.array(tb.getcol(data.upper())[:])
-        flags = np.array(tb.FLAG[:])
+        if metadataonly:
+            vals = None
+            flags = None
+        else:
+            vals = np.array(tb.getcol(data.upper())[:])
+            flags = np.array(tb.FLAG[:])
         time = np.array(tb.TIME[:])
         spw = np.array(tb.DATA_DESC_ID[:])
     with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
@@ -449,21 +505,24 @@ def reshape_calibration_data(
     orig_shape : list
         The original order of the time, baseline and spw axes in the ms.
     """
+    if vals is None:
+        assert flags is None
     if len(np.unique(ant1))==len(np.unique(ant2)):
         nbl = len(np.unique(baseline))
     else:
         nbl = max([len(np.unique(ant1)), len(np.unique(ant2))])
     nspw = len(np.unique(spw))
     ntime = len(time)//nbl//nspw
-    nfreq = vals.shape[-2]
-    npol = vals.shape[-1]
+    nfreq = vals.shape[-2] if vals is not None else 1
+    npol = vals.shape[-1] if vals is not None else 1
     if np.all(baseline[:ntime*nspw] == baseline[0]):
         if np.all(time[:nspw] == time[0]):
             orig_shape = ['baseline', 'time', 'spw']
             # baseline, time, spw
             time = time.reshape(nbl, ntime, nspw)[0, :, 0]
-            vals = vals.reshape(nbl, ntime, nspw, nfreq, npol)
-            flags = flags.reshape(nbl, ntime, nspw, nfreq, npol)
+            if vals is not None:
+                vals = vals.reshape(nbl, ntime, nspw, nfreq, npol)
+                flags = flags.reshape(nbl, ntime, nspw, nfreq, npol)
             ant1 = ant1.reshape(nbl, ntime, nspw)[:, 0, 0]
             ant2 = ant2.reshape(nbl, ntime, nspw)[:, 0, 0]
             spw = spw.reshape(nbl, ntime, nspw)[0, 0, :]
@@ -472,11 +531,13 @@ def reshape_calibration_data(
             orig_shape = ['baseline', 'spw', 'time']
             assert np.all(spw[:ntime] == spw[0])
             time = time.reshape(nbl, nspw, ntime)[0, 0, :]
-            vals = vals.reshape(nbl, nspw, ntime, nfreq, npol)
-            flags = flags.reshape(nbl, nspw, ntime, nfreq, npol)
+            if vals is not None:
+                vals = vals.reshape(nbl, nspw, ntime, nfreq, npol)
+                flags = flags.reshape(nbl, nspw, ntime, nfreq, npol)
             if swapaxes:
-                vals = vals.swapaxes(1, 2)
-                flags = flags.swapaxes(1, 2)
+                if vals is not None:
+                    vals = vals.swapaxes(1, 2)
+                    flags = flags.swapaxes(1, 2)
             ant1 = ant1.reshape(nbl, nspw, ntime)[:, 0, 0]
             ant2 = ant2.reshape(nbl, nspw, ntime)[:, 0, 0]
             spw = spw.reshape(nbl, nspw, ntime)[0, :, 0]
@@ -485,11 +546,13 @@ def reshape_calibration_data(
             # time, baseline, spw
             orig_shape = ['time', 'baseline', 'spw']
             time = time.reshape(ntime, nbl, nspw)[:, 0, 0]
-            vals = vals.reshape(ntime, nbl, nspw, nfreq, npol)
-            flags = flags.reshape(ntime, nbl, nspw, nfreq, npol)
+            if vals is not None:
+                vals = vals.reshape(ntime, nbl, nspw, nfreq, npol)
+                flags = flags.reshape(ntime, nbl, nspw, nfreq, npol)
             if swapaxes:
-                vals = vals.swapaxes(0, 1)
-                flags = flags.swapaxes(0, 1)
+                if vals is not None:
+                    vals = vals.swapaxes(0, 1)
+                    flags = flags.swapaxes(0, 1)
             ant1 = ant1.reshape(ntime, nbl, nspw)[0, :, 0]
             ant2 = ant2.reshape(ntime, nbl, nspw)[0, :, 0]
             spw = spw.reshape(ntime, nbl, nspw)[0, 0, :]
@@ -497,11 +560,13 @@ def reshape_calibration_data(
             orig_shape = ['time', 'spw', 'baseline']
             assert np.all(spw[:nbl] == spw[0])
             time = time.reshape(ntime, nspw, nbl)[:, 0, 0]
-            vals = vals.reshape(ntime, nspw, nbl, nfreq, npol)
-            flags = flags.reshape(ntime, nspw, nbl, nfreq, npol)
+            if vals is not None:
+                vals = vals.reshape(ntime, nspw, nbl, nfreq, npol)
+                flags = flags.reshape(ntime, nspw, nbl, nfreq, npol)
             if swapaxes:
-                vals = vals.swapaxes(1, 2).swapaxes(0, 1)
-                flags = flags.swapaxes(1, 2).swapaxes(0, 1)
+                if vals is not None:
+                    vals = vals.swapaxes(1, 2).swapaxes(0, 1)
+                    flags = flags.swapaxes(1, 2).swapaxes(0, 1)
             ant1 = ant1.reshape(ntime, nspw, nbl)[0, 0, :]
             ant2 = ant2.reshape(ntime, nspw, nbl)[0, 0, :]
             spw = spw.reshape(ntime, nspw, nbl)[0, :, 0]
@@ -511,11 +576,13 @@ def reshape_calibration_data(
             # spw, baseline, time
             orig_shape = ['spw', 'baseline', 'time']
             time = time.reshape(nspw, nbl, ntime)[0, 0, :]
-            vals = vals.reshape(nspw, nbl, ntime, nfreq, npol)
-            flags = flags.reshape(nspw, nbl, ntime, nfreq, npol)
+            if vals is not None:
+                vals = vals.reshape(nspw, nbl, ntime, nfreq, npol)
+                flags = flags.reshape(nspw, nbl, ntime, nfreq, npol)
             if swapaxes:
-                vals = vals.swapaxes(0, 1).swapaxes(1, 2)
-                flags = flags.swapaxes(0, 1).swapaxes(1, 2)
+                if vals is not None:
+                    vals = vals.swapaxes(0, 1).swapaxes(1, 2)
+                    flags = flags.swapaxes(0, 1).swapaxes(1, 2)
             ant1 = ant1.reshape(nspw, nbl, ntime)[0, :, 0]
             ant2 = ant2.reshape(nspw, nbl, ntime)[0, :, 0]
             spw = spw.reshape(nspw, nbl, ntime)[:, 0, 0]
@@ -524,11 +591,13 @@ def reshape_calibration_data(
             # spw, time, bl
             orig_shape = ['spw', 'time', 'baseline']
             time = time.reshape(nspw, ntime, nbl)[0, :, 0]
-            vals = vals.reshape(nspw, ntime, nbl, nfreq, npol)
-            flags = flags.reshape(nspw, ntime, nbl, nfreq, npol)
+            if vals is not None:
+                vals = vals.reshape(nspw, ntime, nbl, nfreq, npol)
+                flags = flags.reshape(nspw, ntime, nbl, nfreq, npol)
             if swapaxes:
-                vals = vals.swapaxes(0, 2)
-                flags = flags.swapaxes(0, 2)
+                if vals is not None:
+                    vals = vals.swapaxes(0, 2)
+                    flags = flags.swapaxes(0, 2)
             ant1 = ant1.reshape(nspw, ntime, nbl)[0, 0, :]
             ant2 = ant2.reshape(nspw, ntime, nbl)[0, 0, :]
             spw = spw.reshape(nspw, ntime, nbl)[:, 0, 0]
@@ -801,167 +870,6 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
                 sign*1.0j*np.angle(gains[idx_phase])))**(-1)
     return antennas, antenna_gains
 
-def write_beamformer_weights(msname, calname, caltime, antennas, outdir,
-                             corr_list, antenna_flags, tol=0.3):
-    """Writes weights for the beamformer.
-
-    Parameters
-    ----------
-    msname : str
-        The prefix of the measurement set.  Will open `msname`.ms
-    calname : str
-        The name of the calibrator source.
-    antennas : list
-        The names of the antennas to extract solutions for.  Order must be the
-        same as the order in the beamformer.
-    outdir : str
-        The directory to write the beamformer weights in.
-    corr_list : list
-        The indices of the correlator machines to write beamformer weights for.
-        For now, these must be ordered so that the frequencies are contiguous
-        and they are in the same order or the reverse order as in the ms. The
-        bandwidth of each correlator is pulled from dsa110-meridian-fs package
-        data.
-    antenna_flags : ndarray(bool)
-        Dimensions (antennas, pols). True where flagged, False otherwise.
-    tol : float
-        The fraction of data for a single antenna/pol flagged that the
-        can be flagged in the beamformer. If more data than this is flagged as
-        having bad solutions, the entire antenna/pol pair is flagged.
-
-    Returns
-    -------
-    corr_list : list
-    bu : array
-        The length of the baselines in the u direction for each antenna
-        relative to antenna 24.
-    fweights : ndarray
-        The frequencies corresponding to the beamformer weights, dimensions
-        (correlator, frequency).
-    filenames : list
-        The names of the file containing the beamformer weights.
-    """
-    # Get the frequencies we want to write solutions for.
-    # corr_settings = resource_filename("dsamfs", "data/dsa_parameters.yaml")
-    # params = yaml.safe_load(fhand)
-    ncorr = len(corr_list)
-    weights = np.ones((ncorr, len(antennas), 48, 2), dtype=np.complex64)
-    fweights = np.ones((ncorr, 48), dtype=np.float32)
-    nchan = CORR_PARAMS['nchan']
-    dfreq = CORR_PARAMS['bw_GHz']/nchan
-    if CORR_PARAMS['chan_ascending']:
-        fobs = CORR_PARAMS['f0_GHz']+np.arange(nchan)*dfreq
-    else:
-        fobs = CORR_PARAMS['f0_GHz']-np.arange(nchan)*dfreq
-    nchan_spw = CORR_PARAMS['nchan_spw']
-    for i, corr_id in enumerate(corr_list):
-        ch0 = CORR_PARAMS['ch0']['corr{0:02d}'.format(corr_id)]
-        fobs_corr = fobs[ch0:ch0+nchan_spw]
-        fweights[i, :] = fobs_corr.reshape(
-            fweights.shape[1],
-            -1
-        ).mean(axis=1)
-
-    antpos_df = get_itrf(
-        latlon_center=(ct.OVRO_LAT*u.rad, ct.OVRO_LON*u.rad, ct.OVRO_ALT*u.m)
-    )
-    blen = np.zeros((len(antennas), 3))
-    for i, ant in enumerate(antennas):
-        blen[i, 0] = antpos_df['x_m'].loc[ant]-antpos_df['x_m'].loc[24]
-        blen[i, 1] = antpos_df['y_m'].loc[ant]-antpos_df['y_m'].loc[24]
-        blen[i, 2] = antpos_df['z_m'].loc[ant]-antpos_df['z_m'].loc[24]
-    bu, _, _ = calc_uvw(blen, 59000., 'HADEC', 0.*u.rad, 0.6*u.rad)
-    bu = bu.squeeze().astype(np.float32)
-
-    with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
-        fobs = np.array(tb.CHAN_FREQ[:])/1e9
-    fobs = fobs.reshape(fweights.size, -1).mean(axis=1)
-    f_reversed = not np.all(
-        np.abs(fobs-fweights.ravel())/fweights.ravel() < 1e-5
-    )
-    if f_reversed:
-        assert np.all(
-            np.abs(fobs[::-1]-fweights.ravel())/fweights.ravel() < 1e-5
-        )
-
-    gains, _time, flags, ant1, ant2 = read_caltable(
-        '{0}_{1}_gacal'.format(msname, calname), True)
-    gains[flags] = np.nan
-    gains = np.nanmean(gains, axis=1)
-    phases, _, flags, ant1p, ant2p = read_caltable(
-        '{0}_{1}_gpcal'.format(msname, calname), True)
-    phases[flags] = np.nan
-    phases = np.nanmean(phases, axis=1)
-    assert np.all(ant1p == ant1)
-    assert np.all(ant2p == ant2)
-    gantenna, gains = get_antenna_gains(gains*phases, ant1, ant2)
-
-    bgains, _, flags, ant1, ant2 = read_caltable(
-        '{0}_{1}_bcal'.format(msname, calname), True)
-    bgains[flags] = np.nan
-    bgains = np.nanmean(bgains, axis=1)
-    bantenna, bgains = get_antenna_gains(bgains, ant1, ant2)
-    assert np.all(bantenna == gantenna)
-
-    nantenna = gains.shape[0]
-    npol = gains.shape[-1]
-
-    gains = gains*bgains
-    print(gains.shape)
-    gains = gains.reshape(nantenna, -1, npol)
-    if f_reversed:
-        gains = gains[:, ::-1, :]
-    gains = gains.reshape(nantenna, ncorr, -1, npol)
-    nfint = gains.shape[2]//weights.shape[2]
-    assert gains.shape[2]%weights.shape[2]==0
-
-    gains = np.nanmean(
-        gains.reshape(
-            gains.shape[0], gains.shape[1], -1, nfint, gains.shape[3]
-        ), axis=3
-    )
-    if not np.all(ant2==ant2[0]):
-        idxs = np.where(ant1==ant2)
-        gains = gains[idxs]
-        ant1 = ant1[idxs]
-    for i, antid in enumerate(ant1):
-        if antid+1 in antennas:
-            idx = np.where(antennas==antid+1)[0][0]
-            weights[:, idx, ...] = gains[i, ...]
-
-    fracflagged = np.sum(np.sum(np.isnan(weights), axis=2), axis=0)\
-        /(weights.shape[0]*weights.shape[2])
-    antenna_flags_badsolns = fracflagged > tol
-    weights[np.isnan(weights)] = 0.
-
-    # Divide by the first non-flagged antenna
-    idx0, idx1 = np.nonzero(
-        np.logical_not(
-            antenna_flags + antenna_flags_badsolns
-        )
-    )
-    weights = (
-        weights/weights[:, idx0[0], ..., idx1[0]][:, np.newaxis, :, np.newaxis]
-    )
-    weights[np.isnan(weights)] = 0.
-
-    filenames = []
-    for i, corr_idx in enumerate(corr_list):
-        wcorr = weights[i, ...].view(np.float32).flatten()
-        wcorr = np.concatenate([bu, wcorr], axis=0)
-        fname = 'beamformer_weights_corr{0:02d}'.format(corr_idx)
-        fname = '{0}_{1}_{2}'.format(
-            fname,
-            calname,
-            caltime.isot
-        )
-        if os.path.exists('{0}/{1}.dat'.format(outdir, fname)):
-            os.unlink('{0}/{1}.dat'.format(outdir, fname))
-        with open('{0}/{1}.dat'.format(outdir, fname), 'wb') as f:
-            f.write(bytes(wcorr))
-        filenames += ['{0}.dat'.format(fname)]
-    return corr_list, bu, fweights, filenames, antenna_flags_badsolns
-
 def get_delays(antennas, msname, calname, applied_delays):
     r"""Returns the delays to be set in the correlator.
 
@@ -1005,124 +913,10 @@ def get_delays(antennas, msname, calname, applied_delays):
     # delays[flags] = 0
     return newdelays.astype(np.int), flags
 
-def write_beamformer_solutions(
-    msname, calname, caltime, antennas, applied_delays,
-    corr_list=np.arange(1, 17),
-    outdir='/home/user/beamformer_weights/',
-    flagged_antennas=None,
-    pols=None
-):
-    """Writes beamformer solutions to disk.
-
-    Parameters
-    ----------
-    msname : str
-        The name of the measurement set used for calibration.
-    calname : str
-        The name of the calibrator source used for calibration. Will open
-        tables that start with `msname`_`calname`
-    caltime : astropy.time.Time object
-        The transit time of the calibrator.
-    antennas : list
-        The antenna names for which to write beamformer solutions, in order.
-    applied_delays : ndarray
-        The currently applied delays at the time of the calibration, in ns.
-        Dimensions (antenna, pol). The antenna axis should be in the order
-        specified by antennas.
-    corr_list : list
-        The indices of the correlator machines to write beamformer weights for.
-        For now, these must be ordered so that the frequencies are contiguous
-        and they are in the same order or the reverse order as in the ms. The
-        bandwidth of each correlator is pulled from dsa110-meridian-fs package
-        data.
-    flagged_antennas : list
-        A list of antennas to flag in the beamformer solutions. Should include
-        polarizations. e.g. ['24 B', '32 A']
-    outdir : str
-        The directory to write the beamformer weights in.
-    pols : list
-        The order of the polarizations.
-
-    Returns
-    -------
-    flags : ndarray(boolean)
-        Dimensions (antennas, pols). True where the data is flagged, and should
-        not be used. Compiled from the ms flags as well as `flagged_antennas`.
-    """
-    if pols is None:
-        pols = ['B', 'A']
-    beamformer_flags = {}
-    delays, flags = get_delays(antennas, msname, calname, applied_delays)
-    print('delay flags:', flags.shape)
-    if flagged_antennas is not None:
-        for item in flagged_antennas:
-            ant, pol = item.split(' ')
-            flags[antennas==ant, pols==pol] = 1
-            beamformer_flags['{0} {1}'.format(ant, pol)] = ['flagged by user']
-    delays = delays-np.min(delays[~flags])
-    while not np.all(delays[~flags] < 1024):
-        if np.sum(delays[~flags] > 1024) < np.nansum(delays[~flags] < 1024):
-            argflag = np.argmax(delays[~flags])
-        else:
-            argflag = np.argmin(delays[~flags])
-        argflag = np.where(~flags.flatten())[0][argflag]
-        flag_idxs = np.unravel_index(argflag, flags.shape)
-        flags[np.unravel_index(argflag, flags.shape)] = 1
-        key = '{0} {1}'.format(antennas[flag_idxs[0]], pols[flag_idxs[1]])
-        if key not in beamformer_flags.keys():
-            beamformer_flags[key] = []
-        beamformer_flags[key] += ['delay exceeds snap capabilities']
-        delays = delays-np.min(delays[~flags])
-
-    caltime.precision = 0
-    corr_list, eastings, _fobs, weights_files, flags_badsolns = \
-        write_beamformer_weights(msname, calname, caltime, antennas, outdir,
-        corr_list, flags)
-    idxant, idxpol = np.nonzero(flags_badsolns)
-    for i, ant in enumerate(idxant):
-        key = '{0} {1}'.format(antennas[ant], pols[idxpol[i]])
-        if key not in beamformer_flags.keys():
-            beamformer_flags[key] = []
-        beamformer_flags[key] += ['casa solutions flagged']
-
-    calibration_dictionary = {
-        'cal_solutions':
-        {
-            'source': calname,
-            'caltime': float(caltime.mjd),
-            'antenna_order': [int(ant) for ant in antennas],
-            'corr_order': [int(corr) for corr in corr_list],
-            'pol_order': ['B', 'A'],
-            'delays': [
-                [
-                    int(delay[0]//2),
-                    int(delay[1]//2)
-                ] for delay in delays
-            ],
-            'eastings': [float(easting) for easting in eastings],
-            'weights_axis0': 'antenna',
-            'weights_axis1': 'frequency',
-            'weights_axis2': 'pol',
-            'weight_files': weights_files,
-            'flagged_antennas': beamformer_flags
-        }
-    }
-
-    with open(
-        '{0}/beamformer_weights_{1}_{2}.yaml'.format(
-            outdir,
-            calname,
-            caltime.isot
-        ),
-        'w'
-    ) as file:
-        yaml.dump(calibration_dictionary, file)
-    return flags
-
 def convert_calibrator_pass_to_ms(
         cal, date, files, duration, msdir='/mnt/data/dsa110/calibration/',
         hdf5dir='/mnt/data/dsa110/correlator/', antenna_list=None,
-        logger=None
+        logger=None, overwrite=True
 ):
     r"""Converts hdf5 files near a calibrator pass to a CASA ms.
 
@@ -1160,7 +954,7 @@ def convert_calibrator_pass_to_ms(
             reftime = Time(files[0])
             hdf5files = []
             for hdf5f in sorted(glob.glob(
-                '{0}/corr??/{1}*.hdf5'.format(hdf5dir, files[0][:-3])
+                '{0}/corr??/{1}*.hdf5'.format(hdf5dir, files[0][:-4])
             )):
                 filetime = Time(hdf5f[:-5].split('/')[-1])
                 if abs(filetime-reftime) < 1*u.min:
@@ -1184,57 +978,50 @@ def convert_calibrator_pass_to_ms(
             #else:
             print(message)
         except (ValueError, IndexError) as exception:
-            message = 'No data for {0} transit on {1}. Error {2}. Traceback: {3}'.format(
-                date,
-                cal.name,
-                type(exception).__name__,
-                ''.join(
-                    traceback.format_tb(exception.__traceback__)
-                )
-            )
+            tbmsg = ''.join(traceback.format_tb(exception.__traceback__))
+            message = f'No data for {date} transit on {calname}. Error {type(exception).__name__}. Traceback: {tbmsg}'
             if logger is not None:
                 logger.info(message)
-            #else:
             print(message)
     elif len(files) > 0:
         msnames = []
         for filename in files:
             print(filename)
-            try:
-                reftime = Time(filename)
-                hdf5files = []
-                for hdf5f in sorted(glob.glob(
-                        '{0}/corr??/{1}*.hdf5'.format(hdf5dir, filename[:-4])
-                )):
-                    filetime = Time(hdf5f[:-5].split('/')[-1])
-                    if abs(filetime-reftime) < 1*u.min:
-                        hdf5files += [hdf5f]
-                #assert len(hdf5files) < 17
-                #assert len(hdf5files) > 1
-                print(f'found {len(hdf5files)} hdf5files for {filename}')
-                uvh5_to_ms(
-                    hdf5files,
-                    '{0}/{1}'.format(msdir, filename),
-                    ra=cal.ra,
-                    dec=cal.dec,
-                    flux=cal.I,
-                    # dt=duration,
-                    antenna_list=antenna_list,
-                    logger=logger
-                )
-                msnames += ['{0}/{1}'.format(msdir, filename)]
-            except (ValueError, IndexError) as exception:
-                message = 'No data for {0}. Error {1}. Traceback: {2}'.format(
-                    filename,
-                    type(exception).__name__,
-                    ''.join(
-                        traceback.format_tb(exception.__traceback__)
+            if overwrite or not os.path.exists(f'{msdir}/{filename}.ms'):
+                try:
+                    reftime = Time(filename)
+                    hdf5files = []
+                    for hdf5f in sorted(glob.glob(
+                            '{0}/corr??/{1}*.hdf5'.format(hdf5dir, filename[:-4])
+                    )):
+                        filetime = Time(hdf5f[:-5].split('/')[-1])
+                        if abs(filetime-reftime) < 1*u.min:
+                            hdf5files += [hdf5f]
+                    print(f'found {len(hdf5files)} hdf5files for {filename}')
+                    uvh5_to_ms(
+                        hdf5files,
+                        '{0}/{1}'.format(msdir, filename),
+                        ra=cal.ra,
+                        dec=cal.dec,
+                        flux=cal.I,
+                        # dt=duration,
+                        antenna_list=antenna_list,
+                        logger=logger
                     )
-                )
-                if logger is not None:
-                    logger.info(message)
-                #else:
-                print(message)
+                    msnames += ['{0}/{1}'.format(msdir, filename)]
+                except (ValueError, IndexError) as exception:
+                    message = 'No data for {0}. Error {1}. Traceback: {2}'.format(
+                        filename,
+                        type(exception).__name__,
+                        ''.join(
+                            traceback.format_tb(exception.__traceback__)
+                        )
+                    )
+                    if logger is not None:
+                        logger.info(message)
+                    print(message)
+            else:
+                print(f'Not doing {filename}')
         if os.path.exists('{0}.ms'.format(msname)):
             for root, _dirs, walkfiles in os.walk(
                 '{0}.ms'.format(msname),
@@ -1269,11 +1056,112 @@ def convert_calibrator_pass_to_ms(
         message = 'No data for {0} transit on {1}'.format(date, cal.name)
         if logger is not None:
             logger.info(message)
-        #else:
         print(message)
 
+def generate_phase_model(blen, mjds, nbls, nts, pt_dec, ra, dec, lamb):
+    """Generates a phase model to apply.
+
+    Parameters
+    ----------
+    blen : ndarray(float)
+        The lengths of all baselines, shape (nbls, 3)
+    mjds : array(float)
+        The mjd of every sample, shape (nts*nbls)
+    nbls, nts : int
+        The number of unique baselines, times.
+    pt_dec : astropy quantity
+        The pointing declination of the array.
+    ra, dec : astropy quantities
+        The position to phase to in J2000 RA, DEC
+    """
+    uvw_m = calc_uvw_blt(
+        blen,
+        mjds[:nbls],
+        'HADEC',
+        np.zeros(nbls)*u.rad,
+        np.ones(nbls)*pt_dec
+    )
+    blen = np.tile(
+        blen[np.newaxis, :, :],
+        (nts, 1, 1)
+    ).reshape(-1, 3)
+    uvw = calc_uvw_blt(
+        blen,
+        mjds,
+        'RADEC',
+        ra.to(u.rad),
+        dec.to(u.rad)
+    )
+    dw = (
+        uvw[:, -1] - np.tile(
+            uvw_m[np.newaxis, :, -1],
+            (nts, 1)
+        ).reshape(-1)
+    )*u.m
+    phase_model = np.exp((
+        2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
+    ).to_value(u.dimensionless_unscaled))
+    return uvw, phase_model
+
+def generate_phase_model_antbased(blen, mjds, nbls, nts, pt_dec, ra, dec, lamb, ant1, ant2):
+    """Generates a phase model to apply.
+
+    Parameters
+    ----------
+    blen : ndarray(float)
+        The lengths of all baselines, shape (nbls, 3)
+    mjds : array(float)
+        The mjd of every sample, shape (nts*nbls)
+    nbls, nts : int
+        The number of unique baselines, times.
+    pt_dec : astropy quantity
+        The pointing declination of the array.
+    ra, dec : astropy quantities
+        The position to phase to in J2000 RA, DEC
+    ant1, ant2 : list
+        The antenna indices in order
+    """
+    uvw_m = calc_uvw_blt(
+        blen,
+        mjds[:nbls],
+        'HADEC',
+        np.zeros(nbls)*u.rad,
+        np.ones(nbls)*pt_dec
+    )
+    # Need ant1 and ant2 to be passed here
+    # Need to check that this gets the correct refidxs
+    refant = ant1[0]
+    refidxs = np.where(ant1==refant)[0]
+    antenna_order = list(ant2[refidxs])
+    antenna_w_m = uvw_m[refidxs, -1]
+    blen = np.tile(
+        blen[np.newaxis, :, :],
+        (nts, 1, 1)
+    ).reshape(-1, 3)
+    uvw = calc_uvw_blt(
+        blen,
+        mjds,
+        'RADEC',
+        ra.to(u.rad),
+        dec.to(u.rad)
+    )
+    uvw_delays = uvw.reshape((nts, nbls, 3))
+    antenna_w = uvw_delays[:, refidxs, -1]
+    antenna_dw = antenna_w-antenna_w_m[np.newaxis, :]
+    dw = np.zeros((nts, nbls))
+    for i, a1 in enumerate(ant1):
+        a2 = ant2[i]
+        dw[:, i] = antenna_dw[:, antenna_order.index(a2)] - \
+                   antenna_dw[:, antenna_order.index(a1)]
+    dw = dw.reshape(-1)*u.m
+    phase_model = np.exp((
+        2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
+    ).to_value(u.dimensionless_unscaled))
+    return uvw, phase_model
+
+
 def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
-               flux=None, fringestop=True, logger=None, refmjd=REFMJD):
+               flux=None, fringestop=True, logger=None):
     """
     Converts a uvh5 data to a uvfits file.
 
@@ -1304,8 +1192,6 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
     refmjd : float
         The mjd used in the fringestopper.
     """
-    print(fname)
-    # zenith_dec = 0.6503903199825691*u.rad
     UV = UVData()
 
     # Read in the data
@@ -1331,7 +1217,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
 
     if dt is not None:
         extract_times(UV, ra, dt)
-    time = Time(UV.time_array, format='jd')
+        time = Time(UV.time_array, format='jd')
 
     # Set antenna positions
     # This should already be done by the writer but for some reason they
@@ -1360,38 +1246,12 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         ant2 = UV.ant_2_array[i]
         blen[i, ...] = UV.antenna_positions[ant2, :] - \
             UV.antenna_positions[ant1, :]
-
-    uvw_m = calc_uvw_blt(
-        blen,
-        np.ones(UV.Nbls)*refmjd,
-        'HADEC',
-        np.zeros(UV.Nbls)*u.rad,
-        np.ones(UV.Nbls)*pt_dec
+    uvw, phase_model = generate_phase_model_antbased(
+         blen, time.mjd, UV.Nbls, UV.Ntimes, pt_dec,
+         ra, dec, lamb,
+         UV.ant_1_array[:UV.Nbls],
+         UV.ant_2_array[:UV.Nbls]
     )
-
-    # Use antenna positions since CASA uvws are slightly off from pyuvdatas
-    # uvw_z = calc_uvw_blt(blen, time[:UV.Nbls].mjd, 'HADEC',
-    #                      np.zeros(UV.Nbls)*u.rad, np.ones(UV.Nbls)*zenith_dec)
-    # dw = (uvw_z[:, -1] - uvw_m[:, -1])*u.m
-    # phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis])
-    #                      .to_value(u.dimensionless_unscaled))
-    # UV.uvw_array = np.tile(uvw_z[np.newaxis, :, :], (UV.Ntimes, 1, 1)
-    #                    ).reshape(-1, 3)
-    # UV.data_array = (UV.data_array.reshape(
-    #     UV.Ntimes, UV.Nbls, UV.Nspws,UV.Nfreqs, UV.Npols
-    # )/phase_model[np.newaxis, ..., np.newaxis]).reshape(
-    #     UV.Nblts, UV.Nspws, UV.Nfreqs, UV.Npols
-    # )
-    # UV.phase(ra.to_value(u.rad), dec.to_value(u.rad), use_ant_pos=True)
-    # Below is the manual calibration which can be used instead.
-    # Currently using because casa uvws are more accurate than pyuvdatas, which
-    # aren't true uvw coordinates.
-    blen = np.tile(blen[np.newaxis, :, :], (UV.Ntimes, 1, 1)).reshape(-1, 3)
-    uvw = calc_uvw_blt(blen, time.mjd, 'J2000', ra.to(u.rad), dec.to(u.rad))
-    dw = (uvw[:, -1] - np.tile(uvw_m[np.newaxis, :, -1], (UV.Ntimes, 1)
-                             ).reshape(-1))*u.m
-    phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis])
-                         .to_value(u.dimensionless_unscaled))
     UV.uvw_array = uvw
     if fringestop:
         UV.data_array = UV.data_array/phase_model[..., np.newaxis]
@@ -1411,6 +1271,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         UV.freq_array = UV.freq_array[:, ::-1]
         UV.data_array = UV.data_array[:, :, ::-1, :]
         freq = UV.freq_array.squeeze()
+    # TODO: Need to update this for missing on either side as well
     UV.channel_width = np.abs(UV.channel_width)
     # Are there missing channels?
     if not np.all(np.diff(freq)-UV.channel_width < 1e-5):
@@ -1511,117 +1372,3 @@ def extract_times(UV, ra, dt):
     UV.Nblts = int(idxmax-idxmin)
     assert UV.data_array.shape[0]==UV.Nblts
     UV.Ntimes = UV.Nblts//UV.Nbls
-
-def average_beamformer_solutions(
-    fnames, ttime, outdir, corridxs=None, tol=0.3, logger=None
-):
-    """Averages written beamformer solutions.
-
-    Parameters
-    ----------
-    fnames : list
-    ttime : astropy.time.Time object
-        A time to use in the filename of the solutions, indicating when they
-        were written or are useful. E.g. the transit time of the most recent
-        source being averaged over.
-    outdir : str
-        The directory in which the beamformer solutions are written, and into
-        which new solutions should be written.
-    corridxs : list
-        The correlator nodes for which to average beamformer solutions.
-        Defaults to 1 through 16 inclusive.
-    logger : dsautils.dsa_syslog.DsaSyslogger() instance
-        Logger to write messages too. If None, messages are printed.
-
-    Returns
-    -------
-    written_files : list
-        The names of the written beamformer solutions (one for each correlator
-        node).
-    antenna_flags_badsolns:
-        Flags for antenna/polarization dimensions of gains.
-    """
-    if corridxs is None:
-        corridxs = [
-            1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16
-        ]
-    gainshape = (64, 48, 2, 2)
-    gains = np.ones(
-            (len(fnames), len(corridxs), gainshape[0], gainshape[1],
-             gainshape[2], gainshape[3]),
-            dtype='<f4'
-        )*np.nan
-    antenna_flags = [None]*len(fnames)
-    eastings = None
-    for i, fname in enumerate(fnames):
-        tmp_antflags = []
-        filepath = '{0}/beamformer_weights_{1}.yaml'.format(outdir, fname)
-        if os.path.exists(filepath):
-            with open(filepath) as f:
-                calibration_params = yaml.load(
-                    f, Loader=yaml.FullLoader
-                )['cal_solutions']
-                antenna_order = calibration_params['antenna_order']
-                for key in calibration_params['flagged_antennas']:
-                    if 'casa solutions flagged' in \
-                        calibration_params['flagged_antennas'][key]:
-                        antname = int(key.split(' ')[0])
-                        tmp_antflags.append(antenna_order.index(antname))
-            antenna_flags[i] = sorted(tmp_antflags)
-
-        for j, corr in enumerate(corridxs):
-            if os.path.exists(
-                '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
-                outdir,
-                corr,
-                fname
-                )
-            ):
-                with open(
-                    '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
-                        outdir,
-                        corr,
-                        fname
-                    ),
-                    'rb'
-                ) as f:
-                    data = np.fromfile(f, '<f4')
-                    eastings = data[:64]
-                    gains[i, j, ...] = data[64:].reshape(gainshape)
-                if antenna_flags[i] is not None:
-                    gains[i, :, antenna_flags[i], ... ] = np.nan
-            else:
-                message = \
-                    '{0} not found during beamformer weight averaging'.format(
-                        '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
-                        outdir,
-                        corr,
-                        fname
-                    ))
-                if logger is not None:
-                    logger.info(message)
-                else:
-                    print(message)
-        if antenna_flags[i] is not None:
-            gains[i, :, antenna_flags[i], ... ] = np.nan
-
-    gains = np.nanmean(gains, axis=0) #np.nanmedian(gains, axis=0)
-    print(gains.shape) # corr, antenna, freq, pol, complex
-    fracflagged = np.sum(np.sum(np.sum(
-        np.isnan(gains),
-        axis=4), axis=2), axis=0)\
-        /(gains.shape[0]*gains.shape[2]*gains.shape[4])
-    antenna_flags_badsolns = fracflagged > tol
-    gains[np.isnan(gains)] = 0.
-    written_files = []
-    if eastings is not None:
-        for i, corr in enumerate(corridxs):
-            fnameout = 'beamformer_weights_corr{0:02d}_{1}'.format(
-                corr, ttime.isot
-            )
-            wcorr = gains[i, ...].flatten()
-            wcorr = np.concatenate([eastings, wcorr], axis=0)
-            with open('{0}/{1}.dat'.format(outdir, fnameout), 'wb') as f:
-                f.write(bytes(wcorr))
-            written_files += ['{0}.dat'.format(fnameout)]
-    return written_files, antenna_flags_badsolns
