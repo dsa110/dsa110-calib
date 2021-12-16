@@ -163,18 +163,24 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=10, m
             if k not in keep or j not in keep:
                 continue
             angle = np.degrees(np.angle(gains[k, :, :, 0]/gains[j, :, :, 0]).mean())
-            print(f'Good phase relative to cal pairs ({k}, {j}), ({bfnames[k]}, {bfnames[j]}): {angle} degrees')
-            if angle >= threshold_angle:
+            if np.abs(angle) >= threshold_angle:
                 bad.append(k)
                 bad.append(j)
-    if len(bad):
-        for k in np.arange(len(bfnames)):
-            print(f'{bfnames[k]} has {bad.count(k)} bad relative gains')
-            if bad.count(k) >= len(bfnames)-1:
-                keep.remove(k)
-                print(f'{bfnames[k]}: rejected')
+                status_pair = 'bad'
             else:
-                print(f'{bfnames[k]}: good')
+                status_pair = 'good'
+            print(f'Rel phase for cal pairs ({k}, {j}), ({bfnames[k]}, {bfnames[j]}): {angle} degrees => {status_pair}')
+    if len(bad):
+        badcount = len(bfnames) - len(keep)
+        for k in np.arange(len(bfnames)):
+            if k not in keep:
+                continue
+            if bad.count(k) >= badcount - 1:
+                keep.remove(k)
+                status_sol = 'reject'
+            else:
+                status_sol = 'keep'
+            print(f'{bfnames[k]} has {bad.count(k)} bad relative gains => {status_sol}')
             
     if plot:
         # visualize grads
