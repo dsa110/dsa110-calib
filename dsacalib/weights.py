@@ -171,11 +171,11 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=10, m
                 status_pair = 'good'
             print(f'Rel phase for cal pairs ({k}, {j}), ({bfnames[k]}, {bfnames[j]}): {angle} degrees => {status_pair}')
     if len(bad):
-        badcount = len(bfnames) - len(keep)
+        keepcount = len(keep)
         for k in np.arange(len(bfnames)):
             if k not in keep:
                 continue
-            if bad.count(k) >= badcount - 1:
+            if bad.count(k) >= keepcount - 1:
                 keep.remove(k)
                 status_sol = 'reject'
             else:
