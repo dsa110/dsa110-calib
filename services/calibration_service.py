@@ -297,9 +297,10 @@ def calibrate_file(calname, flist):
             target
         )
     # Plot evolution of the phase over the day
+    # TODO: Fix filenames to use antennas at different decs
     calibrate_phase_single_ms(msname, REFANTS[0], calname)
     plot_bandpass_phases(
-        filenames,
+        beamformer_names,
         np.array(ANTENNAS),
         outname='{0}/{1}'.format(PLOTDIR, ttime),
         show=False
