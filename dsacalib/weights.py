@@ -19,6 +19,7 @@ MFS_PARAMS = CONF.get('fringe')
 REFANTS = CAL_PARAMS['refant']
 BEAMFORMER_DIR = CAL_PARAMS['beamformer_dir']
 ANTENNAS = np.array(list(CORR_PARAMS['antenna_order'].values()))
+ANTENNAS = [ant for ant in ANTENNAS if ant < 100]  # core only
 POLS = CORR_PARAMS['pols_voltage']
 ANTENNAS_NOT_IN_BF = CAL_PARAMS['antennas_not_in_bf']
 CORR_LIST = list(CORR_PARAMS['ch0'].keys())
