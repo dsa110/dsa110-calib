@@ -4,7 +4,7 @@ import tqdm
 import datetime
 
 corrdir = '/mnt/data/dsa110/correlator/'
-cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=30)
+cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=15)
 cutoff = cutoff.strftime('%Y-%m-%d')
 print(f'Removing hdf5 files in {corrdir} from before {cutoff}')
 
