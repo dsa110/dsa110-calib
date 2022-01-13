@@ -7,10 +7,10 @@ msdir = '/mnt/data/dsa110/calibration/manual_cal/'
 hdf5dir = '/mnt/data/dsa110/correlator/'
 calpasses = [
     {
-        'date': '2021-12-14',
-        'name': 'J133108+303032',
-        'dec': '+030p5',
-        'duration': 25*u.min,
+        'date': '2021-12-23',
+        'name': 'J141120+521209',
+        'dec': '+52p06',
+        'duration': 15*u.min,
     },
 ]
 
