@@ -237,12 +237,28 @@ def calc_eastings(antennas):
     bu = bu.squeeze().astype(np.float32)
     return bu
 
+def sort_beamformer_names(beamformer_names):
+    """Sort beamformer names based on calibrator transit time."""
+    calnames = []
+    caltimes = []
+    for beamformer_name in beamformer_names:
+        calname, caltime = beamformer_name.split('_')
+        calnames += [calname]
+        caltimes += [caltime]
+    caltimes, calnames = *zip(sorted(zip(caltimes, calnames)))
+    beamformer_names = []
+    for i, calname in enumerate(calnames):
+        caltime = caltimes[i]
+        beamformer_names += [f'{calname}_{caltime}']
+    return beamformer_names
 
 def filter_beamformer_solutions(beamformer_names, start_time):
     """Removes beamformer solutions inconsistent with the latest solution.
     """
     if len(beamformer_names) == 0:
         return beamformer_names, None
+
+    beamformer_names = sort_beamformer_names(beamformer_names)
 
     if not os.path.exists(
         f'{BEAMFORMER_DIR}/beamformer_weights_{beamformer_names[0]}.yaml'):
