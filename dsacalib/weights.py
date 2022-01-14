@@ -245,7 +245,7 @@ def sort_beamformer_names(beamformer_names):
         calname, caltime = beamformer_name.split('_')
         calnames += [calname]
         caltimes += [caltime]
-    caltimes, calnames = *zip(sorted(zip(caltimes, calnames)))
+    caltimes, calnames = zip(*sorted(zip(caltimes, calnames), reverse=True))
     beamformer_names = []
     for i, calname in enumerate(calnames):
         caltime = caltimes[i]
