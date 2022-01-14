@@ -211,13 +211,17 @@ def calibrate_file(calname, flist):
             exc,
             throw=False
         )
+
+    # Create the bandpass phase table for plotting later
+    calibrate_phase_single_ms(msname, REFANTS[0], calname)
+
     print('getting list of calibrators')
     # Now we want to find all sources in the last 24 hours
     # start by updating our list with calibrators from the day before
     beamformer_names = get_good_solution()
     beamformer_names, latest_solns = filter_beamformer_solutions(
-        beamformer_names, start_time.mjd
-    )
+        beamformer_names, start_time.mjd)
+
     # Average beamformer solutions
     if len(beamformer_names) > 0:
         print('averaging beamformer weights')
@@ -289,6 +293,8 @@ def calibrate_file(calname, flist):
             corrlist=np.array(CORR_LIST),
             show=False
         )
+
+        # Copy plot to "current" WebPLOTS
         target = f'{WEBPLOTS}/bfw_current.png'
         if os.path.exists(target):
             os.unlink(target)
@@ -296,9 +302,8 @@ def calibrate_file(calname, flist):
             f'{PLOTDIR}/{ttime}_averagedweights.png',
             target
         )
+
     # Plot evolution of the phase over the day
-    # TODO: Fix filenames to use antennas at different decs
-    calibrate_phase_single_ms(msname, REFANTS[0], calname)
     plot_bandpass_phases(
         beamformer_names,
         np.array(ANTENNAS),
@@ -306,6 +311,8 @@ def calibrate_file(calname, flist):
         show=False
     )
     plt.close('all')
+
+    # Copy plot to "current" WebPLOTS
     target = f'{WEBPLOTS}/phase_current.png'
     if os.path.exists(target):
         os.unlink(target)
