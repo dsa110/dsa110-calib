@@ -19,7 +19,7 @@ MFS_PARAMS = CONF.get('fringe')
 REFANTS = CAL_PARAMS['refant']
 BEAMFORMER_DIR = CAL_PARAMS['beamformer_dir']
 ANTENNAS = np.array(list(CORR_PARAMS['antenna_order'].values()))
-ANTENNAS = [ant for ant in ANTENNAS if ant < 100]  # core only
+ANTENNAS_CORE = [ant for ant in ANTENNAS if ant < 100]  # core only
 POLS = CORR_PARAMS['pols_voltage']
 ANTENNAS_NOT_IN_BF = CAL_PARAMS['antennas_not_in_bf']
 CORR_LIST = list(CORR_PARAMS['ch0'].keys())
@@ -28,7 +28,7 @@ CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
 REFMJD = MFS_PARAMS['refmjd']
 
 
-def get_good_solution(select=None, plot=False, threshold_ants=60, threshold_angle=10):
+def get_good_solution(select=None, plot=False, threshold_ants=45, threshold_angle=10, selectcore=True):
     """ Find good set of solutions and calculate average gains.
     TODO: go from good bfnames to average gains.
     """
@@ -52,10 +52,13 @@ def get_good_solution(select=None, plot=False, threshold_ants=60, threshold_angl
         return bfnames
     times = [bfname.split('_')[1] for bfname in bfnames]
     times, bfnames = zip(*sorted(zip(times, bfnames), reverse=True))
-    gains = read_gains(bfnames)
-    good = find_good_solutions(bfnames, gains, plot=plot, threshold_ants=threshold_ants, threshold_angle=threshold_angle)
+    if selectcore:
+        gains = read_gains(bfnames, selectants=ANTENNAS_CORE)
+    else:
+        gains = read_gains(bfnames)
+    good = find_good_solutions(bfnames, gains, plot=plot, threshold_ants=threshold_ants, threshold_angle=threshold_angle, selectcore=selectcore)
     if plot:
-        show_gains(bfnames, gains, good)
+        show_gains(bfnames, gains, good, selectcore=selectcore)
 
     return [bfnames[gidx] for gidx in good]
 
@@ -86,7 +89,7 @@ def get_bfnames(select=None):
         return bfnames
 
 
-def read_gains(bfnames):
+def read_gains(bfnames, selectants=ANTENNAS):
     """ Reads gain for each of the data files in bfnames.
     Returns gain array with same length as bfnames.
     """
@@ -106,20 +109,31 @@ def read_gains(bfnames):
             temp = data[64:].reshape(64, 48, 2, 2)
             gains[i, :, corridx, :, :] = temp[..., 0]+1.0j*temp[..., 1]
     gains = gains.reshape((len(bfnames), len(ANTENNAS), len(CORR_LIST)*48, 2))
+    select = [ANTENNAS.tolist().index(i) for i in selectants]
     print(f'Using {len(bfnames)} to get gain array of shape {gains.shape}.')
-    return gains
+    return gains.take(select, axis=1)
 
 
-def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=10, mask_bothpols=True, plot=False):
+def find_good_solutions(bfnames, gains, threshold_ants=45, threshold_angle=10, mask_bothpols=True, plot=False, selectcore=True):
     """ Given names and gain array, calc good set.
     Returns indices of bfnames argument that are good.
     """
 
-    refant_ind = ANTENNAS.tolist().index(int(REFANTS[0]))
+    if selectcore:
+        ants = ANTENNAS_CORE
+    else:
+        ants = ANTENNAS
+
+    try:
+        refant_ind = ants.index(int(REFANTS[0]))
+    except:
+        refant_ind = 0
+        print(f'Using first listed antenna ({ants[0]}) as refant')
+
     nchan = gains.shape[2]
-    grads = np.zeros((len(bfnames), len(ANTENNAS), 2))
+    grads = np.zeros((len(bfnames), len(ants), 2))
     for i in np.arange(2):
-        for j in np.arange(len(ANTENNAS)):
+        for j in np.arange(len(ants)):
 #            angles = np.zeros((len(bfnames), nchan))
             for k in np.arange(len(bfnames)):
                 if gains[k, j, :, i].any():
@@ -143,7 +157,7 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=10, m
     # select good sets
     keep = []
     for k in np.arange(len(bfnames)):
-        ngood = len(ANTENNAS)-sum(grads[k, :, 0].mask)  # assumes pol=0 has useful flagging info
+        ngood = len(ants)-sum(grads[k, :, 0].mask)  # assumes pol=0 has useful flagging info
 
         print(f'Good phase gradients: {k}, {bfnames[k]}, {ngood} antennas')
         if ngood >= threshold_ants:
@@ -163,20 +177,21 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=10, m
         for j in np.arange(k+1, len(bfnames)):
             if k not in keep or j not in keep:
                 continue
-            angle = np.degrees(np.angle(gains[k, :, :, 0]/gains[j, :, :, 0]).mean())
-            if np.abs(angle) >= threshold_angle:
-                bad.append(k)
-                bad.append(j)
-                status_pair = 'bad'
-            else:
-                status_pair = 'good'
-            print(f'Rel phase for cal pairs ({k}, {j}), ({bfnames[k]}, {bfnames[j]}): {angle} degrees => {status_pair}')
+            for p in [0, 1]:
+                angle = np.degrees(np.angle(gains[k, :, :, p]/gains[j, :, :, p]).mean())
+                if np.abs(angle) >= threshold_angle:
+                    bad.append(k)
+                    bad.append(j)
+                    status_pair = 'bad'
+                else:
+                    status_pair = 'good'
+                print(f'Rel phase for cal pairs ({k}, {j}), ({bfnames[k]}, {bfnames[j]}), pol {p}: {angle} degrees => {status_pair}')
     if len(bad):
-        keepcount = len(keep)
+        keepcount = 2*(len(keep)-1)
         for k in np.arange(len(bfnames)):
             if k not in keep:
                 continue
-            if bad.count(k) >= keepcount - 1:
+            if bad.count(k) >= keepcount:
                 keep.remove(k)
                 status_sol = 'reject'
             else:
@@ -194,33 +209,45 @@ def find_good_solutions(bfnames, gains, threshold_ants=60, threshold_angle=10, m
         ax1.set_ylabel('calibrator')
         plt.show()
 
+    print(f'keep set: {keep}, {[bfnames[k] for k in keep]}')
     return keep
 
 
-def show_gains(bfnames, gains, keep):
+def show_gains(bfnames, gains, keep, selectcore=True):
     """ Given bfnames and gains, plot the good gains.
     """
 
-    refant_ind = ANTENNAS.tolist().index(int(REFANTS[0]))
+    if selectcore:
+        ants = ANTENNAS_CORE
+    else:
+        ants = ANTENNAS
+
+    try:
+        refant_ind = ants.index(int(REFANTS[0]))
+    except:
+        refant_ind = 0
+        print(f'Using first listed antenna ({ants[0]}) as refant')
+
+    nants = len(ants)
     nx = 4
-    ny = len(ANTENNAS)//nx
-    if len(ANTENNAS)%nx > 0:
+    ny = nants//nx
+    if nants%nx > 0:
         ny += 1
     _, ax = plt.subplots(ny, nx, figsize=(3*nx, 4*ny),
                          sharex=True, sharey=True)
-    ax[0, 0].set_yticks(np.arange(len(bfnames)))
+    ax[0, 0].set_yticks(np.arange(len(keep)))
 
     for axi in ax[0, :]:
-        axi.set_yticklabels(bfnames)
+        axi.set_yticklabels([bfn for i,bfn in enumerate(bfnames) if i in keep])
     ax = ax.flatten()
 
-    for i in np.arange(len(ANTENNAS)):
+    for i in np.arange(nants):
         ax[i].imshow(
             np.angle(gains[:, i, :, 0]/gains[:, refant_ind, :, 0]).take(keep, axis=0),
             vmin=-np.pi, vmax=np.pi, aspect='auto', origin='lower',
             interpolation='None', cmap=plt.get_cmap('RdBu')
         )
-        ax[i].annotate('{0}'.format(ANTENNAS[i]), (0, 1), xycoords='axes fraction')
+        ax[i].annotate('{0}'.format(ants[i]), (0, 1), xycoords='axes fraction')
         ax[i].set_xlabel('Frequency channel')
     plt.show()
 
