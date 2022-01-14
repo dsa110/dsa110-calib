@@ -1177,14 +1177,14 @@ def plot_bandpass_phases(
     show : boolean
         If set to ``False`` the plot is closed after being generated.
     """
-    nentries = len(bfnames)
+    nentries = len(beamformer_names)
 
     # Parse cal name and date information from the beamformer names
     cals = []
     transit_times = []
     dates = []
-    for filename in filenames:
-        cal, transit_time = filename.split('_')
+    for beamformer_name in beamformer_names:
+        cal, transit_time = beamformer_name.split('_')
         cals += [cal]
         transit_times += [transit_time]
         dates += [transit_time.split('T')[0]]
