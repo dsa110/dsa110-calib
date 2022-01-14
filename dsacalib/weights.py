@@ -241,44 +241,39 @@ def calc_eastings(antennas):
 def filter_beamformer_solutions(beamformer_names, start_time):
     """Removes beamformer solutions inconsistent with the latest solution.
     """
-    if os.path.exists(
+    if len(beamformer_names) == 0:
+        return beamformer_names, None
+
+    if not os.path.exists(
+        f'{BEAMFORMER_DIR}/beamformer_weights_{beamformer_names[0]}.yaml'):
+        return [], None
+
+    with open(
         '{0}/beamformer_weights_{1}.yaml'.format(
             BEAMFORMER_DIR,
             beamformer_names[0]
         )
-    ):
-        with open(
-            '{0}/beamformer_weights_{1}.yaml'.format(
-                BEAMFORMER_DIR,
-                beamformer_names[0]
-            )
-        ) as f:
-            latest_solns = yaml.load(f, Loader=yaml.FullLoader)
-        for bfname in beamformer_names[1:].copy():
-            try:
-                with open(
-                    '{0}/beamformer_weights_{1}.yaml'.format(
-                        BEAMFORMER_DIR,
-                        bfname
-                    )
-                ) as f:
-                    solns = yaml.load(f, Loader=yaml.FullLoader)
-                assert solns['cal_solutions']['antenna_order'] == \
-                    latest_solns['cal_solutions']['antenna_order']
-                assert solns['cal_solutions']['corr_order'] == \
-                    latest_solns['cal_solutions']['corr_order']
-                assert solns['cal_solutions']['delays'] == \
-                    latest_solns['cal_solutions']['delays']
-                assert solns['cal_solutions']['eastings'] == \
-                    latest_solns['cal_solutions']['eastings']
-                assert solns['cal_solutions']['caltime'] > \
-                    latest_solns['cal_solutions']['caltime']-1
-                assert solns['cal_solutions']['caltime'] > start_time
-            except (AssertionError, FileNotFoundError):
-                beamformer_names.remove(bfname)
-    else:
-        beamformer_names = []
-        latest_solns = None
+    ) as f:
+        latest_solns = yaml.load(f, Loader=yaml.FullLoader)
+
+    for bfname in beamformer_names[1:].copy():
+        try:
+            with open(f'{BEAMFORMER_DIR}/beamformer_weights_{bfname}.yaml') as f:
+                solns = yaml.load(f, Loader=yaml.FullLoader)
+            assert solns['cal_solutions']['antenna_order'] == \
+                latest_solns['cal_solutions']['antenna_order']
+            assert solns['cal_solutions']['corr_order'] == \
+                latest_solns['cal_solutions']['corr_order']
+            assert solns['cal_solutions']['delays'] == \
+                latest_solns['cal_solutions']['delays']
+            assert solns['cal_solutions']['eastings'] == \
+                latest_solns['cal_solutions']['eastings']
+            assert solns['cal_solutions']['caltime'] > \
+                latest_solns['cal_solutions']['caltime']-1
+            assert solns['cal_solutions']['caltime'] > start_time
+        except (AssertionError, FileNotFoundError):
+            beamformer_names.remove(bfname)
+
     return beamformer_names, latest_solns
 
 def average_beamformer_solutions(
