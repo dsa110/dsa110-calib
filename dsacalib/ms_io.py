@@ -1246,15 +1246,22 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         ant2 = UV.ant_2_array[i]
         blen[i, ...] = UV.antenna_positions[ant2, :] - \
             UV.antenna_positions[ant1, :]
-    uvw, phase_model = generate_phase_model_antbased(
-         blen, time.mjd, UV.Nbls, UV.Ntimes, pt_dec,
-         ra, dec, lamb,
-         UV.ant_1_array[:UV.Nbls],
-         UV.ant_2_array[:UV.Nbls]
-    )
-    UV.uvw_array = uvw
     if fringestop:
+        uvw, phase_model = generate_phase_model_antbased(
+            blen, time.mjd, UV.Nbls, UV.Ntimes, pt_dec,
+            ra, dec, lamb,
+            UV.ant_1_array[:UV.Nbls],
+            UV.ant_2_array[:UV.Nbls]
+        )
         UV.data_array = UV.data_array/phase_model[..., np.newaxis]
+    else:
+        # TODO: use antbased meridian uvws!
+        uvw_m = calc_uvw_blt(
+            blen, time[:UV.Nbls].mjd, 'HADEC',
+            np.zeros(UV.Nbls)*u.rad, np.ones(UV.Nbls)*pt_dec)
+        uvw = np.tile(uvw_m.reshape(1, UV.Nbls, 3), (1, UV.Ntimes, 1)).reshape(UV.Nblts, 3)
+        
+    UV.uvw_array = uvw
     UV.phase_type = 'phased'
     UV.phase_center_dec = dec.to_value(u.rad)
     UV.phase_center_ra = ra.to_value(u.rad)
