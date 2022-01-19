@@ -1255,7 +1255,9 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
         )
         UV.data_array = UV.data_array/phase_model[..., np.newaxis]
     else:
-        # TODO: use antbased meridian uvws!
+        # TODO: What position are we really pointed at when we don't fringestop?
+        # We should still remove an antenna based term that accounts for the difference
+        # between uvw_m at the true observing time and the reference time used in fringestopping.
         uvw_m = calc_uvw_blt(
             blen, time[:UV.Nbls].mjd, 'HADEC',
             np.zeros(UV.Nbls)*u.rad, np.ones(UV.Nbls)*pt_dec)
