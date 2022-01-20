@@ -1157,15 +1157,15 @@ def plot_current_beamformer_solutions(
         plt.close()
 
 def plot_bandpass_phases(
-        filenames, antennas, refant=24, outname=None, show=True,
+        beamformer_names, antennas, refant=24, outname=None, show=True,
         msdir='/mnt/data/dsa110/calibration/'
 ):
     r"""Plot the bandpass phase observed over multiple calibrators.
 
     Parameters:
     -----------
-    filenames : dict
-        The details of the calibrator passes to plot.
+    beamformer_names : dict
+        The beamformer weight filenames for which to plot the phases.
     antennas : list
         The antenna names (as ints) to plot.
     refant : int
@@ -1177,63 +1177,68 @@ def plot_bandpass_phases(
     show : boolean
         If set to ``False`` the plot is closed after being generated.
     """
-    nentries = 0
-    for date in filenames.keys():
-        nentries += len(filenames[date].keys())
-    gains = [None]*nentries
-    calnames = [None]*nentries
-    gshape = None
+    nentries = len(beamformer_names)
 
-    i = 0
-    for date in filenames.keys():
-        cals = filenames[date].keys()
-        if len(cals) < 1:
-            return
-        transit_times = [filenames[date][cal]['transit_time'] for cal in cals]
-        transit_times, cals = zip(*sorted(zip(transit_times, cals)))
-        for cal in cals:
-            calnames[i] = cal
-            msname = '{0}/{1}_{2}'.format(msdir, date, cal)
-            if os.path.exists('{0}_{1}_bpcal'.format(msname, cal)):
-                with table('{0}_{1}_bpcal'.format(msname, cal)) as tb:
-                    gains[i] = np.array(tb.CPARAM[:])
+    # Parse cal name and date information from the beamformer names
+    cals = []
+    transit_times = []
+    dates = []
+    for beamformer_name in beamformer_names:
+        cal, transit_time = beamformer_name.split('_')
+        cals += [cal]
+        transit_times += [transit_time]
+        dates += [transit_time.split('T')[0]]
+
+    # Sort beamformer weights by transit time
+    transit_times, cals, dates = zip(*sorted(zip(transit_times, cals, dates)))
+
+    # Read in gain phase calibration tables for each calibrator pass
+    calnames = []
+    gains = [None]*nentries
+    gshape = None
+    for i, cal in enumerate(cals):
+        date = dates[i]
+        calnames += [f'{date}_{cal}']
+        msname = f'{msdir}/{date}_{cal}'
+
+        bpcal_table = f'{msname}_{cal}_bpcal'
+        if os.path.exists(bpcal_table):
+            with table(bpcal_table) as tb:
+                gains[i] = np.array(tb.CPARAM[:])
+            if gshape is None:
                 gshape = gains[i].shape
-            i += 1
+
+    if gshape is None: # We have no data to plot
+        return
+
+    # Fill missing data with default to safely convert to an array
     for i, gain in enumerate(gains):
         if gain is None:
             gains[i] = np.zeros(gshape, dtype=np.complex64)
     gains = np.array(gains)
+
+    # Set up the plot
     nx = 4
     ny = len(antennas)//nx
     if len(antennas)%nx > 0:
         ny += 1
-    fig, ax = plt.subplots(
-        ny,
-        nx,
-        figsize=(3*nx, 3*ny),
-        sharex=True,
-        sharey=True
-    )
+    fig, ax = plt.subplots(ny, nx, figsize=(3*nx, 3*ny), sharex=True, sharey=True)
+
+    # Set the yticks to display the calibrator pass details
     ax[0, 0].set_yticks(np.arange(nentries))
     for axi in ax[0, :]:
         axi.set_yticklabels(calnames)
+
+    # Plot the gains for each antenna
     ax = ax.flatten()
     for i in np.arange(len(antennas)):
         ax[i].imshow(
             np.angle(gains[:, antennas[i]-1, :, 0]/gains[:, refant-1, :, 0]),
-            vmin=-np.pi,
-            vmax=np.pi,
-            aspect='auto',
-            origin='lower',
-            interpolation='None',
-            cmap=plt.get_cmap('RdBu')
-        )
-        ax[i].annotate(
-            '{0}'.format(antennas[i]),
-            (0, 1),
-            xycoords='axes fraction'
-        )
+            vmin=-np.pi, vmax=np.pi,
+            aspect='auto', origin='lower', interpolation='None', cmap=plt.get_cmap('RdBu'))
+        ax[i].annotate(str(antennas[i]), (0, 1), xycoords='axes fraction')
         ax[i].set_xlabel('Frequency channel')
+
     if outname is not None:
         plt.savefig('{0}_phases.png'.format(outname))
     if not show:

@@ -103,6 +103,7 @@ def delay_calibration(msname, sourcename, refants, t1='inf', t2='60s',
     int
         The number of errors that occured during calibration.
     """
+    # TODO : revisit and get this to work with a list of antennas
     assert isinstance(refants, list)
     error = 0
     refant = None
