@@ -278,6 +278,7 @@ def get_blen(uvdata: "UVData") -> "np.ndarray":
 
 def fix_descending_missing_freqs(uvdata: "UVData") -> None:
     """Flip descending freq arrays, and fills in missing channels."""
+
     # Look for missing channels
     freq = uvdata.freq_array.squeeze()
     # The channels may have been reordered by pyuvdata so check that the
@@ -413,17 +414,17 @@ def generate_phase_model_antbased(uvw, uvw_m, nbls, nts, lamb, ant1, ant2):
         The uvw coordinates at the meridian, (time, baseline, 3)
     nbls, nts : int
         The number of unique baselines, times.
-    lamb : astropy quantity
-        The observing wavelength of each channel.
-    ant1, ant2 : list
-        The antenna indices in order.
-
-    Returns:
-    --------
-    np.ndarray
-        The phase model to apply.
     """
-    # Need ant1 and ant2 to be passed here
+    dw = (
+        uvw[:, -1] - np.tile(
+            uvw_m[np.newaxis, :, -1],
+            (nts, 1)
+        ).reshape(-1)
+    )*u.m
+    phase_model = np.exp((
+        2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
+    ).to_value(u.dimensionless_unscaled))
+
     # Need to check that this gets the correct refidxs
     refant = 23  # ant1[0]
     refidxs = np.where(ant1 == refant)[0]
