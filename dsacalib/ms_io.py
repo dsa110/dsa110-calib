@@ -17,19 +17,15 @@ import traceback
 import numpy as np
 import scipy # pylint: disable=unused-import
 import astropy.units as u
-import astropy.constants as c
 import casatools as cc
-from casatasks import importuvfits, virtualconcat
-from casacore.tables import addImagingColumns, table
-from pyuvdata import UVData
+from casatasks import virtualconcat
+from casacore.tables import table
 from dsautils import dsa_store
 from dsautils import calstatus as cs
 import dsautils.cnf as dsc
-from dsamfs.fringestopping import calc_uvw_blt
+from dsacalib.uvh5_to_ms import uvh5_to_ms
 from dsacalib import constants as ct
 import dsacalib.utils as du
-from dsacalib.fringestopping import amplitude_sky_model
-from antpos.utils import get_itrf # pylint: disable=wrong-import-order
 from astropy.utils import iers # pylint: disable=wrong-import-order
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
@@ -40,6 +36,152 @@ de = dsa_store.DsaStore()
 CONF = dsc.Conf()
 CORR_PARAMS = CONF.get('corr')
 REFMJD = CONF.get('fringe')['refmjd']
+
+def convert_calibrator_pass_to_ms(
+        cal, date, files, duration, msdir='/mnt/data/dsa110/calibration/',
+        hdf5dir='/mnt/data/dsa110/correlator/', antenna_list=None,
+        logger=None, overwrite=True
+):
+    r"""Converts hdf5 files near a calibrator pass to a CASA ms.
+
+    Parameters
+    ----------
+    cal : dsacalib.utils.src instance
+        The calibrator source.
+    date : str
+        The date (to day precision) of the calibrator pass. e.g. '2020-10-06'.
+    files : list
+        The hdf5 filenames corresponding to the calibrator pass. These should
+        be date strings to second precision.
+        e.g. ['2020-10-06T12:35:04', '2020-10-06T12:50:04']
+        One ms will be written per filename in `files`. If the length of
+        `files` is greater than 1, the mss created will be virtualconcated into
+        a single ms.
+    duration : astropy quantity
+        Amount of data to extract, unit minutes or equivalent.
+    msdir : str
+        The full path to the directory to place the measurement set in. The ms
+        will be written to `msdir`/`date`\_`cal.name`.ms
+    hdf5dir : str
+        The full path to the directory containing subdirectories with correlated
+        hdf5 data.
+    antenna_list : list
+        The names of the antennas to include in the measurement set. Names should
+        be strings.  If not passed, all antennas in the hdf5 files are included.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
+    """
+    msname = '{0}/{1}_{2}'.format(msdir, date, cal.name)
+    print('looking for files: {0}'.format(' '.join(files)))
+    if len(files) == 1:
+        try:
+            reftime = Time(files[0])
+            hdf5files = []
+            for hdf5f in sorted(glob.glob(
+                    '{0}/corr??/{1}*.hdf5'.format(hdf5dir, files[0][:-4])
+            )):
+                filetime = Time(hdf5f[:-5].split('/')[-1])
+                if abs(filetime-reftime) < 1*u.min:
+                    hdf5files += [hdf5f]
+            assert len(hdf5files) < 17
+            assert len(hdf5files) > 1
+            print(f'found {len(hdf5files)} hdf5files for {files[0]}')
+            uvh5_to_ms(
+                hdf5files,
+                msname,
+                ra=cal.ra,
+                dec=cal.dec,
+                flux=cal.I,
+                # dt=duration,
+                antenna_list=antenna_list,
+                logger=logger
+            )
+            message = 'Wrote {0}.ms'.format(msname)
+            if logger is not None:
+                logger.info(message)
+            #else:
+            print(message)
+        except (ValueError, IndexError) as exception:
+            tbmsg = ''.join(traceback.format_tb(exception.__traceback__))
+            message = f'No data for {date} transit on {cal.name}. '+\
+                f'Error {type(exception).__name__}. Traceback: {tbmsg}'
+            if logger is not None:
+                logger.info(message)
+            print(message)
+    elif len(files) > 0:
+        msnames = []
+        for filename in files:
+            print(filename)
+            if overwrite or not os.path.exists(f'{msdir}/{filename}.ms'):
+                try:
+                    reftime = Time(filename)
+                    hdf5files = []
+                    for hdf5f in sorted(glob.glob(
+                            '{0}/corr??/{1}*.hdf5'.format(hdf5dir, filename[:-4])
+                    )):
+                        filetime = Time(hdf5f[:-5].split('/')[-1])
+                        if abs(filetime-reftime) < 1*u.min:
+                            hdf5files += [hdf5f]
+                    print(f'found {len(hdf5files)} hdf5files for {filename}')
+                    uvh5_to_ms(
+                        hdf5files,
+                        '{0}/{1}'.format(msdir, filename),
+                        ra=cal.ra,
+                        dec=cal.dec,
+                        flux=cal.I,
+                        # dt=duration,
+                        antenna_list=antenna_list,
+                        logger=logger
+                    )
+                    msnames += ['{0}/{1}'.format(msdir, filename)]
+                except (ValueError, IndexError) as exception:
+                    message = 'No data for {0}. Error {1}. Traceback: {2}'.format(
+                        filename,
+                        type(exception).__name__,
+                        ''.join(
+                            traceback.format_tb(exception.__traceback__)
+                        )
+                    )
+                    if logger is not None:
+                        logger.info(message)
+                    print(message)
+            else:
+                print(f'Not doing {filename}')
+        if os.path.exists('{0}.ms'.format(msname)):
+            for root, _dirs, walkfiles in os.walk(
+                    '{0}.ms'.format(msname),
+                    topdown=False
+            ):
+                for name in walkfiles:
+                    os.unlink(os.path.join(root, name))
+            shutil.rmtree('{0}.ms'.format(msname))
+        if len(msnames) > 1:
+            virtualconcat(
+                ['{0}.ms'.format(msn) for msn in msnames],
+                '{0}.ms'.format(msname))
+            message = 'Wrote {0}.ms'.format(msname)
+            if logger is not None:
+                logger.info(message)
+            #else:
+            print(message)
+        elif len(msnames) == 1:
+            os.rename('{0}.ms'.format(msnames[0]), '{0}.ms'.format(msname))
+            message = 'Wrote {0}.ms'.format(msname)
+            if logger is not None:
+                logger.info(message)
+            #else:
+            print(message)
+        else:
+            message = 'No data for {0} transit on {1}'.format(date, cal.name)
+            if logger is not None:
+                logger.info(message)
+            #else:
+            print(message)
+    else:
+        message = 'No data for {0} transit on {1}'.format(date, cal.name)
+        if logger is not None:
+            logger.info(message)
+        print(message)
 
 def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
                 freq, deltafreq, freqresolution, nchannels, integrationtime,
@@ -339,7 +481,6 @@ def get_visiblities_time(msname, a1, a2, time, duration, datacolumn='CORRECTED_D
     assert orig_shape == ['time', 'baseline', 'spw']
     nspw = len(spw)
     assert nspw == 1
-    antenna_order = ant1[ant1 == ant2]
     nbls = len(ant1)
     nfreqs = len(fvis)
 
@@ -348,7 +489,7 @@ def get_visiblities_time(msname, a1, a2, time, duration, datacolumn='CORRECTED_D
     ntimes = idx1-idx0
     tidxs = np.arange(idx0, idx1)
 
-    blidx = np.where((ant1==a1) & (ant2==a2))[0][0]
+    blidx = np.where((ant1 == a1) & (ant2 == a2))[0][0]
 
     vis = np.zeros((ntimes, nfreqs, npol), dtype=complex)
     with table(f'{msname}.ms') as tb:
@@ -470,7 +611,7 @@ def read_caltable(tablename, cparam=False, reshape=True):
     return vals, time/ct.SECONDS_PER_DAY, flags, ant1, ant2
 
 def reshape_calibration_data(
-    vals, flags, ant1, ant2, baseline, time, spw, swapaxes=True
+        vals, flags, ant1, ant2, baseline, time, spw, swapaxes=True
 ):
     """Reshape calibration or measurement set data.
 
@@ -507,7 +648,7 @@ def reshape_calibration_data(
     """
     if vals is None:
         assert flags is None
-    if len(np.unique(ant1))==len(np.unique(ant2)):
+    if len(np.unique(ant1)) == len(np.unique(ant2)):
         nbl = len(np.unique(baseline))
     else:
         nbl = max([len(np.unique(ant1)), len(np.unique(ant2))])
@@ -604,7 +745,7 @@ def reshape_calibration_data(
     return time, vals, flags, ant1, ant2, spw, orig_shape
 
 def caltable_to_etcd(
-    msname, calname, caltime, status, pols=None, logger=None
+        msname, calname, caltime, status, pols=None, logger=None
 ):
     r"""Copies calibration values from delay and gain tables to etcd.
 
@@ -829,19 +970,19 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
     antenna_gains = np.zeros(tuple(output_shape), dtype=gains.dtype)
     if np.all(ant2 == ant2[0]):
         for i, ant in enumerate(antennas):
-            antenna_gains[i] = 1/gains[ant1==ant]
+            antenna_gains[i] = 1/gains[ant1 == ant]
     else:
         assert len(antennas) == 3, ("Baseline-based only supported for trio of"
                                     "antennas")
         for i, ant in enumerate(antennas):
-            ant1idxs = np.where(ant1==ant)[0]
-            ant2idxs = np.where(ant2==ant)[0]
-            otheridx = np.where((ant1!=ant) & (ant2!=ant))[0][0]
+            ant1idxs = np.where(ant1 == ant)[0]
+            ant2idxs = np.where(ant2 == ant)[0]
+            otheridx = np.where((ant1 != ant) & (ant2 != ant))[0][0]
             # phase
             sign = 1
-            idx_phase = np.where((ant1==ant) & (ant2==refant))[0]
+            idx_phase = np.where((ant1 == ant) & (ant2 == refant))[0]
             if len(idx_phase) == 0:
-                idx_phase = np.where((ant2==refant) & (ant1==ant))[0]
+                idx_phase = np.where((ant2 == refant) & (ant1 == ant))[0]
                 assert len(idx_phase) == 1
                 sign = -1
             # amplitude
@@ -912,472 +1053,3 @@ def get_delays(antennas, msname, calname, applied_delays):
     newdelays = (np.rint(newdelays/2)*2)
     # delays[flags] = 0
     return newdelays.astype(np.int), flags
-
-def convert_calibrator_pass_to_ms(
-        cal, date, files, duration, msdir='/mnt/data/dsa110/calibration/',
-        hdf5dir='/mnt/data/dsa110/correlator/', antenna_list=None,
-        logger=None, overwrite=True
-):
-    r"""Converts hdf5 files near a calibrator pass to a CASA ms.
-
-    Parameters
-    ----------
-    cal : dsacalib.utils.src instance
-        The calibrator source.
-    date : str
-        The date (to day precision) of the calibrator pass. e.g. '2020-10-06'.
-    files : list
-        The hdf5 filenames corresponding to the calibrator pass. These should
-        be date strings to second precision.
-        e.g. ['2020-10-06T12:35:04', '2020-10-06T12:50:04']
-        One ms will be written per filename in `files`. If the length of
-        `files` is greater than 1, the mss created will be virtualconcated into
-        a single ms.
-    duration : astropy quantity
-        Amount of data to extract, unit minutes or equivalent.
-    msdir : str
-        The full path to the directory to place the measurement set in. The ms
-        will be written to `msdir`/`date`\_`cal.name`.ms
-    hdf5dir : str
-        The full path to the directory containing subdirectories with correlated
-        hdf5 data.
-    antenna_list : list
-        The names of the antennas to include in the measurement set. Names should
-        be strings.  If not passed, all antennas in the hdf5 files are included.
-    logger : dsautils.dsa_syslog.DsaSyslogger() instance
-        Logger to write messages too. If None, messages are printed.
-    """
-    msname = '{0}/{1}_{2}'.format(msdir, date, cal.name)
-    print('looking for files: {0}'.format(' '.join(files)))
-    if len(files) == 1:
-        try:
-            reftime = Time(files[0])
-            hdf5files = []
-            for hdf5f in sorted(glob.glob(
-                '{0}/corr??/{1}*.hdf5'.format(hdf5dir, files[0][:-4])
-            )):
-                filetime = Time(hdf5f[:-5].split('/')[-1])
-                if abs(filetime-reftime) < 1*u.min:
-                    hdf5files += [hdf5f]
-            assert len(hdf5files) < 17
-            assert len(hdf5files) > 1
-            print(f'found {len(hdf5files)} hdf5files for {files[0]}')
-            uvh5_to_ms(
-                hdf5files,
-                msname,
-                ra=cal.ra,
-                dec=cal.dec,
-                flux=cal.I,
-                # dt=duration,
-                antenna_list=antenna_list,
-                logger=logger
-            )
-            message = 'Wrote {0}.ms'.format(msname)
-            if logger is not None:
-                logger.info(message)
-            #else:
-            print(message)
-        except (ValueError, IndexError) as exception:
-            tbmsg = ''.join(traceback.format_tb(exception.__traceback__))
-            message = f'No data for {date} transit on {cal.name}. Error {type(exception).__name__}. Traceback: {tbmsg}'
-            if logger is not None:
-                logger.info(message)
-            print(message)
-    elif len(files) > 0:
-        msnames = []
-        for filename in files:
-            print(filename)
-            if overwrite or not os.path.exists(f'{msdir}/{filename}.ms'):
-                try:
-                    reftime = Time(filename)
-                    hdf5files = []
-                    for hdf5f in sorted(glob.glob(
-                            '{0}/corr??/{1}*.hdf5'.format(hdf5dir, filename[:-4])
-                    )):
-                        filetime = Time(hdf5f[:-5].split('/')[-1])
-                        if abs(filetime-reftime) < 1*u.min:
-                            hdf5files += [hdf5f]
-                    print(f'found {len(hdf5files)} hdf5files for {filename}')
-                    uvh5_to_ms(
-                        hdf5files,
-                        '{0}/{1}'.format(msdir, filename),
-                        ra=cal.ra,
-                        dec=cal.dec,
-                        flux=cal.I,
-                        # dt=duration,
-                        antenna_list=antenna_list,
-                        logger=logger
-                    )
-                    msnames += ['{0}/{1}'.format(msdir, filename)]
-                except (ValueError, IndexError) as exception:
-                    message = 'No data for {0}. Error {1}. Traceback: {2}'.format(
-                        filename,
-                        type(exception).__name__,
-                        ''.join(
-                            traceback.format_tb(exception.__traceback__)
-                        )
-                    )
-                    if logger is not None:
-                        logger.info(message)
-                    print(message)
-            else:
-                print(f'Not doing {filename}')
-        if os.path.exists('{0}.ms'.format(msname)):
-            for root, _dirs, walkfiles in os.walk(
-                '{0}.ms'.format(msname),
-                topdown=False
-            ):
-                for name in walkfiles:
-                    os.unlink(os.path.join(root, name))
-            shutil.rmtree('{0}.ms'.format(msname))
-        if len(msnames) > 1:
-            virtualconcat(
-                ['{0}.ms'.format(msn) for msn in msnames],
-                '{0}.ms'.format(msname))
-            message = 'Wrote {0}.ms'.format(msname)
-            if logger is not None:
-                logger.info(message)
-            #else:
-            print(message)
-        elif len(msnames) == 1:
-            os.rename('{0}.ms'.format(msnames[0]), '{0}.ms'.format(msname))
-            message = 'Wrote {0}.ms'.format(msname)
-            if logger is not None:
-                logger.info(message)
-            #else:
-            print(message)
-        else:
-            message = 'No data for {0} transit on {1}'.format(date, cal.name)
-            if logger is not None:
-                logger.info(message)
-            #else:
-            print(message)
-    else:
-        message = 'No data for {0} transit on {1}'.format(date, cal.name)
-        if logger is not None:
-            logger.info(message)
-        print(message)
-
-def generate_phase_model(blen, mjds, nbls, nts, pt_dec, ra, dec, lamb):
-    """Generates a phase model to apply.
-
-    Parameters
-    ----------
-    blen : ndarray(float)
-        The lengths of all baselines, shape (nbls, 3)
-    mjds : array(float)
-        The mjd of every sample, shape (nts*nbls)
-    nbls, nts : int
-        The number of unique baselines, times.
-    pt_dec : astropy quantity
-        The pointing declination of the array.
-    ra, dec : astropy quantities
-        The position to phase to in J2000 RA, DEC
-    """
-    uvw_m = calc_uvw_blt(
-        blen,
-        mjds[:nbls],
-        'HADEC',
-        np.zeros(nbls)*u.rad,
-        np.ones(nbls)*pt_dec
-    )
-    blen = np.tile(
-        blen[np.newaxis, :, :],
-        (nts, 1, 1)
-    ).reshape(-1, 3)
-    uvw = calc_uvw_blt(
-        blen,
-        mjds,
-        'RADEC',
-        ra.to(u.rad),
-        dec.to(u.rad)
-    )
-    dw = (
-        uvw[:, -1] - np.tile(
-            uvw_m[np.newaxis, :, -1],
-            (nts, 1)
-        ).reshape(-1)
-    )*u.m
-    phase_model = np.exp((
-        2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
-    ).to_value(u.dimensionless_unscaled))
-    return uvw, phase_model
-
-def generate_phase_model_antbased(blen, mjds, nbls, nts, pt_dec, ra, dec, lamb, ant1, ant2):
-    """Generates a phase model to apply.
-
-    Parameters
-    ----------
-    blen : ndarray(float)
-        The lengths of all baselines, shape (nbls, 3)
-    mjds : array(float)
-        The mjd of every sample, shape (nts*nbls)
-    nbls, nts : int
-        The number of unique baselines, times.
-    pt_dec : astropy quantity
-        The pointing declination of the array.
-    ra, dec : astropy quantities
-        The position to phase to in J2000 RA, DEC
-    ant1, ant2 : list
-        The antenna indices in order
-    """
-    uvw_m = calc_uvw_blt(
-        blen,
-        mjds[:nbls],
-        'HADEC',
-        np.zeros(nbls)*u.rad,
-        np.ones(nbls)*pt_dec
-    )
-    # Need ant1 and ant2 to be passed here
-    # Need to check that this gets the correct refidxs
-    refant = ant1[0]
-    refidxs = np.where(ant1==refant)[0]
-    antenna_order = list(ant2[refidxs])
-    antenna_w_m = uvw_m[refidxs, -1]
-    blen = np.tile(
-        blen[np.newaxis, :, :],
-        (nts, 1, 1)
-    ).reshape(-1, 3)
-    uvw = calc_uvw_blt(
-        blen,
-        mjds,
-        'RADEC',
-        ra.to(u.rad),
-        dec.to(u.rad)
-    )
-    uvw_delays = uvw.reshape((nts, nbls, 3))
-    antenna_w = uvw_delays[:, refidxs, -1]
-    antenna_dw = antenna_w-antenna_w_m[np.newaxis, :]
-    dw = np.zeros((nts, nbls))
-    for i, a1 in enumerate(ant1):
-        a2 = ant2[i]
-        dw[:, i] = antenna_dw[:, antenna_order.index(a2)] - \
-                   antenna_dw[:, antenna_order.index(a1)]
-    dw = dw.reshape(-1)*u.m
-    phase_model = np.exp((
-        2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
-    ).to_value(u.dimensionless_unscaled))
-    return uvw, phase_model
-
-
-def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
-               flux=None, fringestop=True, logger=None):
-    """
-    Converts a uvh5 data to a uvfits file.
-
-    Parameters
-    ----------
-    fname : str
-        The full path to the uvh5 data file.
-    msname : str
-        The name of the ms to write. Data will be written to `msname`.ms
-    ra : astropy quantity
-        The RA at which to phase the data. If None, will phase at the meridian
-        of the center of the uvh5 file.
-    dec : astropy quantity
-        The DEC at which to phase the data. If None, will phase at the pointing
-        declination.
-    dt : astropy quantity
-        Duration of data to extract. Default is to extract the entire file.
-    antenna_list : list
-        Antennas for which to extract visibilities from the uvh5 file. Default
-        is to extract all visibilities in the uvh5 file.
-    flux : float
-        The flux of the calibrator in Jy. If included, will write a model of
-        the primary beam response to the calibrator source to the model column
-        of the ms. If not included, a model of a constant response over
-        frequency and time will be written instead of the primary beam model.
-    logger : dsautils.dsa_syslog.DsaSyslogger() instance
-        Logger to write messages too. If None, messages are printed.
-    refmjd : float
-        The mjd used in the fringestopper.
-    """
-    UV = UVData()
-
-    # Read in the data
-    if antenna_list is not None:
-        UV.read(fname, file_type='uvh5', antenna_names=antenna_list,
-                run_check_acceptability=False, strict_uvw_antpos_check=False)
-    else:
-        UV.read(fname, file_type='uvh5', run_check_acceptability=False,
-                strict_uvw_antpos_check=False)
-    time = Time(UV.time_array, format='jd')
-    pt_dec = UV.extra_keywords['phase_center_dec']*u.rad
-    pointing = du.direction(
-        'HADEC',
-        0.,
-        pt_dec.to_value(u.rad),
-        np.mean(time.mjd)
-    )
-    lamb = c.c/(UV.freq_array*u.Hz)
-    if ra is None:
-        ra = pointing.J2000()[0]*u.rad
-    if dec is None:
-        dec = pointing.J2000()[1]*u.rad
-
-    if dt is not None:
-        extract_times(UV, ra, dt)
-        time = Time(UV.time_array, format='jd')
-
-    # Set antenna positions
-    # This should already be done by the writer but for some reason they
-    # are being converted to ICRS
-    df_itrf = get_itrf(
-        latlon_center=(ct.OVRO_LAT*u.rad, ct.OVRO_LON*u.rad, ct.OVRO_ALT*u.m)
-    )
-    if len(df_itrf['x_m']) != UV.antenna_positions.shape[0]:
-        message = 'Mismatch between antennas in current environment ({0}) and correlator environment ({1}) for file {2}'.format(
-            len(df_itrf['x_m']),
-            UV.antenna_positions.shape[0],
-            fname
-        )
-        if logger is not None:
-            logger.info(message)
-        else:
-            print(message)
-    UV.antenna_positions[:len(df_itrf['x_m'])] = np.array([
-        df_itrf['x_m'],
-        df_itrf['y_m'],
-        df_itrf['z_m']
-    ]).T-UV.telescope_location
-    antenna_positions = UV.antenna_positions + UV.telescope_location
-    blen = np.zeros((UV.Nbls, 3))
-    for i, ant1 in enumerate(UV.ant_1_array[:UV.Nbls]):
-        ant2 = UV.ant_2_array[i]
-        blen[i, ...] = UV.antenna_positions[ant2, :] - \
-            UV.antenna_positions[ant1, :]
-    if fringestop:
-        uvw, phase_model = generate_phase_model_antbased(
-            blen, time.mjd, UV.Nbls, UV.Ntimes, pt_dec,
-            ra, dec, lamb,
-            UV.ant_1_array[:UV.Nbls],
-            UV.ant_2_array[:UV.Nbls]
-        )
-        UV.data_array = UV.data_array/phase_model[..., np.newaxis]
-    else:
-        # TODO: What position are we really pointed at when we don't fringestop?
-        # We should still remove an antenna based term that accounts for the difference
-        # between uvw_m at the true observing time and the reference time used in fringestopping.
-        uvw_m = calc_uvw_blt(
-            blen, time[:UV.Nbls].mjd, 'HADEC',
-            np.zeros(UV.Nbls)*u.rad, np.ones(UV.Nbls)*pt_dec)
-        uvw = np.tile(uvw_m.reshape(1, UV.Nbls, 3), (1, UV.Ntimes, 1)).reshape(UV.Nblts, 3)
-        
-    UV.uvw_array = uvw
-    UV.phase_type = 'phased'
-    UV.phase_center_dec = dec.to_value(u.rad)
-    UV.phase_center_ra = ra.to_value(u.rad)
-    UV.phase_center_epoch = 2000.
-    # Look for missing channels
-    freq = UV.freq_array.squeeze()
-    # The channels may have been reordered by pyuvdata so check that the
-    # parameter UV.channel_width makes sense now.
-    ascending = np.median(np.diff(freq)) > 0
-    if ascending:
-        assert np.all(np.diff(freq) > 0)
-    else:
-        assert np.all(np.diff(freq) < 0)
-        UV.freq_array = UV.freq_array[:, ::-1]
-        UV.data_array = UV.data_array[:, :, ::-1, :]
-        freq = UV.freq_array.squeeze()
-    # TODO: Need to update this for missing on either side as well
-    UV.channel_width = np.abs(UV.channel_width)
-    # Are there missing channels?
-    if not np.all(np.diff(freq)-UV.channel_width < 1e-5):
-        # There are missing channels!
-        nfreq = int(np.rint(np.abs(freq[-1]-freq[0])/UV.channel_width+1))
-        freq_out = freq[0] + np.arange(nfreq)*UV.channel_width
-        existing_idxs = np.rint((freq-freq[0])/UV.channel_width).astype(int)
-        data_out = np.zeros((UV.Nblts, UV.Nspws, nfreq, UV.Npols),
-                            dtype=UV.data_array.dtype)
-        nsample_out = np.zeros((UV.Nblts, UV.Nspws, nfreq, UV.Npols),
-                                dtype=UV.nsample_array.dtype)
-        flag_out = np.zeros((UV.Nblts, UV.Nspws, nfreq, UV.Npols),
-                             dtype=UV.flag_array.dtype)
-        data_out[:, :, existing_idxs, :] = UV.data_array
-        nsample_out[:, :, existing_idxs, :] = UV.nsample_array
-        flag_out[:, :, existing_idxs, :] = UV.flag_array
-        # Now write everything
-        UV.Nfreqs = nfreq
-        UV.freq_array = freq_out[np.newaxis, :]
-        UV.data_array = data_out
-        UV.nsample_array = nsample_out
-        UV.flag_array = flag_out
-
-    if os.path.exists('{0}.fits'.format(msname)):
-        os.remove('{0}.fits'.format(msname))
-
-    UV.write_uvfits('{0}.fits'.format(msname),
-                    spoof_nonessential=True,
-                    run_check_acceptability=False,
-                    strict_uvw_antpos_check=False
-                   )
-    # Get the model to write to the data
-    if flux is not None:
-        fobs = UV.freq_array.squeeze()/1e9
-        lst = UV.lst_array
-        model = amplitude_sky_model(du.src('cal', ra, dec, flux),
-                                    lst, pt_dec, fobs)
-        model = np.tile(model[:, :, np.newaxis], (1, 1, UV.Npols))
-    else:
-        model = np.ones((UV.Nblts, UV.Nfreqs, UV.Npols), dtype=np.complex64)
-
-    if os.path.exists('{0}.ms'.format(msname)):
-        shutil.rmtree('{0}.ms'.format(msname))
-    importuvfits('{0}.fits'.format(msname),
-                 '{0}.ms'.format(msname))
-
-    with table('{0}.ms/ANTENNA'.format(msname), readonly=False) as tb:
-        tb.putcol('POSITION', antenna_positions)
-
-    addImagingColumns('{0}.ms'.format(msname))
-    #if flux is not None:
-    with table('{0}.ms'.format(msname), readonly=False) as tb:
-        tb.putcol('MODEL_DATA', model)
-        tb.putcol('CORRECTED_DATA', tb.getcol('DATA')[:])
-
-def extract_times(UV, ra, dt):
-    """Extracts data from specified times from an already open UVData instance.
-
-    This is an alternative to opening the file with the times specified using
-    pyuvdata.UVData.open().
-
-    Parameters
-    ----------
-    UV : pyuvdata.UVData() instance
-        The UVData instance from which to extract data. Modified in-place.
-    ra : float
-        The ra of the source around which to extract data, in radians.
-    dt : astropy quantity
-        The amount of data to extract, units seconds or equivalent.
-    """
-    lst_min = (ra - (dt*2*np.pi*u.rad/(ct.SECONDS_PER_SIDEREAL_DAY*u.s))/2
-              ).to_value(u.rad)%(2*np.pi)
-    lst_max = (ra + (dt*2*np.pi*u.rad/(ct.SECONDS_PER_SIDEREAL_DAY*u.s))/2
-              ).to_value(u.rad)%(2*np.pi)
-    if lst_min < lst_max:
-        idx_to_extract = np.where((UV.lst_array >= lst_min) &
-                                  (UV.lst_array <= lst_max))[0]
-    else:
-        idx_to_extract = np.where((UV.lst_array >= lst_min) |
-                                  (UV.lst_array <= lst_max))[0]
-    if len(idx_to_extract) == 0:
-        raise ValueError("No times in uvh5 file match requested timespan "
-                         "with duration {0} centered at RA {1}.".format(
-                         dt, ra))
-    idxmin = min(idx_to_extract)
-    idxmax = max(idx_to_extract)+1
-    assert (idxmax-idxmin)%UV.Nbls == 0
-    UV.uvw_array = UV.uvw_array[idxmin:idxmax, ...]
-    UV.data_array = UV.data_array[idxmin:idxmax, ...]
-    UV.time_array = UV.time_array[idxmin:idxmax, ...]
-    UV.lst_array = UV.lst_array[idxmin:idxmax, ...]
-    UV.nsample_array = UV.nsample_array[idxmin:idxmax, ...]
-    UV.flag_array = UV.flag_array[idxmin:idxmax, ...]
-    UV.ant_1_array = UV.ant_1_array[idxmin:idxmax, ...]
-    UV.ant_2_array = UV.ant_2_array[idxmin:idxmax, ...]
-    UV.baseline_array = UV.baseline_array[idxmin:idxmax, ...]
-    UV.integration_time = UV.integration_time[idxmin:idxmax, ...]
-    UV.Nblts = int(idxmax-idxmin)
-    assert UV.data_array.shape[0]==UV.Nblts
-    UV.Ntimes = UV.Nblts//UV.Nbls
