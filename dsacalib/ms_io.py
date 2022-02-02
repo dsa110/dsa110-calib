@@ -13,25 +13,19 @@ import glob
 import os
 import shutil
 import traceback
-
-import astropy.constants as c
+import numpy as np
+import scipy # pylint: disable=unused-import
 import astropy.units as u
 import casatools as cc
-import dsautils.cnf as dsc
-import numpy as np
-from antpos.utils import get_itrf  # pylint: disable=wrong-import-order
-from astropy.utils import iers  # pylint: disable=wrong-import-order
-from casacore.tables import addImagingColumns, table
-from casatasks import importuvfits, virtualconcat
-from dsamfs.fringestopping import calc_uvw_blt
-from dsautils import calstatus as cs
+from casatasks import virtualconcat
+from casacore.tables import table
 from dsautils import dsa_store
-from pyuvdata import UVData
-
-import dsacalib.utils as du
+from dsautils import calstatus as cs
+import dsautils.cnf as dsc
+from dsacalib.uvh5_to_ms import uvh5_to_ms
 from dsacalib import constants as ct
-from dsacalib.fringestopping import amplitude_sky_model
-
+import dsacalib.utils as du
+from astropy.utils import iers # pylint: disable=wrong-import-order
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
 from astropy.time import (
@@ -844,7 +838,6 @@ def reshape_calibration_data(
     return time, vals, flags, ant1, ant2, spw, orig_shape
 
 def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
-
     r"""Copies calibration values from delay and gain tables to etcd.
 
     The dictionary passed to etcd should look like: {"ant_num": <i>,
