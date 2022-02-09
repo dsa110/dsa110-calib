@@ -83,37 +83,59 @@ def phase_visibilities(UV, fringestop=True, phase_ra=None, phase_dec=None):
     blen = get_blen(UV)
     lamb = c.c/(UV.freq_array*u.Hz)
     time = Time(UV.time_array, format='jd')
+    meantime = np.mean(time.mjd)
     pt_dec = UV.extra_keywords['phase_center_dec']*u.rad
+    uvw_m = calc_uvw_blt(
+        blen, np.tile(meantime, (UV.Nbls)), 'HADEC',
+        np.zeros(UV.Nbls)*u.rad, np.tile(pt_dec, (UV.Nbls)))
+
+    if phase_ra is None or phase_dec is None or not fringestop:
+        meridian_ra, meridian_dec = get_meridian_coords(pt_dec, meantime)
 
     if fringestop:
-        assert phase_ra is not None
-        assert phase_dec is not None
-        uvw, phase_model = generate_phase_model_antbased(
-            blen, time.mjd, UV.Nbls, UV.Ntimes, pt_dec,
-            phase_ra, phase_dec, lamb,
-            UV.ant_1_array[:UV.Nbls],
-            UV.ant_2_array[:UV.Nbls]
-        )
+        if phase_ra is None:
+            phase_ra = meridian_ra
+        if phase_dec is None:
+            phase_dec = meridian_dec
+
+        # Calculate uvw coordinates
+        blen = np.tile(blen[np.newaxis, :, :], (UV.Ntimes, 1, 1)).reshape(-1, 3)
+        uvw = calc_uvw_blt(
+            blen, time.mjd, 'RADEC', phase_ra.to(u.rad), phase_dec.to(u.rad))
+
+        # Fringestop and phase
+        phase_model = generate_phase_model_antbased(
+            uvw, uvw_m, UV.Nbls, UV.Ntimes, lamb, UV.ant_1_array[:UV.Nbls],
+            UV.ant_2_array[:UV.Nbls])
         UV.data_array = UV.data_array/phase_model[..., np.newaxis]
+
     else:
-        pointing = du.direction(
-            'HADEC',
-            0.,
-            pt_dec.to_value(u.rad),
-            np.mean(time.mjd)
-        )
-        phase_ra = pointing.J2000()[0]*u.rad
-        phase_dec = pointing.J2000()[1]*u.rad
-        uvw_m = calc_uvw_blt(
-            blen, time[:UV.Nbls].mjd, 'HADEC',
-            np.zeros(UV.Nbls)*u.rad, np.ones(UV.Nbls)*pt_dec)
-        uvw = np.tile(uvw_m.reshape((1, UV.Nbls, 3)), (1, UV.Ntimes, 1)).reshape((UV.Nblts, 3))
+
+        if not coordinates_differ(
+                (meridian_ra, meridian_dec), (phase_ra, phase_dec), tol=1e-7):
+            phase_ra = meridian_ra
+            phase_dec = meridian_dec
+            uvw = np.tile(uvw_m.reshape((1, UV.Nbls, 3)), (1, UV.Ntimes, 1)
+                         ).reshape((UV.Nblts, 3))
+
+        else: # Coordinates differ so we need to change the phase centre
+            uvw = calc_uvw_blt(
+                blen, np.tile(meantime, (UV.Nbls)), 'J2000',
+                np.tile(phase_ra, (UV.Nbls)), np.tile(phase_dec, (UV.Nbls)))
+            phase_model = generate_phase_model_antbased(
+                uvw, uvw_m, UV.Nbls, 1, lamb, UV.ant_1_array[:UV.Nbls],
+                UV.ant_2_array[:UV.Nbls])
+            UV.data_array = UV.data_array/phase_model[..., np.newaxis]
+            uvw = np.tile(uvw.reshape((1, UV.Nbls, 3)),
+                          (1, UV.Ntimes, 1)).reshape((UV.Nblts, 3))
 
     UV.uvw_array = uvw
     UV.phase_type = 'phased'
     UV.phase_center_dec = phase_dec.to_value(u.rad)
     UV.phase_center_ra = phase_ra.to_value(u.rad)
     UV.phase_center_epoch = 2000.
+    UV.phase_center_frame = 'icrs'
+    UV._set_app_coords_helper()
 
 def load_uvh5_file(fname: str, antenna_list: list=None, dt: "astropy.Quantity"=None,
                    phase_ra: "Quantity"=None, phase_dec: "Quantity"=None) -> "UVData":
@@ -132,13 +154,13 @@ def load_uvh5_file(fname: str, antenna_list: list=None, dt: "astropy.Quantity"=N
                 strict_uvw_antpos_check=False)
 
     # Get pointing information
-    time = Time(UV.time_array, format='jd')
+    meantime = Time(np.mean(UV.time_array), format='jd')
     pt_dec = UV.extra_keywords['phase_center_dec']*u.rad
     pointing = du.direction(
         'HADEC',
         0.,
         pt_dec.to_value(u.rad),
-        np.mean(time.mjd)
+        meantime.mjd
     )
 
     if phase_ra is None:
@@ -231,7 +253,7 @@ def get_blen(UV: "UVData") -> "np.ndarray":
     return blen
 
 def fix_descending_missing_freqs(UV: "UVData") -> None:
-    """Flips descending freq arrays, and fills in missing channels."""
+    """Flip descending freq arrays, and fills in missing channels."""
     # Look for missing channels
     freq = UV.freq_array.squeeze()
     # The channels may have been reordered by pyuvdata so check that the
@@ -312,93 +334,70 @@ def set_ms_model_column(msname: str, UV: "UVData", pt_dec: "Quantity", ra: "Quan
         tb.putcol('MODEL_DATA', model)
         tb.putcol('CORRECTED_DATA', tb.getcol('DATA')[:])
 
-def generate_phase_model(blen, mjds, nbls, nts, pt_dec, ra, dec, lamb):
-    """Generates a phase model to apply.
+def coordinates_differ(meridian, phase, tol=1e-7):
+    """Determine if meridian and phase coordinates differ to within tol."""
+    phase_ra, phase_dec = phase
+    meridian_ra, meridian_dec = meridian
+    if (phase_ra is None or
+            np.abs(phase_ra.to_value(u.rad) - meridian_ra.to_value(u.rad)) < tol):
+        if (phase_dec is None or
+                np.abs(phase_dec.to_value(u.rad) - meridian_dec.to_value(u.rad)) < tol):
+            return False
+    return True
+
+def generate_phase_model(uvw, uvw_m, nts, lamb):
+    """Generates a phase model to apply using baseline-based delays.
 
     Parameters
     ----------
-    blen : ndarray(float)
-        The lengths of all baselines, shape (nbls, 3)
-    mjds : array(float)
-        The mjd of every sample, shape (nts*nbls)
-    nbls, nts : int
-        The number of unique baselines, times.
-    pt_dec : astropy quantity
-        The pointing declination of the array.
-    ra, dec : astropy quantities
-        The position to phase to in J2000 RA, DEC
-    """
-    uvw_m = calc_uvw_blt(
-        blen,
-        mjds[:nbls],
-        'HADEC',
-        np.zeros(nbls)*u.rad,
-        np.ones(nbls)*pt_dec
-    )
-    blen = np.tile(
-        blen[np.newaxis, :, :],
-        (nts, 1, 1)
-    ).reshape(-1, 3)
-    uvw = calc_uvw_blt(
-        blen,
-        mjds,
-        'RADEC',
-        ra.to(u.rad),
-        dec.to(u.rad)
-    )
-    dw = (
-        uvw[:, -1] - np.tile(
-            uvw_m[np.newaxis, :, -1],
-            (nts, 1)
-        ).reshape(-1)
-    )*u.m
-    phase_model = np.exp((
-        2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
-    ).to_value(u.dimensionless_unscaled))
-    return uvw, phase_model
-
-def generate_phase_model_antbased(blen, mjds, nbls, nts, pt_dec, ra, dec, lamb, ant1, ant2):
-    """Generates a phase model to apply.
-
-    Parameters
-    ----------
-    blen : ndarray(float)
-        The lengths of all baselines, shape (nbls, 3)
-    mjds : array(float)
-        The mjd of every sample, shape (nts*nbls)
-    nbls, nts : int
-        The number of unique baselines, times.
-    pt_dec : astropy quantity
-        The pointing declination of the array.
-    ra, dec : astropy quantities
-        The position to phase to in J2000 RA, DEC
+    uvw : np.ndarray
+        The uvw coordinates at each time bin (baseline, 3)
+    uvw_m : np.ndarray
+        The uvw coordinates at the meridian, (time, baseline, 3)
+    nts : int
+        The number of unique times.
+    lamb : astropy quantity
+        The observing wavelength of each channel.
     ant1, ant2 : list
-        The antenna indices in order
+        The antenna indices in order.
+
+    Returns:
+    --------
+    np.ndarray
+        The phase model to apply.
     """
-    uvw_m = calc_uvw_blt(
-        blen,
-        mjds[:nbls],
-        'HADEC',
-        np.zeros(nbls)*u.rad,
-        np.ones(nbls)*pt_dec
-    )
+    dw = (uvw[:, -1] - np.tile(uvw_m[np.newaxis, :, -1], (nts, 1, 1)).reshape(-1))*u.m
+    phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
+                         ).to_value(u.dimensionless_unscaled))
+    return phase_model
+
+def generate_phase_model_antbased(uvw, uvw_m, nbls, nts, lamb, ant1, ant2):
+    """Generates a phase model to apply using antenna-based geometric delays.
+
+    Parameters
+    ----------
+    uvw : np.ndarray
+        The uvw coordinates at each time bin (baseline, 3)
+    uvw_m : np.ndarray
+        The uvw coordinates at the meridian, (time, baseline, 3)
+    nbls, nts : int
+        The number of unique baselines, times.
+    lamb : astropy quantity
+        The observing wavelength of each channel.
+    ant1, ant2 : list
+        The antenna indices in order.
+
+    Returns:
+    --------
+    np.ndarray
+        The phase model to apply.
+    """
     # Need ant1 and ant2 to be passed here
     # Need to check that this gets the correct refidxs
     refant = ant1[0]
     refidxs = np.where(ant1 == refant)[0]
     antenna_order = list(ant2[refidxs])
     antenna_w_m = uvw_m[refidxs, -1]
-    blen = np.tile(
-        blen[np.newaxis, :, :],
-        (nts, 1, 1)
-    ).reshape(-1, 3)
-    uvw = calc_uvw_blt(
-        blen,
-        mjds,
-        'RADEC',
-        ra.to(u.rad),
-        dec.to(u.rad)
-    )
     uvw_delays = uvw.reshape((nts, nbls, 3))
     antenna_w = uvw_delays[:, refidxs, -1]
     antenna_dw = antenna_w-antenna_w_m[np.newaxis, :]
@@ -408,7 +407,15 @@ def generate_phase_model_antbased(blen, mjds, nbls, nts, pt_dec, ra, dec, lamb, 
         dw[:, i] = antenna_dw[:, antenna_order.index(a2)] - \
                    antenna_dw[:, antenna_order.index(a1)]
     dw = dw.reshape(-1)*u.m
-    phase_model = np.exp((
-        2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
-    ).to_value(u.dimensionless_unscaled))
-    return uvw, phase_model
+    phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
+                         ).to_value(u.dimensionless_unscaled))
+    return phase_model
+
+def get_meridian_coords(pt_dec, time_mjd):
+    """Get coordinates for the meridian in J2000."""
+    pointing = du.direction(
+        'HADEC', 0., pt_dec.to_value(u.rad), time_mjd)
+    meridian_ra, meridian_dec = pointing.J2000()
+    meridian_ra = meridian_ra*u.rad
+    meridian_dec = meridian_dec*u.rad
+    return meridian_ra, meridian_dec
