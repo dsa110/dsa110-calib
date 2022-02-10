@@ -13,6 +13,7 @@ from pyuvdata import UVData
 from dsautils import dsa_store
 import dsautils.cnf as dsc
 from dsamfs.fringestopping import calc_uvw_blt
+from dsacalib.fringestopping import calc_uvw_interpolate
 from dsacalib import constants as ct
 import dsacalib.utils as du
 from dsacalib.fringestopping import amplitude_sky_model
@@ -73,7 +74,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
 
     set_ms_model_column(msname, UV, pt_dec, ra, dec, flux)
 
-def phase_visibilities(UV, fringestop=True, phase_ra=None, phase_dec=None):
+def phase_visibilities(UV, fringestop=True, phase_ra=None, phase_dec=None, interpolate_uvws=False):
     """Phase a UVData instance.
 
     If fringestop is False, then no phasing is done,
@@ -99,9 +100,14 @@ def phase_visibilities(UV, fringestop=True, phase_ra=None, phase_dec=None):
             phase_dec = meridian_dec
 
         # Calculate uvw coordinates
-        blen = np.tile(blen[np.newaxis, :, :], (UV.Ntimes, 1, 1)).reshape(-1, 3)
-        uvw = calc_uvw_blt(
-            blen, time.mjd, 'RADEC', phase_ra.to(u.rad), phase_dec.to(u.rad))
+        if interpolate_uvws:
+            uvw = calc_uvw_interpolate(
+                blen, time[::UV.Nbls], 'RADEC', phase_ra.to(u.rad), phase_dec.to(u.rad))
+            uvw = uvw.reshape(-1, 3)
+        else:
+            blen = np.tile(blen[np.newaxis, :, :], (UV.Ntimes, 1, 1)).reshape(-1, 3)
+            uvw = calc_uvw_blt(
+                blen, time.mjd, 'RADEC', phase_ra.to(u.rad), phase_dec.to(u.rad))            
 
         # Fringestop and phase
         phase_model = generate_phase_model_antbased(
