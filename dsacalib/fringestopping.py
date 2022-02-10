@@ -108,6 +108,21 @@ def calc_uvw(blen, tobs, src_epoch, src_lon, src_lat, obs='OVRO_MMA'):
         print('Warning: some solutions not found for u, v, w coordinates')
     return bu.T, bv.T, bw.T
 
+def calc_uvw_interpolate(
+        blen: np.ndarray, tobs: "Time array", epoch: str, lon: "Quantity",
+        lat: "Quantity") -> np.ndarray:
+    """Calculate uvw coordinates with linear interpolation."""
+    ntimebins = len(tobs)
+    buvw_start = calc_uvw(blen, tobs.mjd[0], epoch, lon, lat)
+    buvw_start = np.array(buvw_start).T
+
+    buvw_end = calc_uvw(blen, tobs.mjd[-1], epoch, lon, lat)
+    buvw_end = np.array(buvw_end).T
+
+    buvw = buvw_start + ((buvw_end-buvw_start)/(ntimebins-1))*np.arange(ntimebins)[:, np.newaxis, np.newaxis]
+
+    return buvw
+
 @jit(nopython=True)
 def visibility_sky_model_worker(vis_model, bws, famps, f0, spec_idx, fobs):
     """Builds complex sky models.
