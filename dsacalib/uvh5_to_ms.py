@@ -141,7 +141,8 @@ def phase_visibilities(UV, fringestop=True, phase_ra=None, phase_dec=None, inter
     UV.phase_center_ra = phase_ra.to_value(u.rad)
     UV.phase_center_epoch = 2000.
     UV.phase_center_frame = 'icrs'
-    UV._set_app_coords_helper()
+    #if hasattr(UV, )
+    #UV._set_app_coords_helper()
 
 def load_uvh5_file(fname: str, antenna_list: list=None, dt: "astropy.Quantity"=None,
                    phase_ra: "Quantity"=None, phase_dec: "Quantity"=None) -> "UVData":
