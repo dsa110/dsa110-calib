@@ -30,7 +30,7 @@ CORR_PARAMS = CONF.get('corr')
 REFMJD = CONF.get('fringe')['refmjd']
 
 def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
-               flux=None, fringestop=True, logger=None):
+               flux=None, fringestop=True, logger=None, refmjd=REFMJD):
     """
     Converts a uvh5 data to a uvfits file.
 
@@ -66,7 +66,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
 
     antenna_positions = set_antenna_positions(UV, logger)
 
-    phase_visibilities(UV, fringestop, ra, dec)
+    phase_visibilities(UV, ra, dec, fringestop, refmjd=refmjd)
 
     fix_descending_missing_freqs(UV)
 
@@ -74,7 +74,7 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
 
     set_ms_model_column(msname, UV, pt_dec, ra, dec, flux)
 
-def phase_visibilities(UV, fringestop=True, phase_ra=None, phase_dec=None, interpolate_uvws=False):
+def phase_visibilities(UV, phase_ra, phase_dec, fringestop=True, interpolate_uvws=False, refmjd=None):
     """Phase a UVData instance.
 
     If fringestop is False, then no phasing is done,
@@ -84,21 +84,14 @@ def phase_visibilities(UV, fringestop=True, phase_ra=None, phase_dec=None, inter
     blen = get_blen(UV)
     lamb = c.c/(UV.freq_array*u.Hz)
     time = Time(UV.time_array, format='jd')
-    meantime = np.mean(time.mjd)
+    if refmjd is None:
+        refmjd = np.mean(time.mjd)
     pt_dec = UV.extra_keywords['phase_center_dec']*u.rad
     uvw_m = calc_uvw_blt(
-        blen, np.tile(meantime, (UV.Nbls)), 'HADEC',
+        blen, np.tile(refmjd, (UV.Nbls)), 'HADEC',
         np.zeros(UV.Nbls)*u.rad, np.tile(pt_dec, (UV.Nbls)))
 
-    if phase_ra is None or phase_dec is None or not fringestop:
-        meridian_ra, meridian_dec = get_meridian_coords(pt_dec, meantime)
-
     if fringestop:
-        if phase_ra is None:
-            phase_ra = meridian_ra
-        if phase_dec is None:
-            phase_dec = meridian_dec
-
         # Calculate uvw coordinates
         if interpolate_uvws:
             uvw = calc_uvw_interpolate(
@@ -116,24 +109,15 @@ def phase_visibilities(UV, fringestop=True, phase_ra=None, phase_dec=None, inter
         UV.data_array = UV.data_array/phase_model[..., np.newaxis]
 
     else:
-
-        if not coordinates_differ(
-                (meridian_ra, meridian_dec), (phase_ra, phase_dec), tol=1e-7):
-            phase_ra = meridian_ra
-            phase_dec = meridian_dec
-            uvw = np.tile(uvw_m.reshape((1, UV.Nbls, 3)), (1, UV.Ntimes, 1)
-                         ).reshape((UV.Nblts, 3))
-
-        else: # Coordinates differ so we need to change the phase centre
-            uvw = calc_uvw_blt(
-                blen, np.tile(meantime, (UV.Nbls)), 'J2000',
-                np.tile(phase_ra, (UV.Nbls)), np.tile(phase_dec, (UV.Nbls)))
-            phase_model = generate_phase_model_antbased(
-                uvw, uvw_m, UV.Nbls, 1, lamb, UV.ant_1_array[:UV.Nbls],
-                UV.ant_2_array[:UV.Nbls])
-            UV.data_array = UV.data_array/phase_model[..., np.newaxis]
-            uvw = np.tile(uvw.reshape((1, UV.Nbls, 3)),
-                          (1, UV.Ntimes, 1)).reshape((UV.Nblts, 3))
+        uvw = calc_uvw_blt(
+            blen, np.tile(np.mean(time.mjd), (UV.Nbls)), 'J2000',
+            np.tile(phase_ra, (UV.Nbls)), np.tile(phase_dec, (UV.Nbls)))
+        phase_model = generate_phase_model_antbased(
+            uvw, uvw_m, UV.Nbls, 1, lamb, UV.ant_1_array[:UV.Nbls],
+            UV.ant_2_array[:UV.Nbls])
+        UV.data_array = UV.data_array/phase_model[..., np.newaxis]
+        uvw = np.tile(uvw.reshape((1, UV.Nbls, 3)),
+                      (1, UV.Ntimes, 1)).reshape((UV.Nblts, 3))
 
     UV.uvw_array = uvw
     UV.phase_type = 'phased'
@@ -145,11 +129,16 @@ def phase_visibilities(UV, fringestop=True, phase_ra=None, phase_dec=None, inter
     #UV._set_app_coords_helper()
 
 def load_uvh5_file(fname: str, antenna_list: list=None, dt: "astropy.Quantity"=None,
-                   phase_ra: "Quantity"=None, phase_dec: "Quantity"=None) -> "UVData":
+                   phase_ra: "Quantity"=None, phase_dec: "Quantity"=None, phase_time: "Time"=None) -> "UVData":
     """Load specific antennas and times for a uvh5 file.
 
     phase_ra and phase_dec are set here, but the uvh5 file is not phased.
     """
+    if (phase_ra is None and phase_dec is not None) or (phase_ra is not None and phase_dec is None):
+        raise RuntimeError("Only one of phase_ra and phase_dec defined.  Please define both or neither.")
+    if phase_time is not None and phase_ra is not None:
+        raise RuntimeError("Please specific only one of phase_time and phasing direction (phase_ra + phase_dec)")
+
     UV = UVData()
 
     # Read in the data
@@ -161,18 +150,17 @@ def load_uvh5_file(fname: str, antenna_list: list=None, dt: "astropy.Quantity"=N
                 strict_uvw_antpos_check=False)
 
     # Get pointing information
-    meantime = Time(np.mean(UV.time_array), format='jd')
-    pt_dec = UV.extra_keywords['phase_center_dec']*u.rad
-    pointing = du.direction(
-        'HADEC',
-        0.,
-        pt_dec.to_value(u.rad),
-        meantime.mjd
-    )
-
     if phase_ra is None:
+        if phase_time is None:
+            phase_time = Time(np.mean(UV.time_array), format='jd')
+        pt_dec = UV.extra_keywords['phase_center_dec']*u.rad
+        pointing = du.direction(
+            'HADEC',
+            0.,
+            pt_dec.to_value(u.rad),
+            phase_time.mjd)
+
         phase_ra = pointing.J2000()[0]*u.rad
-    if phase_dec is None:
         phase_dec = pointing.J2000()[1]*u.rad
 
     if dt is not None:
