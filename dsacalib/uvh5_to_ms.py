@@ -149,11 +149,12 @@ def load_uvh5_file(fname: str, antenna_list: list=None, dt: "astropy.Quantity"=N
         UV.read(fname, file_type='uvh5', run_check_acceptability=False,
                 strict_uvw_antpos_check=False)
 
+    pt_dec = UV.extra_keywords['phase_center_dec']*u.rad
+
     # Get pointing information
     if phase_ra is None:
         if phase_time is None:
             phase_time = Time(np.mean(UV.time_array), format='jd')
-        pt_dec = UV.extra_keywords['phase_center_dec']*u.rad
         pointing = du.direction(
             'HADEC',
             0.,
