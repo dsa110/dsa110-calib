@@ -41,7 +41,7 @@ def _check_path(fname):
 class Flagger:
     def __init__(self, logger, throw_exceptions):
         self.description = 'Flagging of ms data'
-        self.current_error = (
+        self.error_code = (
             cs.FLAGGING_ERR |
             cs.INV_GAINAMP_P1 |
             cs.INV_GAINAMP_P2 |
@@ -51,6 +51,8 @@ class Flagger:
             cs.INV_DELAY_P2 |
             cs.INV_GAINCALTIME |
             cs.INV_DELAYCALTIME )
+        self.logger = logger
+        self.throw_exceptions = throw_exceptions
 
     def flag(self, msname, bad_uvrange):
         """Flag data in the measurement set."""
@@ -77,22 +79,21 @@ class Flagger:
         """Flag data in the measurement set."""
         try:
             error = self.flag(msname, bad_uvrange)
-        except Exception as exc:
-            status = cs.update(status, current_error)
-            du.exception_logger(logger, self.description, exc, throw_exceptions)
 
-        if error > 0:
-            status = cs.update(status, cs.FLAGGING_ERR)
-            message = 'Non-fatal error occured in flagging on {0}'.format(msname)
-            if logger is not None:
-                logger.warning(message)
-            else:
-                print(message)
+        except Exception as exc:
+            status = cs.update(status, self.error_code)
+            du.exception_logger(self.logger, self.description, exc, self.throw_exceptions)
+
+        else:
+            if error > 0:
+                status = cs.update(status, cs.FLAGGING_ERR)
+                message = 'Non-fatal error occured in flagging on {0}'.format(msname)
+                if logger is not None:
+                    logger.warning(message)
+                else:
+                    print(message)
 
         return status
-
-
-
 
 def calibrate_measurement_set(
     msname, cal, refants, throw_exceptions=True, bad_antennas=None,
