@@ -25,21 +25,42 @@ iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
 from astropy.time import Time # pylint: disable=wrong-import-position
 
-def __init__():
-    return
 
-def _check_path(fname):
-    """Raises an AssertionError if the path `fname` does not exist.
-
-    Parameters
-    ----------
-    fname : str
-        The file to check existence of.
-    """
-    assert os.path.exists(fname), 'File {0} does not exist'.format(fname)
-
-class Flagger:
+class PipelineComponent:
     def __init__(self, logger, throw_exceptions):
+        self.description = 'Pipline component'
+        self.error_code = 0
+        self.nonfatal_error_code = 0
+        self.logger = logger
+        self.throw_exceptions = throw_exceptions
+
+    def target(self):
+        return 0
+
+    def __call__(self, status, *args):
+        """Handle fatal and nonfatal errors."""
+        try:
+            error = self.target(msname, *args)
+
+        except Exception as exc:
+            status = cs.update(status, self.error_code)
+            du.exception_logger(self.logger, self.description, exc, self.throw_exceptions)
+
+        else:
+            if error > 0:
+                status = cs.update(status, self.nonfatal_error_code)
+                message = f'Non-fatal error occured in {self.description} on {msname}'
+                if logger is not None:
+                    logger.warning(message)
+                else:
+                    print(message)
+
+        return status
+
+class Flagger(PipelineComponent):
+    def __init__(self, logger, throw_exceptions):
+        """Describe Flagger and error code if fails."""
+        super.__init__(logger, throw_exceptions)
         self.description = 'Flagging of ms data'
         self.error_code = (
             cs.FLAGGING_ERR |
@@ -51,10 +72,9 @@ class Flagger:
             cs.INV_DELAY_P2 |
             cs.INV_GAINCALTIME |
             cs.INV_DELAYCALTIME )
-        self.logger = logger
-        self.throw_exceptions = throw_exceptions
+        self.nonfatal_error_code = cs.FLAGGING_ERR
 
-    def flag(self, msname, bad_uvrange):
+    def target(self, msname, bad_uvrange):
         """Flag data in the measurement set."""
         dc.reset_flags(msname, datacolumn='data')
         dc.reset_flags(msname, datacolumn='model')
@@ -75,25 +95,118 @@ class Flagger:
 
         flag_pixels(msname)
 
-    def __call__(self, status, msname, bad_uvrange):
-        """Flag data in the measurement set."""
-        try:
-            error = self.flag(msname, bad_uvrange)
+        return error
 
-        except Exception as exc:
-            status = cs.update(status, self.error_code)
-            du.exception_logger(self.logger, self.description, exc, self.throw_exceptions)
+class DelayCalibrator(PipelineComponent):
+    def __init__(self, logger, throw_exceptions):
+        super.__init__(logger, throw_exceptions)
+        self.description = 'delay calibration'
+        self.error_code = (
+            cs.DELAY_CAL_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_DELAY_P1 |
+            cs.INV_DELAY_P2 |
+            cs.INV_GAINCALTIME |
+            cs.INV_DELAYCALTIME )
+        self.nonfatal_error_code = cs.DELAY_CAL_ERR
 
-        else:
-            if error > 0:
-                status = cs.update(status, cs.FLAGGING_ERR)
-                message = 'Non-fatal error occured in flagging on {0}'.format(msname)
-                if logger is not None:
-                    logger.warning(message)
-                else:
-                    print(message)
+    def flag_using_delay_calibration(self, msname, cal, refants, t2):
+        error = 0
+        error += dc.delay_calibration(msname, cal.name, refants=refants, t2=t2)
+        _check_path('{0}_{1}_kcal'.format(msname, cal.name))
+        _times, antenna_delays, kcorr, _ant_nos = dp.plot_antenna_delays(
+            msname, cal.name, show=False)
+        _check_path('{0}_{1}_2kcal'.format(msname, cal.name))
+        error += flag_antennas_using_delays(antenna_delays, kcorr, msname)
+        shutil.rmtree('{0}_{1}_kcal'.format(msname, cal.name))
+        shutil.rmtree('{0}_{1}_2kcal'.format(msname, cal.name))
+        return error
 
-        return status
+    def delay_calibrate(self, msname, cal, refants, t2):
+        error = 0
+        error += dc.delay_calibration(msname, cal.name, refants=refants, t2=t2)
+        _check_path('{0}_{1}_kcal'.format(msname, cal.name))
+        return error
+
+    def target(self, msname, cal, refants, t2):
+        error = 0
+        error += self.flag_using_delay_calibration(msname, cal, refants, t2)
+        error += self.delay_calibrate(msname, cal, refants, t2)
+        return error
+
+class BandpassGainCalibrator(PipelineComponent):
+    def __init__(self, logger, throw_exceptions):
+        super.__init__(logger, throw_exceptions)
+        self.description = 'bandpass and gain calibration'
+        self.error_code = (
+            cs.GAIN_BP_CAL_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_GAINCALTIME)
+        self.nonfatal_error_code = cs.GAIN_BP_CAL_ERR
+
+    def check_tables_created(self, msname, cal, forsystemhealth, keepdelays)
+        fnames = [
+            '{0}_{1}_bcal'.format(msname, cal.name),
+            '{0}_{1}_bacal'.format(msname, cal.name),
+            '{0}_{1}_bpcal'.format(msname, cal.name),
+            '{0}_{1}_gpcal'.format(msname, cal.name),
+            '{0}_{1}_gacal'.format(msname, cal.name)
+        ]
+        if forsystemhealth:
+            fnames += [
+                '{0}_{1}_2gcal'.format(msname, cal.name)
+            ]
+        if not keepdelays and not forsystemhealth:
+            fnames += [
+                '{0}_{1}_bkcal'.format(msname, cal.name)
+            ]
+        for fname in fnames:
+            _check_path(fname)
+
+    def combine_tables(self, msname, cal, forsystemhealth):
+        print('combining bandpass and delay solns')
+        # Combine bandpass solutions and delay solutions
+        with table('{0}_{1}_bacal'.format(msname, cal.name)) as tb:
+            bpass = np.array(tb.CPARAM[:])
+        with table('{0}_{1}_bpcal'.format(msname, cal.name)) as tb:
+            bpass *= np.array(tb.CPARAM[:])
+        if not forsystemhealth:
+            with table('{0}_{1}_bkcal'.format(msname, cal.name)) as tb:
+                bpass = np.array(tb.CPARAM[:])
+        with table(
+            '{0}_{1}_bcal'.format(msname, cal.name),
+            readonly=False
+        ) as tb:
+            tb.putcol('CPARAM', bpass)
+            if not forsystemhealth:
+                tbflag = np.array(tb.FLAG[:])
+                tb.putcol('FLAG', np.zeros(tbflag.shape, tbflag.dtype))
+
+    def target(self, msname, cal, refant, blbased, forsystemhealth, keepdelays,
+               interp_thresh, interp_polyorder, t2):
+        error = 0
+        error += dc.gain_calibration(
+            msname,
+            cal.name,
+            refant,
+            blbased=blbased,
+            forsystemhealth=forsystemhealth,
+            keepdelays=keepdelays,
+            interp_thresh=interp_thresh,
+            interp_polyorder=interp_polyorder,
+            tbeam=t2)
+
+        self.check_tables_created(msname, cal, forsystemhealth, keepdelays)
+
+        self.combine_tables(msname, cal, forsystemhealth)
+
+        return error
 
 def calibrate_measurement_set(
     msname, cal, refants, throw_exceptions=True, bad_antennas=None,
@@ -167,240 +280,35 @@ def calibrate_measurement_set(
     else:
         refant = refants[0]
 
-    print('entered calibration')
     status = 0
-    current_error = cs.UNKNOWN_ERR
-    calstring = 'initialization'
 
-    try:
-        # Remove files that we will create so that things will fail if casa
-        # doesn't write a table.
-        print('removing files')
-        tables_to_remove = [
-            '{0}_{1}_2kcal'.format(msname, cal.name),
-            '{0}_{1}_kcal'.format(msname, cal.name),
-            '{0}_{1}_bkcal'.format(msname, cal.name),
-            '{0}_{1}_gacal'.format(msname, cal.name),
-            '{0}_{1}_gpcal'.format(msname, cal.name),
-            '{0}_{1}_bcal'.format(msname, cal.name)
+    # Remove files that we will create so that things will fail if casa
+    # doesn't write a table.
+    tables_to_remove = [
+        '{0}_{1}_2kcal'.format(msname, cal.name),
+        '{0}_{1}_kcal'.format(msname, cal.name),
+        '{0}_{1}_bkcal'.format(msname, cal.name),
+        '{0}_{1}_gacal'.format(msname, cal.name),
+        '{0}_{1}_gpcal'.format(msname, cal.name),
+        '{0}_{1}_bcal'.format(msname, cal.name)
+    ]
+    if forsystemhealth:
+        tables_to_remove += [
+            '{0}_{1}_2gcal'.format(msname, cal.name)
         ]
-        if forsystemhealth:
-            tables_to_remove += [
-                '{0}_{1}_2gcal'.format(msname, cal.name)
-            ]
-        for path in tables_to_remove:
-            if os.path.exists(path):
-                shutil.rmtree(path)
-        print('flagging of ms data')
-        calstring = "flagging of ms data"
-        current_error = (
-            cs.FLAGGING_ERR |
-            cs.INV_GAINAMP_P1 |
-            cs.INV_GAINAMP_P2 |
-            cs.INV_GAINPHASE_P1 |
-            cs.INV_GAINPHASE_P2 |
-            cs.INV_DELAY_P1 |
-            cs.INV_DELAY_P2 |
-            cs.INV_GAINCALTIME |
-            cs.INV_DELAYCALTIME
-        )
-        print('resetting flags')
-        # Reset flags in the measurement set
-        dc.reset_flags(msname, datacolumn='data')
-        dc.reset_flags(msname, datacolumn='model')
-        dc.reset_flags(msname, datacolumn='corrected')
-        print('flagging baselines')
-        current_error = (
-            cs.FLAGGING_ERR
-        )
-        error = dc.flag_baselines(msname, uvrange=bad_uvrange)
-        if error > 0:
-            message = 'Non-fatal error occured in flagging short baselines of {0}.'.format(msname)
-            if logger is not None:
-                logger.warning(message)
-            else:
-                print(message)
-        print('flagging zeros')
-        error = dc.flag_zeros(msname)
-        if error > 0:
-            message = 'Non-fatal error occured in flagging zeros of {0}.'.format(msname)
-            if logger is not None:
-                logger.warning(message)
-            else:
-                print(message)
-        print('flagging antennas')
-        if bad_antennas is not None:
-            for ant in bad_antennas:
-                error = dc.flag_antenna(msname, ant)
-                if error > 0:
-                    message = 'Non-fatal error occured in flagging ant {0} of {1}.'.format(ant, msname)
-                    if logger is not None:
-                        logger.warning(message)
-                    else:
-                        print(message)
-        if manual_flags is not None:
-            for entry in manual_flags:
-                dc.flag_manual(msname, entry[0], entry[1])
-        print('flagging rfi')
-        flag_pixels(msname)
-        if error > 0:
-            message = 'Non-fatal error occured in flagging bad pixels of {0}.'.format(msname)
-            if logger is not None:
-                logger.warning(message)
-            else:
-                print(message)
-        print('delay cal')
-        # Antenna-based delay calibration
-        calstring = 'delay calibration'
-        current_error = (
-            cs.DELAY_CAL_ERR |
-            cs.INV_GAINAMP_P1 |
-            cs.INV_GAINAMP_P2 |
-            cs.INV_GAINPHASE_P1 |
-            cs.INV_GAINPHASE_P2 |
-            cs.INV_DELAY_P1 |
-            cs.INV_DELAY_P2 |
-            cs.INV_GAINCALTIME |
-            cs.INV_DELAYCALTIME
-        )
-        error = dc.delay_calibration(
-            msname,
-            cal.name,
-            refants=refants,
-            t2=t2
-        )
-        if error > 0:
-            status = cs.update(status, cs.DELAY_CAL_ERR )
-            message = 'Non-fatal error occured in delay calibration of {0}.'.format(msname)
-            if logger is not None:
-                logger.warning(message)
-            else:
-                print(message)
-        _check_path('{0}_{1}_kcal'.format(msname, cal.name))
-        print('flagging based on delay cal')
-        calstring = 'flagging of ms data'
-        current_error = (
-            cs.FLAGGING_ERR |
-            cs.INV_GAINAMP_P1 |
-            cs.INV_GAINAMP_P2 |
-            cs.INV_GAINPHASE_P1 |
-            cs.INV_GAINPHASE_P2 |
-            cs.INV_GAINCALTIME
-        )
-        _times, antenna_delays, kcorr, _ant_nos = dp.plot_antenna_delays(
-            msname, cal.name, show=False)
-        error += flag_antennas_using_delays(antenna_delays, kcorr, msname)
-        if error > 0:
-            status = cs.update(status, cs.FLAGGING_ERR)
-            message = 'Non-fatal error occured in flagging of bad timebins on {0}'.format(msname)
-            if logger is not None:
-                logger.warning(message)
-            else:
-                print(message)
-        try:
-            _check_path('{0}_{1}_2kcal'.format(msname, cal.name))
-        except AssertionError:
-            status = cs.update(status, cs.FLAGGING_ERR)
-            message = 'Non-fatal error occured in flagging of bad timebins on {0}'.format(msname)
-            if logger is not None:
-                logger.warning(message)
-            else:
-                print(message)
-        print('delay cal again')
-        # Antenna-based delay calibration
-        calstring = 'delay calibration'
-        current_error = (
-            cs.DELAY_CAL_ERR |
-            cs.INV_GAINAMP_P1 |
-            cs.INV_GAINAMP_P2 |
-            cs.INV_GAINPHASE_P1 |
-            cs.INV_GAINPHASE_P2 |
-            cs.INV_DELAY_P1 |
-            cs.INV_DELAY_P2 |
-            cs.INV_GAINCALTIME |
-            cs.INV_DELAYCALTIME
-        )
-        shutil.rmtree('{0}_{1}_kcal'.format(msname, cal.name))
-        shutil.rmtree('{0}_{1}_2kcal'.format(msname, cal.name))
-        error = dc.delay_calibration(msname, cal.name, refants=refants, t2=t2)
-        if error > 0:
-            status = cs.update(status, cs.DELAY_CAL_ERR )
-            message = 'Non-fatal error occured in delay calibration ' + \
-                'of {0}.'.format(msname)
-            if logger is not None:
-                logger.warning(message)
-            else:
-                print(message)
-        _check_path('{0}_{1}_kcal'.format(msname, cal.name))
+    for path in tables_to_remove:
+        if os.path.exists(path):
+            shutil.rmtree(path)
 
-        print('bandpass and gain cal')
-        calstring = 'bandpass and gain calibration'
-        current_error = (
-            cs.GAIN_BP_CAL_ERR |
-            cs.INV_GAINAMP_P1 |
-            cs.INV_GAINAMP_P2 |
-            cs.INV_GAINPHASE_P1 |
-            cs.INV_GAINPHASE_P2 |
-            cs.INV_GAINCALTIME
-        )
+    flagger = Flagger(logger, throw_exceptions)
+    delaycal = DelayCalibrator(logger, throw_exceptions)
+    gaincal = BandpassGainCalibrator(logger, throw_exceptions)
 
-        error = dc.gain_calibration(
-            msname,
-            cal.name,
-            refant,
-            blbased=blbased,
-            forsystemhealth=forsystemhealth,
-            keepdelays=keepdelays,
-            interp_thresh=interp_thresh,
-            interp_polyorder=interp_polyorder,
-            tbeam=t2
-        )
-        if error > 0:
-            status = cs.update(status, cs.GAIN_BP_CAL_ERR)
-            message = 'Non-fatal error occured in gain/bandpass calibration of {0}.'.format(msname)
-            if logger is not None:
-                logger.warning(message)
-            else:
-                print(message)
-        fnames = [
-            '{0}_{1}_bcal'.format(msname, cal.name),
-            '{0}_{1}_bacal'.format(msname, cal.name),
-            '{0}_{1}_bpcal'.format(msname, cal.name),
-            '{0}_{1}_gpcal'.format(msname, cal.name),
-            '{0}_{1}_gacal'.format(msname, cal.name)
-        ]
-        if forsystemhealth:
-            fnames += [
-                '{0}_{1}_2gcal'.format(msname, cal.name)
-            ]
-        if not keepdelays and not forsystemhealth:
-            fnames += [
-                '{0}_{1}_bkcal'.format(msname, cal.name)
-            ]
-        for fname in fnames:
-            _check_path(fname)
-        print('combining bandpass and delay solns')
-        # Combine bandpass solutions and delay solutions
-        with table('{0}_{1}_bacal'.format(msname, cal.name)) as tb:
-            bpass = np.array(tb.CPARAM[:])
-        with table('{0}_{1}_bpcal'.format(msname, cal.name)) as tb:
-            bpass *= np.array(tb.CPARAM[:])
-        if not forsystemhealth:
-            with table('{0}_{1}_bkcal'.format(msname, cal.name)) as tb:
-                bpass = np.array(tb.CPARAM[:])
-        with table(
-            '{0}_{1}_bcal'.format(msname, cal.name),
-            readonly=False
-        ) as tb:
-            tb.putcol('CPARAM', bpass)
-            if not forsystemhealth:
-                tbflag = np.array(tb.FLAG[:])
-                tb.putcol('FLAG', np.zeros(tbflag.shape, tbflag.dtype))
+    status = flagger(status, msname, bad_uvrange)
+    status = delaycal(status, msname, cal, refants, t2)
+    status = gaincal(status, msname, cal, refant, blbased, forsystemhealth,
+                     keepdelays, interp_thresh, interp_polyorder, t2)
 
-    except Exception as exc:
-        status = cs.update(status, current_error)
-        du.exception_logger(logger, calstring, exc, throw_exceptions)
-    print('end of cal routine')
     return status
 
 def cal_in_datetime(dt, transit_time, duration=5*u.min, filelength=15*u.min):
@@ -531,3 +439,13 @@ def get_files_for_cal(
                 'files': transit_files
             }
     return filenames
+
+def _check_path(fname):
+    """Raises an AssertionError if the path `fname` does not exist.
+
+    Parameters
+    ----------
+    fname : str
+        The file to check existence of.
+    """
+    assert os.path.exists(fname), 'File {0} does not exist'.format(fname)
