@@ -107,7 +107,7 @@ def calibrate_file(calname, flist):
         date=date,
         files=filenames[date][calname]['files'],
         duration=CALTIME,
-        antenna_list=ANTENNAS_IN_MS,
+        # antenna_list=ANTENNAS_IN_MS,
         logger=LOGGER,
         msdir=MSDIR
     )

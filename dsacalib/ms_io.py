@@ -979,7 +979,7 @@ def convert_calibrator_pass_to_ms(
             print(message)
         except (ValueError, IndexError) as exception:
             tbmsg = ''.join(traceback.format_tb(exception.__traceback__))
-            message = f'No data for {date} transit on {calname}. Error {type(exception).__name__}. Traceback: {tbmsg}'
+            message = f'No data for {date} transit on {cal.name}. Error {type(exception).__name__}. Traceback: {tbmsg}'
             if logger is not None:
                 logger.info(message)
             print(message)
