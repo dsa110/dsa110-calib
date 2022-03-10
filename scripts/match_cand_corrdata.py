@@ -18,11 +18,9 @@ for file in glob.iglob('/media/ubuntu/data/dsa110/T3/*/[0-9][0-9][0-9][0-9][0-9]
     with open(file) as f:
         data = json.load(f)
     if data.get('save', False):
-        df = pandas.concat([
-            df,
-            pandas.DataFrame(dict({
-                k: [v] for k, v in data.items()}))
-        ])
+        print(f'saving correlated data for {file}')
+        df = pandas.concat(
+            [df, pandas.DataFrame(dict({k: [v] for k, v in data.items()}))], sort=True)
 
 corrfiles_cands = {}
 for index, row in df.iterrows():
