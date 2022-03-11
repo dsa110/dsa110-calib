@@ -12,17 +12,20 @@ Routines to interact w/ fits visibilities recorded by DSA-10.
 # TODO: Replace to_deg w/ astropy versions
 
 import warnings
-import numpy as np
-from dsacalib import constants as ct
-from dsacalib.utils import get_autobl_indices
+
 # pylint will complain about this, but iers.conf.iers_auto_url_mirror must be
 # set before astropy.time.Time is imported.
 import astropy.io.fits as pf
 import astropy.units as u
+import numpy as np
 from astropy.utils import iers
+
+from dsacalib import constants as ct
+from dsacalib.utils import get_autobl_indices
+
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=wrong-import-position
+from astropy.time import Time  # pylint: disable=wrong-import-position
 
 warnings.warn(
     "the fits_io module is deprecated and will be removed in v2.0.0",

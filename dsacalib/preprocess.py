@@ -2,18 +2,20 @@
 
 Prepares hdf5 files written by dsa-meridian-fs for conversion to ms.
 """
-import re
 import os
+import re
 import shutil
 import subprocess
 from urllib.request import urlretrieve
-import pandas
-from pkg_resources import resource_filename, resource_exists
-import numpy as np
+
 import astropy.units as u
-from pyuvdata import UVData
-import dsautils.dsa_syslog as dsl
 import dsautils.cnf as cnf
+import dsautils.dsa_syslog as dsl
+import numpy as np
+import pandas
+from pkg_resources import resource_exists, resource_filename
+from pyuvdata import UVData
+
 import dsacalib.constants as ct
 from dsacalib.fringestopping import pb_resp
 

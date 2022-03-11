@@ -5,18 +5,21 @@ Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 
 Routines to interact w/ hdf5 visibilities recorded by DSA-110.
 """
-# Always import scipy before importing casatools.
-import numpy as np
-import h5py
-from antpos.utils import get_baselines
 # pylint will complain about this, but iers.conf.iers_auto_url_mirror must be
 # set before astropy.time.Time is imported.
 import astropy.units as u
-from dsacalib import constants as ct
+import h5py
+# Always import scipy before importing casatools.
+import numpy as np
+from antpos.utils import get_baselines
 from astropy.utils import iers
+
+from dsacalib import constants as ct
+
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=wrong-import-position
+from astropy.time import Time  # pylint: disable=wrong-import-position
+
 
 def read_hdf5_file(
     fl, source=None, dur=50*u.min, autocorrs=True, badants=None, quiet=True

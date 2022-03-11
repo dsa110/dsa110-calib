@@ -1,18 +1,21 @@
 """Routines for calculating and plotting SEFD measurements.
 """
 
-import os
 import glob
-import numpy as np
-import matplotlib.pyplot as plt
+import os
+
 import astropy.units as u
-from scipy.optimize import curve_fit
-from casacore.tables import table
 import casatools as cc
+import matplotlib.pyplot as plt
+import numpy as np
+from casacore.tables import table
 from dsautils import cnf
-from dsacalib.calib import apply_delay_bp_cal, apply_calibration_tables
-from dsacalib.ms_io import extract_vis_from_ms, read_caltable, get_antenna_gains
+from scipy.optimize import curve_fit
+
+from dsacalib.calib import apply_calibration_tables, apply_delay_bp_cal
 from dsacalib.fringestopping import amplitude_sky_model
+from dsacalib.ms_io import (extract_vis_from_ms, get_antenna_gains,
+                            read_caltable)
 
 MYCONF = cnf.Conf()
 CALPARAMS = MYCONF.get('cal')
