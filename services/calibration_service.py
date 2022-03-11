@@ -21,9 +21,11 @@ from dsacalib.calib import calibrate_phase_single_ms
 from dsacalib.routines import get_files_for_cal, calibrate_measurement_set
 from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd
 from dsacalib.hdf5_io import extract_applied_delays
-from dsacalib.weights import write_beamformer_solutions, average_beamformer_solutions, filter_beamformer_solutions, get_good_solution
+from dsacalib.weights import write_beamformer_solutions, average_beamformer_solutions, filter_beamformer_solutions, get_good_solution, \
+    consistent_correlator
 from dsacalib.plotting import summary_plot, plot_bandpass_phases, \
     plot_beamformer_weights
+
 import matplotlib
 matplotlib.use('Agg')
 import matplotlib.pyplot as plt
@@ -224,6 +226,11 @@ def calibrate_file(calname, flist):
 
     # Average beamformer solutions
     if len(beamformer_names) > 0:
+        print('checking reference gains')
+        bfweights_ref = etcd.get_dict('/mon/cal/bfweights')
+        if consistent_correlator(bfweights_ref, latest_solutions['cal_solutions']):
+            beamformer_names.append(bfweights_ref['bfname'])
+
         print('averaging beamformer weights')
         averaged_files, avg_flags = average_beamformer_solutions(
             beamformer_names,
@@ -268,6 +275,7 @@ def calibrate_file(calname, flist):
             print('writing bf weights')
             _ = yaml.dump(latest_solns, file)
         latest_solns['cal_solutions']['time'] = ttime.mjd
+        latest_solns['cal_solutions']['bfname'] = ttime.isot
         etcd.put_dict(
             '/mon/cal/bfweights',
             {
