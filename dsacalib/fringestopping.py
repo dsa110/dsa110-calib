@@ -7,14 +7,16 @@ models, and fringestop visibilities.
 
 """
 
-# always import scipy before importing casatools
-from scipy.special import j1
+import astropy.units as u
 import casatools as cc
 import numpy as np
-from numba import jit
-import astropy.units as u
 from astropy.coordinates.angle_utilities import angular_separation
+from numba import jit
+# always import scipy before importing casatools
+from scipy.special import j1
+
 from dsacalib import constants as ct
+
 
 def calc_uvw(blen, tobs, src_epoch, src_lon, src_lat, obs='OVRO_MMA'):
     """Calculates uvw coordinates.

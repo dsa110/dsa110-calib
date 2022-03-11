@@ -1,15 +1,17 @@
 import glob
 import os
-import yaml
-import numpy as np
-import matplotlib.pyplot as plt
+
 import astropy.units as u
+import matplotlib.pyplot as plt
+import numpy as np
+import yaml
 from antpos.utils import get_itrf
 from casacore.tables import table
 from dsautils import cnf
+
 import dsacalib.constants as ct
 from dsacalib.fringestopping import calc_uvw
-from dsacalib.ms_io import read_caltable, get_antenna_gains, get_delays
+from dsacalib.ms_io import get_antenna_gains, get_delays, read_caltable
 
 CONF = cnf.Conf()
 

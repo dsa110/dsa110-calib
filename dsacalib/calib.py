@@ -7,13 +7,16 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 
 """
 import os
-# Always import scipy before casatools
-from scipy.fftpack import fft, fftshift, fftfreq
-from scipy.signal import medfilt
-import numpy as np
+
 import casatools as cc
+import numpy as np
 from casacore.tables import table
+# Always import scipy before casatools
+from scipy.fftpack import fft, fftfreq, fftshift
+from scipy.signal import medfilt
+
 from dsacalib.ms_io import read_caltable
+
 
 def delay_calibration_worker(msname, sourcename, refant, t, combine_spw, name):
     r"""Calibrates delays using CASA.

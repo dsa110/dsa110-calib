@@ -1,9 +1,10 @@
 """Dedisperse a measurement set.
 """
-import numpy as np
-from numba import jit
-from casacore.tables import table
 import astropy.units as u
+import numpy as np
+from casacore.tables import table
+from numba import jit
+
 from dsacalib.ms_io import extract_vis_from_ms
 
 # Same as tempo2
