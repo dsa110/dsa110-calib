@@ -100,19 +100,23 @@ def get_bfnames(select=None):
         return bfnames
 
 
-def read_gains(bfnames, selectants=ANTENNAS):
+def read_gains(bfnames, selectants=ANTENNAS, path=None):
     """Reads gain for each of the data files in bfnames.
     Returns gain array with same length as bfnames.
+    path can overload the location of files assumed etcd value.
     """
     gains = np.zeros(
         (len(bfnames), len(ANTENNAS), len(CORR_LIST), 48, 2), dtype=np.complex
     )
 
+    if path is None:
+        path = BEAMFORMER_DIR
+
     for i, beamformer_name in enumerate(bfnames):
         for corridx, corr in enumerate(CORR_LIST):
             with open(
                 "{0}/beamformer_weights_corr{1:02d}_{2}.dat".format(
-                    BEAMFORMER_DIR, corr, beamformer_name
+                    path, corr, beamformer_name
                 ),
                 "rb",
             ) as f:
@@ -238,8 +242,10 @@ def find_good_solutions(
     return keep
 
 
-def show_gains(bfnames, gains, keep, selectcore=True):
-    """Given bfnames and gains, plot the good gains."""
+def show_gains(bfnames, gains, keep, selectcore=True, ret=False, show=True):
+    """Given bfnames and gains, plot the good gains.
+    Default uses mpl show. Optionally can return figure with ret=True.
+    """
 
     if selectcore:
         ants = ANTENNAS_CORE
@@ -257,7 +263,7 @@ def show_gains(bfnames, gains, keep, selectcore=True):
     ny = nants // nx
     if nants % nx > 0:
         ny += 1
-    _, ax = plt.subplots(ny, nx, figsize=(3 * nx, 4 * ny), sharex=True, sharey=True)
+    fig, ax = plt.subplots(ny, nx, figsize=(3 * nx, 4 * ny), sharex=True, sharey=True)
     ax[0, 0].set_yticks(np.arange(len(keep)))
 
     for axi in ax[0, :]:
@@ -276,7 +282,11 @@ def show_gains(bfnames, gains, keep, selectcore=True):
         )
         ax[i].annotate("{0}".format(ants[i]), (0, 1), xycoords="axes fraction")
         ax[i].set_xlabel("Frequency channel")
-    plt.show()
+
+    if show:
+        plt.show()
+    if ret:
+        return fig
 
 
 def calc_eastings(antennas):
