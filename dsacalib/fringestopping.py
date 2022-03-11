@@ -12,13 +12,14 @@ import casatools as cc
 import numpy as np
 from astropy.coordinates.angle_utilities import angular_separation
 from numba import jit
+
 # always import scipy before importing casatools
 from scipy.special import j1
 
 from dsacalib import constants as ct
 
 
-def calc_uvw(blen, tobs, src_epoch, src_lon, src_lat, obs='OVRO_MMA'):
+def calc_uvw(blen, tobs, src_epoch, src_lon, src_lat, obs="OVRO_MMA"):
     """Calculates uvw coordinates.
 
     Uses CASA to calculate the u,v,w coordinates of the baselines `b` towards a
@@ -64,7 +65,6 @@ def calc_uvw(blen, tobs, src_epoch, src_lon, src_lat, obs='OVRO_MMA'):
     bv = np.zeros((nt, nb))
     bw = np.zeros((nt, nb))
 
-
     # Define the reference frame
     me = cc.measures()
     qa = cc.quanta()
@@ -77,37 +77,45 @@ def calc_uvw(blen, tobs, src_epoch, src_lon, src_lat, obs='OVRO_MMA'):
         assert src_lat.shape[0] == nt
         direction_set = False
     else:
-        if (src_epoch == 'HADEC') and (nt > 1):
-            raise TypeError('HA and DEC must be specified at each time in '
-                            +'tobs.')
-        me.doframe(me.direction(src_epoch,
-                                qa.quantity(src_lon.to_value(u.deg), 'deg'),
-                                qa.quantity(src_lat.to_value(u.deg), 'deg')))
+        if (src_epoch == "HADEC") and (nt > 1):
+            raise TypeError("HA and DEC must be specified at each time in " + "tobs.")
+        me.doframe(
+            me.direction(
+                src_epoch,
+                qa.quantity(src_lon.to_value(u.deg), "deg"),
+                qa.quantity(src_lat.to_value(u.deg), "deg"),
+            )
+        )
         direction_set = True
 
     contains_nans = False
 
     for i in range(nt):
-        me.doframe(me.epoch('UTC', qa.quantity(tobs[i], 'd')))
+        me.doframe(me.epoch("UTC", qa.quantity(tobs[i], "d")))
         if not direction_set:
-            me.doframe(me.direction(src_epoch,
-                                    qa.quantity(src_lon[i].to_value(u.deg),
-                                                'deg'),
-                                    qa.quantity(src_lat[i].to_value(u.deg),
-                                                'deg')))
+            me.doframe(
+                me.direction(
+                    src_epoch,
+                    qa.quantity(src_lon[i].to_value(u.deg), "deg"),
+                    qa.quantity(src_lat[i].to_value(u.deg), "deg"),
+                )
+            )
         for j in range(nb):
-            bl = me.baseline('itrf', qa.quantity(blen[j, 0], 'm'),
-                             qa.quantity(blen[j, 1], 'm'),
-                             qa.quantity(blen[j, 2], 'm'))
+            bl = me.baseline(
+                "itrf",
+                qa.quantity(blen[j, 0], "m"),
+                qa.quantity(blen[j, 1], "m"),
+                qa.quantity(blen[j, 2], "m"),
+            )
             # Get the uvw coordinates
             try:
-                uvw = me.touvw(bl)[1]['value']
+                uvw = me.touvw(bl)[1]["value"]
                 bu[i, j], bv[i, j], bw[i, j] = uvw[0], uvw[1], uvw[2]
             except KeyError:
                 contains_nans = True
                 bu[i, j], bv[i, j], bw[i, j] = np.nan, np.nan, np.nan
     if contains_nans:
-        print('Warning: some solutions not found for u, v, w coordinates')
+        print("Warning: some solutions not found for u, v, w coordinates")
     return bu.T, bv.T, bw.T
 
 def calc_uvw_interpolate(
@@ -151,8 +159,12 @@ def visibility_sky_model_worker(vis_model, bws, famps, f0, spec_idx, fobs):
         The central frequency of each channel of the visibilities, in GHz.
     """
     for i in range(bws.shape[0]):
-        vis_model += famps[i, ...]*((fobs/f0)**(spec_idx))* \
-            np.exp(2j*np.pi/ct.C_GHZ_M*fobs*bws[i, ...])
+        vis_model += (
+            famps[i, ...]
+            * ((fobs / f0) ** (spec_idx))
+            * np.exp(2j * np.pi / ct.C_GHZ_M * fobs * bws[i, ...])
+        )
+
 
 def _py_visibility_sky_model_worker(vis_model, bws, famps, f0, spec_idx, fobs):
     """Builds complex sky models.
@@ -179,8 +191,12 @@ def _py_visibility_sky_model_worker(vis_model, bws, famps, f0, spec_idx, fobs):
         The central frequency of each channel of the visibilities, in GHz.
     """
     for i in range(bws.shape[0]):
-        vis_model += famps[i, ...]*((fobs/f0)**(spec_idx))* \
-            np.exp(2j*np.pi/ct.C_GHZ_M*fobs*bws[i, ...])
+        vis_model += (
+            famps[i, ...]
+            * ((fobs / f0) ** (spec_idx))
+            * np.exp(2j * np.pi / ct.C_GHZ_M * fobs * bws[i, ...])
+        )
+
 
 def set_dimensions(fobs=None, tobs=None, blen=None):
     """Sets the dimensions of arrays for fringestopping.
@@ -241,8 +257,8 @@ def set_dimensions(fobs=None, tobs=None, blen=None):
         to_return += [blen]
     return to_return
 
-def visibility_sky_model(vis_shape, vis_dtype, blen, sources, tobs, fobs, lst,
-                         pt_dec):
+
+def visibility_sky_model(vis_shape, vis_dtype, blen, sources, tobs, fobs, lst, pt_dec):
     """Calculates the sky model visibilities.
 
     Calculates the sky model visibilities on the baselines `b` and at times
@@ -285,15 +301,14 @@ def visibility_sky_model(vis_shape, vis_dtype, blen, sources, tobs, fobs, lst,
     for i, src in enumerate(sources):
         _, _, bw = calc_uvw(blen, tobs, src.epoch, src.ra, src.dec)
         bws[i, :, :, 0, 0] = bw
-        famps[i, 0, :, :, 0] = src.I*pb_resp(lst, pt_dec,
-                                             src.ra.to_value(u.rad),
-                                             src.dec.to_value(u.rad),
-                                             fobs.squeeze())
+        famps[i, 0, :, :, 0] = src.I * pb_resp(
+            lst, pt_dec, src.ra.to_value(u.rad), src.dec.to_value(u.rad), fobs.squeeze()
+        )
     # Calculate the sky model using jit
     vis_model = np.zeros(vis_shape, dtype=vis_dtype)
-    visibility_sky_model_worker(vis_model, bws, famps, ct.F0, ct.SPEC_IDX,
-                                fobs)
+    visibility_sky_model_worker(vis_model, bws, famps, ct.F0, ct.SPEC_IDX, fobs)
     return vis_model
+
 
 def fringestop(vis, blen, source, tobs, fobs, pt_dec, return_model=False):
     """Fringestops on a source.
@@ -330,18 +345,20 @@ def fringestop(vis, blen, source, tobs, fobs, pt_dec, return_model=False):
     fobs, tobs, blen = set_dimensions(fobs, tobs, blen)
     _, _, bw = calc_uvw(blen, tobs, source.epoch, source.ra, source.dec)
     # note that the time shouldn't matter below
-    _, _, bwp = calc_uvw(blen, tobs[len(tobs)//2], 'HADEC', 0.*u.rad,
-                         pt_dec*u.rad)
+    _, _, bwp = calc_uvw(
+        blen, tobs[len(tobs) // 2], "HADEC", 0.0 * u.rad, pt_dec * u.rad
+    )
     bw = bw - bwp
-    vis_model = np.exp(2j*np.pi/ct.C_GHZ_M*fobs* \
-                       bw[..., np.newaxis, np.newaxis])
+    vis_model = np.exp(2j * np.pi / ct.C_GHZ_M * fobs * bw[..., np.newaxis, np.newaxis])
     vis /= vis_model
     if return_model:
         return vis_model
     return
 
-def divide_visibility_sky_model(vis, blen, sources, tobs, fobs, lst, pt_dec,
-                                return_model=False):
+
+def divide_visibility_sky_model(
+    vis, blen, sources, tobs, fobs, lst, pt_dec, return_model=False
+):
     """Calculates and applies the sky model visibilities.
 
     Calculates the sky model visibilities on the baselines `blen` and at times
@@ -377,15 +394,18 @@ def divide_visibility_sky_model(vis, blen, sources, tobs, fobs, lst, pt_dec,
         The modelled visibilities, dimensions (baselines, time, frequency,
         polarization). Returned only if `return_model` is set to True.
     """
-    vis_model = visibility_sky_model(vis.shape, vis.dtype, blen, sources, tobs,
-                                     fobs, lst, pt_dec)
+    vis_model = visibility_sky_model(
+        vis.shape, vis.dtype, blen, sources, tobs, fobs, lst, pt_dec
+    )
     vis /= vis_model
     if return_model:
         return vis_model
     return
 
-def complex_sky_model(source, ant_ra, pt_dec, fobs, tobs, blen, dish_dia=4.65,
-                      spind=0.7, pointing_ra=None):
+
+def complex_sky_model(
+    source, ant_ra, pt_dec, fobs, tobs, blen, dish_dia=4.65, spind=0.7, pointing_ra=None
+):
     """Computes the complex sky model, taking into account pointing errors.
 
     Use when the pointing error is large enough to introduce a phase error in
@@ -425,18 +445,20 @@ def complex_sky_model(source, ant_ra, pt_dec, fobs, tobs, blen, dish_dia=4.65,
     raise NotImplementedError
     if pointing_ra is None:
         pointing_ra = ant_ra
-    model_amplitude = amplitude_sky_model(source, ant_ra, pt_dec, fobs,
-                                          dish_dia=dish_dia, spind=spind)
+    model_amplitude = amplitude_sky_model(
+        source, ant_ra, pt_dec, fobs, dish_dia=dish_dia, spind=spind
+    )
     fobs, tobs, blen = set_dimensions(fobs, tobs, blen)
     _, _, bw = calc_uvw(blen, tobs, source.epoch, source.ra, source.dec)
-    _, _, bwp = calc_uvw(blen, tobs, 'RADEC', pointing_ra*u.rad, pt_dec*u.rad)
+    _, _, bwp = calc_uvw(blen, tobs, "RADEC", pointing_ra * u.rad, pt_dec * u.rad)
     bw = bw - bwp
-    model_phase = np.exp(2j*np.pi/ct.C_GHZ_M*fobs*
-                         bw[..., np.newaxis, np.newaxis])
-    return model_amplitude*model_phase
+    model_phase = np.exp(
+        2j * np.pi / ct.C_GHZ_M * fobs * bw[..., np.newaxis, np.newaxis]
+    )
+    return model_amplitude * model_phase
 
-def amplitude_sky_model(source, ant_ra, pt_dec, fobs, dish_dia=4.65,
-                        spind=0.7):
+
+def amplitude_sky_model(source, ant_ra, pt_dec, fobs, dish_dia=4.65, spind=0.7):
     """Computes the amplitude sky model due to the primary beam.
 
     Computes the amplitude sky model for a single source due to the primary
@@ -466,10 +488,19 @@ def amplitude_sky_model(source, ant_ra, pt_dec, fobs, dish_dia=4.65,
         The calculated amplitude sky model.
     """
     # Should add spectral index
-    return source.I*(fobs/1.4)**(-spind)*pb_resp(
-        ant_ra, pt_dec, source.ra.to_value(u.rad), source.dec.to_value(u.rad),
-        fobs, dish_dia
+    return (
+        source.I
+        * (fobs / 1.4) ** (-spind)
+        * pb_resp(
+            ant_ra,
+            pt_dec,
+            source.ra.to_value(u.rad),
+            source.dec.to_value(u.rad),
+            fobs,
+            dish_dia,
+        )
     )
+
 
 def pb_resp_uniform_ill(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.65):
     """Computes the primary beam response towards a direction on the sky.
@@ -499,10 +530,14 @@ def pb_resp_uniform_ill(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.65):
         The primary beam response, dimensions (`ant_ra`, `freq`).
     """
     dis = angular_separation(ant_ra, ant_dec, src_ra, src_dec)
-    lam = 0.299792458/freq
-    pb = (2.0*j1(np.pi*dis[:, np.newaxis]*dish_dia/lam)/ \
-          (np.pi*dis[:, np.newaxis]*dish_dia/lam))**2
+    lam = 0.299792458 / freq
+    pb = (
+        2.0
+        * j1(np.pi * dis[:, np.newaxis] * dish_dia / lam)
+        / (np.pi * dis[:, np.newaxis] * dish_dia / lam)
+    ) ** 2
     return pb
+
 
 def pb_resp(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.34):
     """Computes the primary beam response towards a direction on the sky.
@@ -534,9 +569,9 @@ def pb_resp(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.34):
     """
     dis = np.array(angular_separation(ant_ra, ant_dec, src_ra, src_dec))
     if dis.ndim > 0 and dis.shape[0] > 1:
-        dis = dis[:, np.newaxis] # prepare for broadcasting
+        dis = dis[:, np.newaxis]  # prepare for broadcasting
 
-    lam = 0.299792458/freq
-    arg = 1.2*dis*dish_dia/lam
-    pb = (np.cos(np.pi*arg)/(1-4*arg**2))**2
+    lam = 0.299792458 / freq
+    arg = 1.2 * dis * dish_dia / lam
+    pb = (np.cos(np.pi * arg) / (1 - 4 * arg**2)) ** 2
     return pb
