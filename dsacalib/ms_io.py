@@ -35,8 +35,9 @@ from dsacalib.fringestopping import amplitude_sky_model
 
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import \
-    Time  # pylint: disable=wrong-import-position wrong-import-order
+from astropy.time import (
+    Time,
+)  # pylint: disable=wrong-import-position wrong-import-order
 
 de = dsa_store.DsaStore()
 
@@ -190,9 +191,29 @@ def convert_calibrator_pass_to_ms(
             logger.info(message)
         print(message)
 
-def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
-                freq, deltafreq, freqresolution, nchannels, integrationtime,
-                obstm, dt, source, stoptime, autocorr, fullpol):
+def simulate_ms(
+    ofile,
+    tname,
+    anum,
+    xx,
+    yy,
+    zz,
+    diam,
+    mount,
+    pos_obs,
+    spwname,
+    freq,
+    deltafreq,
+    freqresolution,
+    nchannels,
+    integrationtime,
+    obstm,
+    dt,
+    source,
+    stoptime,
+    autocorr,
+    fullpol,
+):
     """Simulates a measurement set with cross-correlations only.
 
     WARNING: Not simulating autocorrelations correctly regardless of inclusion
@@ -248,8 +269,8 @@ def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
         dishdiameter=diam,
         mount=mount,
         antname=anum,
-        coordsystem='global',
-        referencelocation=pos_obs
+        coordsystem="global",
+        referencelocation=pos_obs,
     )
     sm.setspwindow(
         spwname=spwname,
@@ -257,29 +278,41 @@ def simulate_ms(ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname,
         deltafreq=deltafreq,
         freqresolution=freqresolution,
         nchannels=nchannels,
-        stokes='XX XY YX YY' if fullpol else 'XX YY'
+        stokes="XX XY YX YY" if fullpol else "XX YY",
     )
     sm.settimes(
         integrationtime=integrationtime,
         usehourangle=False,
-        referencetime=me.epoch('utc', qa.quantity(obstm-dt, 'd'))
+        referencetime=me.epoch("utc", qa.quantity(obstm - dt, "d")),
     )
     sm.setfield(
         sourcename=source.name,
         sourcedirection=me.direction(
             source.epoch,
-            qa.quantity(source.ra.to_value(u.rad), 'rad'),
-            qa.quantity(source.dec.to_value(u.rad), 'rad')
-        )
+            qa.quantity(source.ra.to_value(u.rad), "rad"),
+            qa.quantity(source.dec.to_value(u.rad), "rad"),
+        ),
     )
     sm.setauto(autocorrwt=1.0 if autocorr else 0.0)
-    sm.observe(source.name, spwname, starttime='0s', stoptime=stoptime)
+    sm.observe(source.name, spwname, starttime="0s", stoptime=stoptime)
     sm.close()
 
-def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
-                  tsamp=ct.TSAMP*ct.NINT, nint=1, antpos=None, model=None,
-                  dt=ct.CASA_TIME_OFFSET, dsa10=True):
-    """ Writes visibilities to an ms.
+
+def convert_to_ms(
+    source,
+    vis,
+    obstm,
+    ofile,
+    bname,
+    antenna_order,
+    tsamp=ct.TSAMP * ct.NINT,
+    nint=1,
+    antpos=None,
+    model=None,
+    dt=ct.CASA_TIME_OFFSET,
+    dsa10=True,
+):
+    """Writes visibilities to an ms.
 
     Uses the casa simulator tool to write the metadata to an ms, then uses the
     casa ms tool to replace the visibilities with the observed data.
@@ -322,7 +355,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
         ``True``.
     """
     if antpos is None:
-        antpos = '{0}/antpos_ITRF.txt'.format(ct.PKG_DATA_PATH)
+        antpos = "{0}/antpos_ITRF.txt".format(ct.PKG_DATA_PATH)
     vis = vis.astype(np.complex128)
     if model is not None:
         model = model.astype(np.complex128)
@@ -332,49 +365,55 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     me = cc.measures()
 
     # Observatory parameters
-    tname = 'OVRO_MMA'
-    diam = 4.5 # m
-    obs = 'OVRO_MMA'
-    mount = 'alt-az'
+    tname = "OVRO_MMA"
+    diam = 4.5  # m
+    obs = "OVRO_MMA"
+    mount = "alt-az"
     pos_obs = me.observatory(obs)
 
     # Backend
     if dsa10:
-        spwname = 'L_BAND'
-        freq = '1.4871533196875GHz'
-        deltafreq = '-0.244140625MHz'
+        spwname = "L_BAND"
+        freq = "1.4871533196875GHz"
+        deltafreq = "-0.244140625MHz"
         freqresolution = deltafreq
     else:
-        spwname = 'L_BAND'
-        freq = '1.28GHz'
-        deltafreq = '40.6901041666667kHz'
+        spwname = "L_BAND"
+        freq = "1.28GHz"
+        deltafreq = "40.6901041666667kHz"
         freqresolution = deltafreq
     (_, _, nchannels, npol) = vis.shape
 
     # Rebin visibilities
-    integrationtime = '{0}s'.format(tsamp*nint)
+    integrationtime = "{0}s".format(tsamp * nint)
     if nint != 1:
-        npad = nint-vis.shape[1]%nint
+        npad = nint - vis.shape[1] % nint
         if npad == nint:
             npad = 0
-        vis = np.nanmean(np.pad(vis, ((0, 0), (0, npad), (0, 0), (0, 0)),
-                                mode='constant',
-                                constant_values=(np.nan, )).reshape(
-                                    vis.shape[0], -1, nint, vis.shape[2],
-                                    vis.shape[3]), axis=2)
+        vis = np.nanmean(
+            np.pad(
+                vis,
+                ((0, 0), (0, npad), (0, 0), (0, 0)),
+                mode="constant",
+                constant_values=(np.nan,),
+            ).reshape(vis.shape[0], -1, nint, vis.shape[2], vis.shape[3]),
+            axis=2,
+        )
         if model is not None:
-            model = np.nanmean(np.pad(model,
-                                      ((0, 0), (0, npad), (0, 0), (0, 0)),
-                                      mode='constant',
-                                      constant_values=(np.nan, )).reshape(
-                                          model.shape[0], -1, nint,
-                                          model.shape[2], model.shape[3]),
-                               axis=2)
-    stoptime = '{0}s'.format(vis.shape[1]*tsamp*nint)
+            model = np.nanmean(
+                np.pad(
+                    model,
+                    ((0, 0), (0, npad), (0, 0), (0, 0)),
+                    mode="constant",
+                    constant_values=(np.nan,),
+                ).reshape(model.shape[0], -1, nint, model.shape[2], model.shape[3]),
+                axis=2,
+            )
+    stoptime = "{0}s".format(vis.shape[1] * tsamp * nint)
 
     anum, xx, yy, zz = du.get_antpos_itrf(antpos)
     # Sort the antenna positions
-    idx_order = sorted([int(a)-1 for a in antenna_order])
+    idx_order = sorted([int(a) - 1 for a in antenna_order])
     anum = np.array(anum)[idx_order]
     xx = np.array(xx)
     yy = np.array(yy)
@@ -386,8 +425,7 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     nints = np.zeros(nant, dtype=int)
     for i, an in enumerate(anum):
         nints[i] = np.sum(np.array(bname)[:, 0] == an)
-    nints, anum, xx, yy, zz = zip(*sorted(zip(nints, anum, xx, yy, zz),
-                                          reverse=True))
+    nints, anum, xx, yy, zz = zip(*sorted(zip(nints, anum, xx, yy, zz), reverse=True))
 
     # Check that the visibilities are ordered correctly by checking the order
     # of baselines in bname
@@ -395,76 +433,116 @@ def convert_to_ms(source, vis, obstm, ofile, bname, antenna_order,
     autocorr = bname[0][0] == bname[0][1]
 
     for i in range(nant):
-        for j in range(i if autocorr else i+1, nant):
+        for j in range(i if autocorr else i + 1, nant):
             idx_order += [bname.index([anum[i], anum[j]])]
-    assert idx_order == list(np.arange(len(bname), dtype=int)), \
-        'Visibilities not ordered by baseline'
+    assert idx_order == list(
+        np.arange(len(bname), dtype=int)
+    ), "Visibilities not ordered by baseline"
     anum = [str(a) for a in anum]
 
     simulate_ms(
-        '{0}.ms'.format(ofile), tname, anum, xx, yy, zz, diam, mount, pos_obs,
-        spwname, freq, deltafreq, freqresolution, nchannels, integrationtime,
-        obstm, dt, source, stoptime, autocorr, fullpol=False
+        "{0}.ms".format(ofile),
+        tname,
+        anum,
+        xx,
+        yy,
+        zz,
+        diam,
+        mount,
+        pos_obs,
+        spwname,
+        freq,
+        deltafreq,
+        freqresolution,
+        nchannels,
+        integrationtime,
+        obstm,
+        dt,
+        source,
+        stoptime,
+        autocorr,
+        fullpol=False,
     )
 
     # Check that the time is correct
     ms = cc.ms()
-    ms.open('{0}.ms'.format(ofile))
-    tstart_ms = ms.summary()['BeginTime']
+    ms.open("{0}.ms".format(ofile))
+    tstart_ms = ms.summary()["BeginTime"]
     ms.close()
 
-    print('autocorr :', autocorr)
+    print("autocorr :", autocorr)
 
-    if np.abs(tstart_ms-obstm) > 1e-10:
-        dt = dt+(tstart_ms-obstm)
-        print('Updating casa time offset to {0}s'.format(
-            dt*ct.SECONDS_PER_DAY))
-        print('Rerunning simulator')
+    if np.abs(tstart_ms - obstm) > 1e-10:
+        dt = dt + (tstart_ms - obstm)
+        print("Updating casa time offset to {0}s".format(dt * ct.SECONDS_PER_DAY))
+        print("Rerunning simulator")
         simulate_ms(
-            '{0}.ms'.format(ofile), tname, anum, xx, yy, zz, diam, mount,
-            pos_obs, spwname, freq, deltafreq, freqresolution, nchannels,
-            integrationtime, obstm, dt, source, stoptime, autocorr,
-            fullpol=False
+            "{0}.ms".format(ofile),
+            tname,
+            anum,
+            xx,
+            yy,
+            zz,
+            diam,
+            mount,
+            pos_obs,
+            spwname,
+            freq,
+            deltafreq,
+            freqresolution,
+            nchannels,
+            integrationtime,
+            obstm,
+            dt,
+            source,
+            stoptime,
+            autocorr,
+            fullpol=False,
         )
 
     # Reopen the measurement set and write the observed visibilities
     ms = cc.ms()
-    ms.open('{0}.ms'.format(ofile), nomodify=False)
+    ms.open("{0}.ms".format(ofile), nomodify=False)
     ms.selectinit(datadescid=0)
 
     rec = ms.getdata(["data"])
     # rec['data'] has shape [scan, channel, [time*baseline]]
     vis = vis.T.reshape((npol, nchannels, -1))
-    rec['data'] = vis
+    rec["data"] = vis
     ms.putdata(rec)
     ms.close()
 
     ms = cc.ms()
-    ms.open('{0}.ms'.format(ofile), nomodify=False)
+    ms.open("{0}.ms".format(ofile), nomodify=False)
     if model is None:
         model = np.ones(vis.shape, dtype=complex)
     else:
         model = model.T.reshape((npol, nchannels, -1))
     rec = ms.getdata(["model_data"])
-    rec['model_data'] = model
+    rec["model_data"] = model
     ms.putdata(rec)
     ms.close()
 
     # Check that the time is correct
     ms = cc.ms()
-    ms.open('{0}.ms'.format(ofile))
-    tstart_ms = ms.summary()['BeginTime']
-    tstart_ms2 = ms.getdata('TIME')['time'][0]/ct.SECONDS_PER_DAY
+    ms.open("{0}.ms".format(ofile))
+    tstart_ms = ms.summary()["BeginTime"]
+    tstart_ms2 = ms.getdata("TIME")["time"][0] / ct.SECONDS_PER_DAY
     ms.close()
 
-    assert np.abs(tstart_ms-(tstart_ms2-tsamp*nint/ct.SECONDS_PER_DAY/2)) \
-        < 1e-10, 'Data start time does not agree with MS start time'
+    assert (
+        np.abs(tstart_ms - (tstart_ms2 - tsamp * nint / ct.SECONDS_PER_DAY / 2)) < 1e-10
+    ), "Data start time does not agree with MS start time"
 
-    assert np.abs(tstart_ms - obstm) < 1e-10, \
-        'Measurement set start time does not agree with input tstart'
-    print('Visibilities writing to ms {0}.ms'.format(ofile))
+    assert (
+        np.abs(tstart_ms - obstm) < 1e-10
+    ), "Measurement set start time does not agree with input tstart"
+    print("Visibilities writing to ms {0}.ms".format(ofile))
 
-def get_visiblities_time(msname, a1, a2, time, duration, datacolumn='CORRECTED_DATA', npol=2):
+
+def get_visiblities_time(
+    msname, a1, a2, time, duration, datacolumn="CORRECTED_DATA", npol=2
+):
     """Calculates the off-source gains from the autocorrs in the ms.
 
     Parameters
@@ -483,43 +561,45 @@ def get_visiblities_time(msname, a1, a2, time, duration, datacolumn='CORRECTED_D
     ndarray
         The visibilities. Same dimensions as `ant_transit_time`.
     """
-    _, tvis, fvis, _, ant1, ant2, _pt_dec, spw, orig_shape = \
-        extract_vis_from_ms(msname, datacolumn.upper(), metadataonly=True)
-    assert orig_shape == ['time', 'baseline', 'spw']
+    _, tvis, fvis, _, ant1, ant2, _pt_dec, spw, orig_shape = extract_vis_from_ms(
+        msname, datacolumn.upper(), metadataonly=True
+    )
+    assert orig_shape == ["time", "baseline", "spw"]
     nspw = len(spw)
     assert nspw == 1
     nbls = len(ant1)
     nfreqs = len(fvis)
 
-    idx0 = np.argmin(np.abs(tvis - (time-duration//2).mjd))
-    idx1 = np.argmin(np.abs(tvis - (time+duration//2).mjd))
-    ntimes = idx1-idx0
+    idx0 = np.argmin(np.abs(tvis - (time - duration // 2).mjd))
+    idx1 = np.argmin(np.abs(tvis - (time + duration // 2).mjd))
+    ntimes = idx1 - idx0
     tidxs = np.arange(idx0, idx1)
 
     blidx = np.where((ant1 == a1) & (ant2 == a2))[0][0]
 
     vis = np.zeros((ntimes, nfreqs, npol), dtype=complex)
-    with table(f'{msname}.ms') as tb:
+    with table(f"{msname}.ms") as tb:
         for j, tidx in enumerate(tidxs):
-            idx = int(tidx*(nbls*nspw)+blidx*nspw)
+            idx = int(tidx * (nbls * nspw) + blidx * nspw)
             try:
-                if datacolumn.upper() == 'CORRECTED_DATA':
+                if datacolumn.upper() == "CORRECTED_DATA":
                     tmp = tb.CORRECTED_DATA[idx]
-                elif datacolumn.upper() == 'DATA':
+                elif datacolumn.upper() == "DATA":
                     tmp = tb.DATA[idx]
-                elif datacolumn.upper() == 'MODEL_DATA':
+                elif datacolumn.upper() == "MODEL_DATA":
                     tmp = tb.MODEL_DATA[idx]
                 else:
-                    raise RuntimeError(f'No column {datacolumn} in {msname}.ms')
+                    raise RuntimeError(f"No column {datacolumn} in {msname}.ms")
             except IndexError:
                 vis[j, :, :] = np.nan
-                print(f'No data for tidx {tidx}, blidx {blidx}')
+                print(f"No data for tidx {tidx}, blidx {blidx}")
             else:
                 vis[j, :, :] = tmp
 
     return vis
 
-def extract_vis_from_ms(msname, data='data', swapaxes=True, metadataonly=False):
+
+def extract_vis_from_ms(msname, data="data", swapaxes=True, metadataonly=False):
     """Extracts visibilities from a CASA measurement set.
 
     Parameters
@@ -549,7 +629,7 @@ def extract_vis_from_ms(msname, data='data', swapaxes=True, metadataonly=False):
     orig_shape : list
         The order of the first three axes in the ms.
     """
-    with table('{0}.ms'.format(msname)) as tb:
+    with table("{0}.ms".format(msname)) as tb:
         ant1 = np.array(tb.ANTENNA1[:])
         ant2 = np.array(tb.ANTENNA2[:])
         if metadataonly:
@@ -560,19 +640,30 @@ def extract_vis_from_ms(msname, data='data', swapaxes=True, metadataonly=False):
             flags = np.array(tb.FLAG[:])
         time = np.array(tb.TIME[:])
         spw = np.array(tb.DATA_DESC_ID[:])
-    with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
-        fobs = (np.array(tb.col('CHAN_FREQ')[:])/1e9).reshape(-1)
+    with table("{0}.ms/SPECTRAL_WINDOW".format(msname)) as tb:
+        fobs = (np.array(tb.col("CHAN_FREQ")[:]) / 1e9).reshape(-1)
 
-    baseline = 2048*(ant1+1)+(ant2+1)+2**16
+    baseline = 2048 * (ant1 + 1) + (ant2 + 1) + 2**16
 
     time, vals, flags, ant1, ant2, spw, orig_shape = reshape_calibration_data(
-        vals, flags, ant1, ant2, baseline, time, spw, swapaxes)
+        vals, flags, ant1, ant2, baseline, time, spw, swapaxes
+    )
 
-    with table('{0}.ms/FIELD'.format(msname)) as tb:
+    with table("{0}.ms/FIELD".format(msname)) as tb:
         pt_dec = tb.PHASE_DIR[:][0][0][1]
 
-    return vals, time/ct.SECONDS_PER_DAY, fobs, flags, ant1, ant2, pt_dec, \
-        spw, orig_shape
+    return (
+        vals,
+        time / ct.SECONDS_PER_DAY,
+        fobs,
+        flags,
+        ant1,
+        ant2,
+        pt_dec,
+        spw,
+        orig_shape,
+    )
+
 
 def read_caltable(tablename, cparam=False, reshape=True):
     """Requires that each spw has the same number of frequency channels.
@@ -609,13 +700,15 @@ def read_caltable(tablename, cparam=False, reshape=True):
         flags = np.array(tb.FLAG[:])
         ant1 = np.array(tb.ANTENNA1[:])
         ant2 = np.array(tb.ANTENNA2[:])
-    baseline = 2048*(ant1+1)+(ant2+1)+2**16
+    baseline = 2048 * (ant1 + 1) + (ant2 + 1) + 2**16
 
     if reshape:
         time, vals, flags, ant1, ant2, _, _ = reshape_calibration_data(
-            vals, flags, ant1, ant2, baseline, time, spw)
+            vals, flags, ant1, ant2, baseline, time, spw
+        )
 
-    return vals, time/ct.SECONDS_PER_DAY, flags, ant1, ant2
+    return vals, time / ct.SECONDS_PER_DAY, flags, ant1, ant2
+
 
 def reshape_calibration_data(
         vals, flags, ant1, ant2, baseline, time, spw, swapaxes=True
@@ -660,12 +753,12 @@ def reshape_calibration_data(
     else:
         nbl = max([len(np.unique(ant1)), len(np.unique(ant2))])
     nspw = len(np.unique(spw))
-    ntime = len(time)//nbl//nspw
+    ntime = len(time) // nbl // nspw
     nfreq = vals.shape[-2] if vals is not None else 1
     npol = vals.shape[-1] if vals is not None else 1
-    if np.all(baseline[:ntime*nspw] == baseline[0]):
+    if np.all(baseline[: ntime * nspw] == baseline[0]):
         if np.all(time[:nspw] == time[0]):
-            orig_shape = ['baseline', 'time', 'spw']
+            orig_shape = ["baseline", "time", "spw"]
             # baseline, time, spw
             time = time.reshape(nbl, ntime, nspw)[0, :, 0]
             if vals is not None:
@@ -676,7 +769,7 @@ def reshape_calibration_data(
             spw = spw.reshape(nbl, ntime, nspw)[0, 0, :]
         else:
             # baseline, spw, time
-            orig_shape = ['baseline', 'spw', 'time']
+            orig_shape = ["baseline", "spw", "time"]
             assert np.all(spw[:ntime] == spw[0])
             time = time.reshape(nbl, nspw, ntime)[0, 0, :]
             if vals is not None:
@@ -689,10 +782,10 @@ def reshape_calibration_data(
             ant1 = ant1.reshape(nbl, nspw, ntime)[:, 0, 0]
             ant2 = ant2.reshape(nbl, nspw, ntime)[:, 0, 0]
             spw = spw.reshape(nbl, nspw, ntime)[0, :, 0]
-    elif np.all(time[:nspw*nbl] == time[0]):
+    elif np.all(time[: nspw * nbl] == time[0]):
         if np.all(baseline[:nspw] == baseline[0]):
             # time, baseline, spw
-            orig_shape = ['time', 'baseline', 'spw']
+            orig_shape = ["time", "baseline", "spw"]
             time = time.reshape(ntime, nbl, nspw)[:, 0, 0]
             if vals is not None:
                 vals = vals.reshape(ntime, nbl, nspw, nfreq, npol)
@@ -705,7 +798,7 @@ def reshape_calibration_data(
             ant2 = ant2.reshape(ntime, nbl, nspw)[0, :, 0]
             spw = spw.reshape(ntime, nbl, nspw)[0, 0, :]
         else:
-            orig_shape = ['time', 'spw', 'baseline']
+            orig_shape = ["time", "spw", "baseline"]
             assert np.all(spw[:nbl] == spw[0])
             time = time.reshape(ntime, nspw, nbl)[:, 0, 0]
             if vals is not None:
@@ -719,10 +812,10 @@ def reshape_calibration_data(
             ant2 = ant2.reshape(ntime, nspw, nbl)[0, 0, :]
             spw = spw.reshape(ntime, nspw, nbl)[0, :, 0]
     else:
-        assert np.all(spw[:nbl*ntime] == spw[0])
+        assert np.all(spw[: nbl * ntime] == spw[0])
         if np.all(baseline[:ntime] == baseline[0]):
             # spw, baseline, time
-            orig_shape = ['spw', 'baseline', 'time']
+            orig_shape = ["spw", "baseline", "time"]
             time = time.reshape(nspw, nbl, ntime)[0, 0, :]
             if vals is not None:
                 vals = vals.reshape(nspw, nbl, ntime, nfreq, npol)
@@ -737,7 +830,7 @@ def reshape_calibration_data(
         else:
             assert np.all(time[:nbl] == time[0])
             # spw, time, bl
-            orig_shape = ['spw', 'time', 'baseline']
+            orig_shape = ["spw", "time", "baseline"]
             time = time.reshape(nspw, ntime, nbl)[0, :, 0]
             if vals is not None:
                 vals = vals.reshape(nspw, ntime, nbl, nfreq, npol)
@@ -751,9 +844,8 @@ def reshape_calibration_data(
             spw = spw.reshape(nspw, ntime, nbl)[:, 0, 0]
     return time, vals, flags, ant1, ant2, spw, orig_shape
 
-def caltable_to_etcd(
-        msname, calname, caltime, status, pols=None, logger=None
-):
+def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
+
     r"""Copies calibration values from delay and gain tables to etcd.
 
     The dictionary passed to etcd should look like: {"ant_num": <i>,
@@ -781,25 +873,23 @@ def caltable_to_etcd(
         Logger to write messages too. If None, messages are printed.
     """
     if pols is None:
-        pols = ['B', 'A']
+        pols = ["B", "A"]
 
     try:
         # Complex gains for each antenna.
         amps, tamp, flags, ant1, ant2 = read_caltable(
-            '{0}_{1}_gacal'.format(msname, calname),
-            cparam=True
+            "{0}_{1}_gacal".format(msname, calname), cparam=True
         )
         mask = np.ones(flags.shape)
         mask[flags == 1] = np.nan
-        amps = amps*mask
+        amps = amps * mask
 
         phase, _tphase, flags, ant1, ant2 = read_caltable(
-            '{0}_{1}_gpcal'.format(msname, calname),
-            cparam=True
+            "{0}_{1}_gpcal".format(msname, calname), cparam=True
         )
         mask = np.ones(flags.shape)
         mask[flags == 1] = np.nan
-        phase = phase*mask
+        phase = phase * mask
 
         if np.all(ant2 == ant2[0]):
             antenna_order_amps = ant1
@@ -818,38 +908,35 @@ def caltable_to_etcd(
         assert amps.shape[4] == len(pols)
 
         amps = np.nanmedian(
-            amps.squeeze(axis=2).squeeze(axis=2),
-            axis=1
-        )*np.nanmedian(
-            phase.squeeze(axis=2).squeeze(axis=2),
-            axis=1
-        )
+            amps.squeeze(axis=2).squeeze(axis=2), axis=1
+        ) * np.nanmedian(phase.squeeze(axis=2).squeeze(axis=2), axis=1)
         tamp = np.median(tamp)
-        gaincaltime_offset = (tamp-caltime)*ct.SECONDS_PER_DAY
+        gaincaltime_offset = (tamp - caltime) * ct.SECONDS_PER_DAY
 
     except Exception as exc:
         tamp = np.nan
-        amps = np.ones((0, len(pols)))*np.nan
-        gaincaltime_offset = 0.
+        amps = np.ones((0, len(pols))) * np.nan
+        gaincaltime_offset = 0.0
         antenna_order_amps = np.zeros(0, dtype=np.int)
         status = cs.update(
             status,
-            cs.GAIN_TBL_ERR |
-            cs.INV_GAINAMP_P1 |
-            cs.INV_GAINAMP_P2 |
-            cs.INV_GAINPHASE_P1 |
-            cs.INV_GAINPHASE_P2 |
-            cs.INV_GAINCALTIME
+            cs.GAIN_TBL_ERR
+            | cs.INV_GAINAMP_P1
+            | cs.INV_GAINAMP_P2
+            | cs.INV_GAINPHASE_P1
+            | cs.INV_GAINPHASE_P2
+            | cs.INV_GAINCALTIME,
         )
-        du.exception_logger(logger, 'caltable_to_etcd', exc, throw=False)
+        du.exception_logger(logger, "caltable_to_etcd", exc, throw=False)
 
     # Delays for each antenna.
     try:
         delays, tdel, flags, antenna_order_delays, ant2 = read_caltable(
-            '{0}_{1}_kcal'.format(msname, calname), cparam=False)
+            "{0}_{1}_kcal".format(msname, calname), cparam=False
+        )
         mask = np.ones(flags.shape)
         mask[flags == 1] = np.nan
-        delays = delays*mask
+        delays = delays * mask
 
         # Check the output shapes.
         assert delays.shape[0] == len(antenna_order_delays)
@@ -860,26 +947,20 @@ def caltable_to_etcd(
 
         delays = np.nanmedian(delays.squeeze(axis=2).squeeze(axis=2), axis=1)
         tdel = np.median(tdel)
-        delaycaltime_offset = (tdel-caltime)*ct.SECONDS_PER_DAY
+        delaycaltime_offset = (tdel - caltime) * ct.SECONDS_PER_DAY
 
     except Exception as exc:
         tdel = np.nan
-        delays = np.ones((0, len(pols)))*np.nan
-        delaycaltime_offset = 0.
+        delays = np.ones((0, len(pols))) * np.nan
+        delaycaltime_offset = 0.0
         status = cs.update(
             status,
-            cs.DELAY_TBL_ERR |
-            cs.INV_DELAY_P1 |
-            cs.INV_DELAY_P2 |
-            cs.INV_DELAYCALTIME
+            cs.DELAY_TBL_ERR | cs.INV_DELAY_P1 | cs.INV_DELAY_P2 | cs.INV_DELAYCALTIME,
         )
         antenna_order_delays = np.zeros(0, dtype=np.int)
-        du.exception_logger(logger, 'caltable_to_etcd', exc, throw=False)
+        du.exception_logger(logger, "caltable_to_etcd", exc, throw=False)
 
-    antenna_order = np.unique(
-        np.array([antenna_order_amps,
-                  antenna_order_delays])
-    )
+    antenna_order = np.unique(np.array([antenna_order_amps, antenna_order_delays]))
 
     for antnum in antenna_order:
 
@@ -898,8 +979,8 @@ def caltable_to_etcd(
                     gainamp += [None]
                     gainphase += [None]
         else:
-            gainamp = [None]*len(pols)
-            gainphase = [None]*len(pols)
+            gainamp = [None] * len(pols)
+            gainphase = [None] * len(pols)
 
         if antnum in antenna_order_delays:
             idx = np.where(antenna_order_delays == antnum)[0][0]
@@ -909,43 +990,47 @@ def caltable_to_etcd(
                 else:
                     ant_delay += [None]
         else:
-            ant_delay = [None]*len(pols)
+            ant_delay = [None] * len(pols)
 
         dd = {
-            'ant_num': int(antnum+1),
-            'time': float(caltime),
-            'pol': pols,
-            'gainamp': gainamp,
-            'gainphase': gainphase,
-            'delay': ant_delay,
-            'calsource': calname,
-            'gaincaltime_offset': float(gaincaltime_offset),
-            'delaycaltime_offset': float(delaycaltime_offset),
-            'sim': False,
-            'status':status
+            "ant_num": int(antnum + 1),
+            "time": float(caltime),
+            "pol": pols,
+            "gainamp": gainamp,
+            "gainphase": gainphase,
+            "delay": ant_delay,
+            "calsource": calname,
+            "gaincaltime_offset": float(gaincaltime_offset),
+            "delaycaltime_offset": float(delaycaltime_offset),
+            "sim": False,
+            "status": status,
         }
-        required_keys = dict({
-            'ant_num': [cs.INV_ANTNUM, 0],
-            'time': [cs.INV_DELAYCALTIME, 0.],
-            'pol': [cs.INV_POL, ['B', 'A']],
-            'calsource': [cs.INV_CALSOURCE, 'Unknown'],
-            'sim': [cs.INV_SIM, False],
-            'status': [cs.UNKNOWN_ERR, 0]
-        })
+        required_keys = dict(
+            {
+                "ant_num": [cs.INV_ANTNUM, 0],
+                "time": [cs.INV_DELAYCALTIME, 0.0],
+                "pol": [cs.INV_POL, ["B", "A"]],
+                "calsource": [cs.INV_CALSOURCE, "Unknown"],
+                "sim": [cs.INV_SIM, False],
+                "status": [cs.UNKNOWN_ERR, 0],
+            }
+        )
         for key, value in required_keys.items():
             if dd[key] is None:
-                print('caltable_to_etcd: key {0} must not be None to write to '
-                      'etcd'.format(key))
+                print(
+                    "caltable_to_etcd: key {0} must not be None to write to "
+                    "etcd".format(key)
+                )
                 status = cs.update(status, value[0])
                 dd[key] = value[1]
 
-        for pol in dd['pol']:
+        for pol in dd["pol"]:
             if pol is None:
-                print('caltable_to_etcd: pol must not be None to write to '
-                      'etcd')
+                print("caltable_to_etcd: pol must not be None to write to " "etcd")
                 status = cs.update(status, cs.INV_POL)
-                dd['pol'] = ['B', 'A']
-        de.put_dict('/mon/cal/{0}'.format(antnum+1), dd)
+                dd["pol"] = ["B", "A"]
+        de.put_dict("/mon/cal/{0}".format(antnum + 1), dd)
+
 
 def get_antenna_gains(gains, ant1, ant2, refant=0):
     """Calculates antenna gains, g_i, from CASA table of G_ij=g_i g_j*.
@@ -977,10 +1062,11 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
     antenna_gains = np.zeros(tuple(output_shape), dtype=gains.dtype)
     if np.all(ant2 == ant2[0]):
         for i, ant in enumerate(antennas):
-            antenna_gains[i] = 1/gains[ant1 == ant]
+            antenna_gains[i] = 1 / gains[ant1 == ant]
     else:
-        assert len(antennas) == 3, ("Baseline-based only supported for trio of"
-                                    "antennas")
+        assert len(antennas) == 3, (
+            "Baseline-based only supported for trio of" "antennas"
+        )
         for i, ant in enumerate(antennas):
             ant1idxs = np.where(ant1 == ant)[0]
             ant2idxs = np.where(ant2 == ant)[0]
@@ -1014,9 +1100,12 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
                     g21 = gains[otheridx]
                 else:
                     g21 = np.conjugate(gains[otheridx])
-            antenna_gains[i] = (np.sqrt(np.abs(g01*g20/g21))*np.exp(
-                sign*1.0j*np.angle(gains[idx_phase])))**(-1)
+            antenna_gains[i] = (
+                np.sqrt(np.abs(g01 * g20 / g21))
+                * np.exp(sign * 1.0j * np.angle(gains[idx_phase]))
+            ) ** (-1)
     return antennas, antenna_gains
+
 
 def get_delays(antennas, msname, calname, applied_delays):
     r"""Returns the delays to be set in the correlator.
@@ -1045,18 +1134,18 @@ def get_delays(antennas, msname, calname, applied_delays):
         In this case, the delay should be set to 0. Dimensions (antenna, pol).
     """
     delays, _time, flags, ant1, _ant2 = read_caltable(
-        '{0}_{1}_kcal'.format(msname, calname)
+        "{0}_{1}_kcal".format(msname, calname)
     )
     delays = delays.squeeze()
     flags = flags.squeeze()
-    print('delays: {0}'.format(delays.shape))
+    print("delays: {0}".format(delays.shape))
     # delays[flags] = np.nan
     ant1 = list(ant1)
-    idx = [ant1.index(ant-1) for ant in antennas]
+    idx = [ant1.index(ant - 1) for ant in antennas]
     delays = delays[idx]
     flags = flags[idx]
-    newdelays = applied_delays-delays
+    newdelays = applied_delays - delays
     newdelays = newdelays - np.nanmin(newdelays)
-    newdelays = (np.rint(newdelays/2)*2)
+    newdelays = np.rint(newdelays / 2) * 2
     # delays[flags] = 0
     return newdelays.astype(np.int), flags

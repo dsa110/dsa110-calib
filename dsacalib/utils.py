@@ -40,10 +40,10 @@ def exception_logger(logger, task, exception, throw):
         If set to True, the exception is raised after the traceback is written
         to syslogs.
     """
-    error_string = 'During {0}, {1} occurred:\n{2}'.format(
-        task, type(exception).__name__, ''.join(
-            traceback.format_tb(exception.__traceback__)
-        )
+    error_string = "During {0}, {1} occurred:\n{2}".format(
+        task,
+        type(exception).__name__,
+        "".join(traceback.format_tb(exception.__traceback__)),
     )
     if logger is not None:
         logger.error(error_string)
@@ -52,12 +52,13 @@ def exception_logger(logger, task, exception, throw):
     if throw:
         raise exception
 
-class src():
-    """Simple class for holding source parameters.
-    """
 
-    def __init__(self, name, ra, dec, I=1., epoch='J2000', pa=None,
-                 maj_axis=None, min_axis=None):
+class src:
+    """Simple class for holding source parameters."""
+
+    def __init__(
+        self, name, ra, dec, I=1.0, epoch="J2000", pa=None, maj_axis=None, min_axis=None
+    ):
         """Initializes the src class.
 
         Parameters
@@ -83,28 +84,25 @@ class src():
         """
         self.name = name
         self.I = I
-        assert epoch == 'J2000'
-        self.epoch = 'J2000'
+        assert epoch == "J2000"
+        self.epoch = "J2000"
         if isinstance(ra, str):
             ra = to_deg(ra)
         if isinstance(dec, str):
             dec = to_deg(dec)
         self.ra = ra
         self.dec = dec
-        self.direction = direction(
-            'J2000',
-            ra.to_value(u.rad),
-            dec.to_value(u.rad)
-        )
+        self.direction = direction("J2000", ra.to_value(u.rad), dec.to_value(u.rad))
         self.pa = pa
         if maj_axis is None:
             self.maj_axis = None
         else:
-            self.maj_axis = maj_axis*u.arcsecond
+            self.maj_axis = maj_axis * u.arcsecond
         if min_axis is None:
             self.min_axis = None
         else:
-            self.min_axis = min_axis*u.arcsecond
+            self.min_axis = min_axis * u.arcsecond
+
 
 def to_deg(string):
     """Converts a string representation of RA or DEC to degrees.
@@ -120,6 +118,7 @@ def to_deg(string):
         The angle in degrees.
     """
     return Angle(string).to(u.deg)
+
 
 def get_autobl_indices(nant, casa=False):
     """Returns a list of the indices containing the autocorrelations.
@@ -144,14 +143,15 @@ def get_autobl_indices(nant, casa=False):
     """
     auto_bls = []
     i = -1
-    for j in range(1, nant+1):
+    for j in range(1, nant + 1):
         i += j
         auto_bls += [i]
     if casa:
-        nbls = (nant*(nant+1))//2
-        auto_bls = [(nbls-1)-aidx for aidx in auto_bls]
+        nbls = (nant * (nant + 1)) // 2
+        auto_bls = [(nbls - 1) - aidx for aidx in auto_bls]
         auto_bls = auto_bls[::-1]
     return auto_bls
+
 
 def get_antpos_itrf(antpos):
     """Reads and orders antenna positions from a text or csv file.
@@ -168,17 +168,18 @@ def get_antpos_itrf(antpos):
     xx, yy, zz : list(float)
         The ITRF coordinates of the antennas, in meters.
     """
-    if antpos[-4:] == '.txt':
+    if antpos[-4:] == ".txt":
         anum, xx, yy, zz = np.loadtxt(antpos).transpose()
-        anum = anum.astype(int)+1
+        anum = anum.astype(int) + 1
         anum, xx, yy, zz = zip(*sorted(zip(anum, xx, yy, zz)))
-    elif antpos[-4:] == '.csv':
+    elif antpos[-4:] == ".csv":
         df = get_itrf(antpos)
         anum = np.array(df.index)
-        xx = np.array(df[['dx_m']])
-        yy = np.array(df[['dy_m']])
-        zz = np.array(df[['dz_m']])
+        xx = np.array(df[["dx_m"]])
+        yy = np.array(df[["dy_m"]])
+        zz = np.array(df[["dz_m"]])
     return anum, xx, yy, zz
+
 
 def mask_bad_bins(vis, axis, thresh=6.0, medfilt=False, nmed=129):
     """Masks bad channels or time bins in visibility data.
@@ -231,11 +232,10 @@ def mask_bad_bins(vis, axis, thresh=6.0, medfilt=False, nmed=129):
     # Calculate the standard deviation along the frequency (or time) axis.
     vis_std = np.std(vis_avg, axis=1, keepdims=True)
     # Get good channels.
-    good_bins = np.abs(vis_avg) < thresh*vis_std
-    fraction_flagged = (
-        1-good_bins.sum(axis=axis)/good_bins.shape[axis]
-    ).squeeze()
+    good_bins = np.abs(vis_avg) < thresh * vis_std
+    fraction_flagged = (1 - good_bins.sum(axis=axis) / good_bins.shape[axis]).squeeze()
     return good_bins, fraction_flagged
+
 
 def mask_bad_pixels(vis, thresh=6.0, mask=None):
     r"""Masks pixels with values above a SNR threshold within each visibility.
@@ -266,14 +266,15 @@ def mask_bad_pixels(vis, thresh=6.0, mask=None):
     """
     (nbls, nt, nf, npol) = vis.shape
     vis = np.abs(vis.reshape(nbls, -1, npol))
-    vis = vis-np.median(vis, axis=1, keepdims=True)
+    vis = vis - np.median(vis, axis=1, keepdims=True)
     if mask is not None:
-        vis = vis*mask.reshape(nbls, -1, npol)
+        vis = vis * mask.reshape(nbls, -1, npol)
     std = np.std(np.abs(vis), axis=1, keepdims=True)
-    good_pixels = np.abs(vis) < thresh*std
-    fraction_flagged = 1 - good_pixels.sum(1)/good_pixels.shape[1]
+    good_pixels = np.abs(vis) < thresh * std
+    fraction_flagged = 1 - good_pixels.sum(1) / good_pixels.shape[1]
     good_pixels = good_pixels.reshape(nbls, nt, nf, npol)
     return good_pixels, fraction_flagged
+
 
 def daz_dha(dec, daz=None, dha=None, lat=ct.OVRO_LAT):
     """Converts an offset between azimuth and hour angle.
@@ -311,19 +312,20 @@ def daz_dha(dec, daz=None, dha=None, lat=ct.OVRO_LAT):
     RuntimeError
         If neither `daz or `dha` is defined.
     """
-    factor = -1*(np.sin(lat)-np.tan(dec)*np.cos(lat))
+    factor = -1 * (np.sin(lat) - np.tan(dec) * np.cos(lat))
     if daz is not None:
         assert dha is None, "daz and dha cannot both be defined."
-        ans = daz*factor
+        ans = daz * factor
     elif dha is not None:
-        ans = dha/factor
+        ans = dha / factor
     else:
-        raise RuntimeError('One of daz or dha must be defined')
+        raise RuntimeError("One of daz or dha must be defined")
     return ans
 
-class direction():
+
+class direction:
     """Class for holding sky coordinates and converting between ICRS and FK5.
- 
+
     Parameters
     ----------
     epoch : str
@@ -338,17 +340,18 @@ class direction():
     observatory : str
         The name of the observatory
     """
-    def __init__(self, epoch, lon, lat, obstime=None, observatory='OVRO_MMA'):
-        
-        assert epoch in ['J2000', 'HADEC']
-        if epoch == 'HADEC':
+
+    def __init__(self, epoch, lon, lat, obstime=None, observatory="OVRO_MMA"):
+
+        assert epoch in ["J2000", "HADEC"]
+        if epoch == "HADEC":
             assert obstime is not None
         self.epoch = epoch
         self.lon = lon
         self.lat = lat
         self.obstime = obstime
         self.observatory = observatory
-    
+
     def J2000(self, obstime=None, observatory=None):
         """Provides direction in J2000 coordinates.
 
@@ -364,10 +367,10 @@ class direction():
         tuple
             ra, dec at J2000 in units of radians.
         """
-        if self.epoch == 'J2000':
+        if self.epoch == "J2000":
             return self.lon, self.lat
 
-        assert self.epoch == 'HADEC'
+        assert self.epoch == "HADEC"
         if obstime is None:
             assert self.obstime is not None
             obstime = self.obstime
@@ -376,22 +379,17 @@ class direction():
             observatory = self.observatory
 
         me = cc.measures()
-        epoch = me.epoch(
-            'UTC',
-            '{0}d'.format(obstime)
-        )
+        epoch = me.epoch("UTC", "{0}d".format(obstime))
         location = me.observatory(observatory)
         source = me.direction(
-            'HADEC', 
-            '{0}rad'.format(self.lon),
-            '{0}rad'.format(self.lat)
+            "HADEC", "{0}rad".format(self.lon), "{0}rad".format(self.lat)
         )
         me.doframe(epoch)
         me.doframe(location)
-        output = me.measure(source, 'J2000')
-        assert output['m0']['unit'] == 'rad'
-        assert output['m1']['unit'] == 'rad'
-        return output['m0']['value'], output['m1']['value']
+        output = me.measure(source, "J2000")
+        assert output["m0"]["unit"] == "rad"
+        assert output["m1"]["unit"] == "rad"
+        return output["m0"]["value"], output["m1"]["value"]
 
     def hadec(self, obstime=None, observatory=None):
         """Provides direction in HADEC (FK5) at `obstime`.
@@ -408,11 +406,11 @@ class direction():
         tuple
             ha, dec at obstime in units of radians.
         """
-        if self.epoch == 'HADEC':
+        if self.epoch == "HADEC":
             assert obstime is None
             return self.lon, self.lat
 
-        assert self.epoch == 'J2000'
+        assert self.epoch == "J2000"
         if obstime is None:
             assert self.obstime is not None
             obstime = self.obstime
@@ -420,19 +418,14 @@ class direction():
             assert self.observatory is not None
             observatory = self.observatory
         me = cc.measures()
-        epoch = me.epoch(
-            'UTC',
-            '{0}d'.format(obstime)
-        )
+        epoch = me.epoch("UTC", "{0}d".format(obstime))
         location = me.observatory(observatory)
         source = me.direction(
-            'J2000', 
-            '{0}rad'.format(self.lon),
-            '{0}rad'.format(self.lat)
+            "J2000", "{0}rad".format(self.lon), "{0}rad".format(self.lat)
         )
         me.doframe(epoch)
         me.doframe(location)
-        output = me.measure(source, 'HADEC')
-        assert output['m0']['unit'] == 'rad'
-        assert output['m1']['unit'] == 'rad'
-        return output['m0']['value'], output['m1']['value']
+        output = me.measure(source, "HADEC")
+        assert output["m0"]["unit"] == "rad"
+        assert output["m1"]["unit"] == "rad"
+        return output["m0"]["value"], output["m1"]["value"]

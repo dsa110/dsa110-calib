@@ -21,8 +21,10 @@ from dsacalib.ms_io import extract_vis_from_ms, read_caltable
 
 CONF = cnf.Conf()
 
-def plot_dyn_spec(vis, fobs, mjd, bname, normalize=False, outname=None,
-                  show=True, nx=None):
+
+def plot_dyn_spec(
+    vis, fobs, mjd, bname, normalize=False, outname=None, show=True, nx=None
+):
     """Plots the dynamic spectrum of the real part of the visibility.
 
     Parameters
@@ -53,29 +55,33 @@ def plot_dyn_spec(vis, fobs, mjd, bname, normalize=False, outname=None,
     (nbl, nt, nf, npol) = vis.shape
     if nx is None:
         nx = min(nbl, 5)
-    ny = (nbl*2)//nx
-    if (nbl*2)%nx != 0:
+    ny = (nbl * 2) // nx
+    if (nbl * 2) % nx != 0:
         ny += 1
 
-    _, ax = plt.subplots(ny, nx, figsize=(8*nx, 8*ny))
+    _, ax = plt.subplots(ny, nx, figsize=(8 * nx, 8 * ny))
     ax = ax.flatten()
 
     if len(mjd) > 125:
-        dplot = np.nanmean(vis[:, :nt//125*125, ...].reshape(nbl, 125, -1, nf,
-                                                             npol), 2)
+        dplot = np.nanmean(
+            vis[:, : nt // 125 * 125, ...].reshape(nbl, 125, -1, nf, npol), 2
+        )
     else:
         dplot = vis.copy()
     if len(fobs) > 125:
-        dplot = np.nanmean(dplot[:, :, :nf//125*125, :].reshape(nbl,
-                                                                dplot.shape[1],
-                                                                125, -1, npol),
-                           3)
+        dplot = np.nanmean(
+            dplot[:, :, : nf // 125 * 125, :].reshape(
+                nbl, dplot.shape[1], 125, -1, npol
+            ),
+            3,
+        )
     dplot = dplot.real
-    dplot = dplot/(dplot.reshape(nbl, -1, npol).mean(axis=1)
-                   [:, np.newaxis, np.newaxis, :])
+    dplot = dplot / (
+        dplot.reshape(nbl, -1, npol).mean(axis=1)[:, np.newaxis, np.newaxis, :]
+    )
 
     if normalize:
-        dplot = dplot/np.abs(dplot)
+        dplot = dplot / np.abs(dplot)
         vmin = -1
         vmax = 1
     else:
@@ -84,34 +90,43 @@ def plot_dyn_spec(vis, fobs, mjd, bname, normalize=False, outname=None,
     dplot = dplot - 1
 
     if len(mjd) > 125:
-        x = mjd[:mjd.shape[0]//125*125].reshape(125, -1).mean(-1)
+        x = mjd[: mjd.shape[0] // 125 * 125].reshape(125, -1).mean(-1)
     else:
         x = mjd
-    x = ((x-x[0])*u.d).to_value(u.min)
+    x = ((x - x[0]) * u.d).to_value(u.min)
     if len(fobs) > 125:
-        y = fobs[:nf//125*125].reshape(125, -1).mean(-1)
+        y = fobs[: nf // 125 * 125].reshape(125, -1).mean(-1)
     else:
         y = fobs
     for i in range(nbl):
         for j in range(npol):
-            ax[j*nbl+i].imshow(dplot[i, :, :, j].T, origin='lower',
-                               interpolation='none', aspect='auto',
-                               vmin=vmin, vmax=vmax,
-                               extent=[x[0], x[-1], y[0], y[-1]])
-            ax[j*nbl+i].text(0.1, 0.9,
-                             '{0}, pol {1}'.format(bname[i], 'A' if j == 0 else
-                                                   'B'),
-                             transform=ax[j*nbl+i].transAxes,
-                             size=22, color='white')
+            ax[j * nbl + i].imshow(
+                dplot[i, :, :, j].T,
+                origin="lower",
+                interpolation="none",
+                aspect="auto",
+                vmin=vmin,
+                vmax=vmax,
+                extent=[x[0], x[-1], y[0], y[-1]],
+            )
+            ax[j * nbl + i].text(
+                0.1,
+                0.9,
+                "{0}, pol {1}".format(bname[i], "A" if j == 0 else "B"),
+                transform=ax[j * nbl + i].transAxes,
+                size=22,
+                color="white",
+            )
     plt.subplots_adjust(wspace=0.1, hspace=0.1)
-    for i in range((ny-1)*nx, ny*nx):
-        ax[i].set_xlabel('time (min)')
-    for i in np.arange(ny)*nx:
-        ax[i].set_ylabel('freq (GHz)')
+    for i in range((ny - 1) * nx, ny * nx):
+        ax[i].set_xlabel("time (min)")
+    for i in np.arange(ny) * nx:
+        ax[i].set_ylabel("freq (GHz)")
     if outname is not None:
-        plt.savefig('{0}_dynspec.png'.format(outname))
+        plt.savefig("{0}_dynspec.png".format(outname))
     if not show:
         plt.close()
+
 
 def plot_vis_freq(vis, fobs, bname, outname=None, show=True, nx=None):
     r"""Plots visibilities against frequency.
@@ -145,45 +160,47 @@ def plot_vis_freq(vis, fobs, bname, outname=None, show=True, nx=None):
     nbl = vis.shape[0]
     if nx is None:
         nx = min(nbl, 5)
-    ny = nbl//nx
-    if nbl%nx != 0:
+    ny = nbl // nx
+    if nbl % nx != 0:
         ny += 1
 
     dplot = vis.mean(1)
     x = fobs
 
-    _, ax = plt.subplots(ny, nx, figsize=(8*nx, 8*ny))
+    _, ax = plt.subplots(ny, nx, figsize=(8 * nx, 8 * ny))
     ax = ax.flatten()
     for i in range(nbl):
-        ax[i].plot(x, np.abs(dplot[i, :, 0]), label='A')
-        ax[i].plot(x, np.abs(dplot[i, :, 1]), label='B')
-        ax[i].text(0.1, 0.9, '{0}: amp'.format(bname[i]),
-                   transform=ax[i].transAxes,
-                   size=22)
+        ax[i].plot(x, np.abs(dplot[i, :, 0]), label="A")
+        ax[i].plot(x, np.abs(dplot[i, :, 1]), label="B")
+        ax[i].text(
+            0.1, 0.9, "{0}: amp".format(bname[i]), transform=ax[i].transAxes, size=22
+        )
     plt.subplots_adjust(wspace=0.1, hspace=0.1)
     ax[0].legend()
-    for i in range((ny-1)*nx, ny*nx):
-        ax[i].set_xlabel('freq (GHz)')
+    for i in range((ny - 1) * nx, ny * nx):
+        ax[i].set_xlabel("freq (GHz)")
     if outname is not None:
-        plt.savefig('{0}_amp_freq.png'.format(outname))
+        plt.savefig("{0}_amp_freq.png".format(outname))
     if not show:
         plt.close()
 
-    _, ax = plt.subplots(ny, nx, figsize=(8*nx, 8*ny))
+    _, ax = plt.subplots(ny, nx, figsize=(8 * nx, 8 * ny))
     ax = ax.flatten()
     for i in range(nbl):
-        ax[i].plot(x, np.angle(dplot[i, :, 0]), label='A')
-        ax[i].plot(x, np.angle(dplot[i, :, 1]), label='B')
-        ax[i].text(0.1, 0.9, '{0}: phase'.format(bname[i]),
-                   transform=ax[i].transAxes, size=22)
+        ax[i].plot(x, np.angle(dplot[i, :, 0]), label="A")
+        ax[i].plot(x, np.angle(dplot[i, :, 1]), label="B")
+        ax[i].text(
+            0.1, 0.9, "{0}: phase".format(bname[i]), transform=ax[i].transAxes, size=22
+        )
     plt.subplots_adjust(wspace=0.1, hspace=0.1)
     ax[0].legend()
-    for i in range((ny-1)*nx, ny*nx):
-        ax[i].set_xlabel('freq (GHz)')
+    for i in range((ny - 1) * nx, ny * nx):
+        ax[i].set_xlabel("freq (GHz)")
     if outname is not None:
-        plt.savefig('{0}_phase_freq.png'.format(outname))
+        plt.savefig("{0}_phase_freq.png".format(outname))
     if not show:
         plt.close()
+
 
 def plot_vis_time(vis, mjd, bname, outname=None, show=True, nx=None):
     r"""Plots visibilities against time of observation.
@@ -216,44 +233,47 @@ def plot_vis_time(vis, mjd, bname, outname=None, show=True, nx=None):
     nbl = vis.shape[0]
     if nx is None:
         nx = min(nbl, 5)
-    ny = nbl//nx
+    ny = nbl // nx
 
-    if nbl%nx != 0:
+    if nbl % nx != 0:
         ny += 1
     dplot = vis.mean(-2)
-    x = ((mjd-mjd[0])*u.d).to_value(u.min)
+    x = ((mjd - mjd[0]) * u.d).to_value(u.min)
 
-    _, ax = plt.subplots(ny, nx, figsize=(8*nx, 8*ny))
+    _, ax = plt.subplots(ny, nx, figsize=(8 * nx, 8 * ny))
     ax = ax.flatten()
     for i in range(nbl):
-        ax[i].plot(x, np.abs(dplot[i, :, 0]), label='A')
-        ax[i].plot(x, np.abs(dplot[i, :, 1]), label='B')
-        ax[i].text(0.1, 0.9, '{0}: amp'.format(bname[i]),
-                   transform=ax[i].transAxes, size=22)
+        ax[i].plot(x, np.abs(dplot[i, :, 0]), label="A")
+        ax[i].plot(x, np.abs(dplot[i, :, 1]), label="B")
+        ax[i].text(
+            0.1, 0.9, "{0}: amp".format(bname[i]), transform=ax[i].transAxes, size=22
+        )
     plt.subplots_adjust(wspace=0.1, hspace=0.1)
     ax[0].legend()
-    for i in range((ny-1)*nx, ny):
-        ax[i].set_xlabel('time (min)')
+    for i in range((ny - 1) * nx, ny):
+        ax[i].set_xlabel("time (min)")
     if outname is not None:
-        plt.savefig('{0}_amp_time.png'.format(outname))
+        plt.savefig("{0}_amp_time.png".format(outname))
     if not show:
         plt.close()
 
-    _, ax = plt.subplots(ny, nx, figsize=(8*nx, 8*ny))
+    _, ax = plt.subplots(ny, nx, figsize=(8 * nx, 8 * ny))
     ax = ax.flatten()
     for i in range(nbl):
-        ax[i].plot(x, np.angle(dplot[i, :, 0]), label='A')
-        ax[i].plot(x, np.angle(dplot[i, :, 1]), label='B')
-        ax[i].text(0.1, 0.9, '{0}: phase'.format(bname[i]),
-                   transform=ax[i].transAxes, size=22)
+        ax[i].plot(x, np.angle(dplot[i, :, 0]), label="A")
+        ax[i].plot(x, np.angle(dplot[i, :, 1]), label="B")
+        ax[i].text(
+            0.1, 0.9, "{0}: phase".format(bname[i]), transform=ax[i].transAxes, size=22
+        )
     plt.subplots_adjust(wspace=0.1, hspace=0.1)
     ax[0].legend()
-    for i in range((ny-1)*nx, ny):
-        ax[i].set_xlabel('time (min)')
+    for i in range((ny - 1) * nx, ny):
+        ax[i].set_xlabel("time (min)")
     if outname is not None:
-        plt.savefig('{0}_phase_time.png'.format(outname))
+        plt.savefig("{0}_phase_time.png".format(outname))
     if not show:
         plt.close()
+
 
 def plot_uv_track(bu, bv, outname=None, show=True):
     """Plots the uv track provided.
@@ -278,13 +298,14 @@ def plot_uv_track(bu, bv, outname=None, show=True):
         ax.plot(bu[i, :], bv[i, :])
         ax.set_xlim(-1500, 1500)
         ax.set_ylim(-1500, 1500)
-        ax.text(-1200, 1200, 'UV Coverage')
-        ax.set_xlabel('$u$ (m)')
-        ax.set_ylabel('$v$ (m)')
+        ax.text(-1200, 1200, "UV Coverage")
+        ax.set_xlabel("$u$ (m)")
+        ax.set_ylabel("$v$ (m)")
     if outname is not None:
-        plt.savefig('{0}_uv.png'.format(outname))
+        plt.savefig("{0}_uv.png".format(outname))
     if not show:
         plt.close()
+
 
 def rebin_vis(arr, nb1, nb2):
     """Rebins a 2-D array for plotting.
@@ -305,13 +326,16 @@ def rebin_vis(arr, nb1, nb2):
     arr: ndarray
         The rebinned array.
     """
-    arr = arr[:arr.shape[0]//nb1*nb1, :arr.shape[1]//nb2*nb2].reshape(
-        -1, nb1, arr.shape[1]).mean(1)
+    arr = (
+        arr[: arr.shape[0] // nb1 * nb1, : arr.shape[1] // nb2 * nb2]
+        .reshape(-1, nb1, arr.shape[1])
+        .mean(1)
+    )
     arr = arr.reshape(arr.shape[0], -1, nb2).mean(-1)
     return arr
 
-def plot_calibrated_vis(vis, vis_cal, mjd, fobs, bidx, pol,
-                        outname=None, show=True):
+
+def plot_calibrated_vis(vis, vis_cal, mjd, fobs, bidx, pol, outname=None, show=True):
     """Plots the calibrated and uncalibrated visibilities for comparison.
 
     Parameters
@@ -338,47 +362,94 @@ def plot_calibrated_vis(vis, vis_cal, mjd, fobs, bidx, pol,
         If `show` is passed ``False``, the plot will be closed after being
         generated.  Otherwise, it is left open.  Defaults ``True``.
     """
-    x = mjd[:mjd.shape[0]//128*128].reshape(-1, 128).mean(-1)
-    x = ((x-x[0])*u.d).to_value(u.min)
-    y = fobs[:fobs.shape[0]//5*5].reshape(-1, 5).mean(-1)
+    x = mjd[: mjd.shape[0] // 128 * 128].reshape(-1, 128).mean(-1)
+    x = ((x - x[0]) * u.d).to_value(u.min)
+    y = fobs[: fobs.shape[0] // 5 * 5].reshape(-1, 5).mean(-1)
 
     _, ax = plt.subplots(2, 2, figsize=(16, 16), sharex=True, sharey=True)
 
     vplot = rebin_vis(vis[bidx, ..., pol], 128, 5).T
-    ax[0, 0].imshow(vplot.real, interpolation='none', origin='lower',
-                    aspect='auto', vmin=-1, vmax=1,
-                    extent=[x[0], x[-1], y[0], y[-1]])
-    ax[0, 0].text(0.1, 0.9, 'Before cal, real', transform=ax[0, 0].transAxes,
-                  size=22, color='white')
-    ax[1, 0].imshow(vplot.imag, interpolation='none', origin='lower',
-                    aspect='auto', vmin=-1, vmax=1,
-                    extent=[x[0], x[-1], y[0], y[-1]])
-    ax[1, 0].text(0.1, 0.9, 'Before cal, imag', transform=ax[1, 0].transAxes,
-                  size=22, color='white')
+    ax[0, 0].imshow(
+        vplot.real,
+        interpolation="none",
+        origin="lower",
+        aspect="auto",
+        vmin=-1,
+        vmax=1,
+        extent=[x[0], x[-1], y[0], y[-1]],
+    )
+    ax[0, 0].text(
+        0.1,
+        0.9,
+        "Before cal, real",
+        transform=ax[0, 0].transAxes,
+        size=22,
+        color="white",
+    )
+    ax[1, 0].imshow(
+        vplot.imag,
+        interpolation="none",
+        origin="lower",
+        aspect="auto",
+        vmin=-1,
+        vmax=1,
+        extent=[x[0], x[-1], y[0], y[-1]],
+    )
+    ax[1, 0].text(
+        0.1,
+        0.9,
+        "Before cal, imag",
+        transform=ax[1, 0].transAxes,
+        size=22,
+        color="white",
+    )
 
     vplot = rebin_vis(vis_cal[bidx, ..., pol], 128, 5).T
-    ax[0, 1].imshow(vplot.real, interpolation='none', origin='lower',
-                    aspect='auto', vmin=-1, vmax=1,
-                    extent=[x[0], x[-1], y[0], y[-1]])
-    ax[0, 1].text(0.1, 0.9, 'After cal, real', transform=ax[0, 1].transAxes,
-                  size=22, color='white')
-    ax[1, 1].imshow(vplot.imag, interpolation='none', origin='lower',
-                    aspect='auto', vmin=-1, vmax=1,
-                    extent=[x[0], x[-1], y[0], y[-1]])
-    ax[1, 1].text(0.1, 0.9, 'After cal, imag', transform=ax[1, 1].transAxes,
-                  size=22, color='white')
+    ax[0, 1].imshow(
+        vplot.real,
+        interpolation="none",
+        origin="lower",
+        aspect="auto",
+        vmin=-1,
+        vmax=1,
+        extent=[x[0], x[-1], y[0], y[-1]],
+    )
+    ax[0, 1].text(
+        0.1,
+        0.9,
+        "After cal, real",
+        transform=ax[0, 1].transAxes,
+        size=22,
+        color="white",
+    )
+    ax[1, 1].imshow(
+        vplot.imag,
+        interpolation="none",
+        origin="lower",
+        aspect="auto",
+        vmin=-1,
+        vmax=1,
+        extent=[x[0], x[-1], y[0], y[-1]],
+    )
+    ax[1, 1].text(
+        0.1,
+        0.9,
+        "After cal, imag",
+        transform=ax[1, 1].transAxes,
+        size=22,
+        color="white",
+    )
     for i in range(2):
-        ax[1, i].set_xlabel('time (min)')
-        ax[i, 0].set_ylabel('freq (GHz)')
+        ax[1, i].set_xlabel("time (min)")
+        ax[i, 0].set_ylabel("freq (GHz)")
     plt.subplots_adjust(hspace=0, wspace=0)
     if outname is not None:
-        plt.savefig('{0}_{1}_cal_vis.png'.format(outname, 'A' if pol == 0 else
-                                                 'B'))
+        plt.savefig("{0}_{1}_cal_vis.png".format(outname, "A" if pol == 0 else "B"))
     if not show:
         plt.close()
 
-def plot_delays(vis_ft, labels, delay_arr, bname, nx=None, outname=None,
-                show=True):
+
+def plot_delays(vis_ft, labels, delay_arr, bname, nx=None, outname=None, show=True):
     """Plots the visibility amplitude against delay.
 
     For a given visibility Fourier transformed along the frequency axis,
@@ -423,40 +494,47 @@ def plot_delays(vis_ft, labels, delay_arr, bname, nx=None, outname=None,
     npol = vis_ft.shape[-1]
     if nx is None:
         nx = min(nbl, 5)
-    ny = nbl//nx
-    if nbl%nx != 0:
+    ny = nbl // nx
+    if nbl % nx != 0:
         ny += 1
 
     alpha = 0.5 if nvis > 2 else 1
     delays = delay_arr[np.argmax(np.abs(vis_ft), axis=2)]
     # could use scipy.signal.find_peaks instead
     for pidx in range(npol):
-        _, ax = plt.subplots(ny, nx, figsize=(8*nx, 8*ny), sharex=True)
+        _, ax = plt.subplots(ny, nx, figsize=(8 * nx, 8 * ny), sharex=True)
         ax = ax.flatten()
         for i in range(nbl):
-            ax[i].axvline(0, color='black')
+            ax[i].axvline(0, color="black")
             for j in range(nvis):
-                ax[i].plot(delay_arr, np.log10(np.abs(vis_ft[j, i, :, pidx])),
-                           label=labels[j], alpha=alpha)
-                ax[i].axvline(delays[j, i, pidx], color='red')
-            ax[i].text(0.1, 0.9, '{0}: {1}'.format(bname[i], 'A' if pidx == 0
-                                                   else 'B'),
-                       transform=ax[i].transAxes, size=22)
+                ax[i].plot(
+                    delay_arr,
+                    np.log10(np.abs(vis_ft[j, i, :, pidx])),
+                    label=labels[j],
+                    alpha=alpha,
+                )
+                ax[i].axvline(delays[j, i, pidx], color="red")
+            ax[i].text(
+                0.1,
+                0.9,
+                "{0}: {1}".format(bname[i], "A" if pidx == 0 else "B"),
+                transform=ax[i].transAxes,
+                size=22,
+            )
         plt.subplots_adjust(wspace=0.1, hspace=0.1)
         ax[0].legend()
-        for i in range((ny-1)*nx, ny*nx):
-            ax[i].set_xlabel('delay (ns)')
+        for i in range((ny - 1) * nx, ny * nx):
+            ax[i].set_xlabel("delay (ns)")
         if outname is not None:
             plt.savefig(
-                '{0}_{1}_delays.png'.format(
-                    outname, 'A' if pidx == 0 else 'B'
-                ),
-                bbox_inches='tight'
+                "{0}_{1}_delays.png".format(outname, "A" if pidx == 0 else "B"),
+                bbox_inches="tight",
             )
         if not show:
             plt.close()
 
     return delays
+
 
 def plot_antenna_delays(msname, calname, plabels=None, outname=None, show=True):
     r"""Plots antenna delay variations between two delay calibrations.
@@ -508,59 +586,61 @@ def plot_antenna_delays(msname, calname, plabels=None, outname=None, show=True):
         The antenna indices.
     """
     if plabels is None:
-        plabels = ['B', 'A']
+        plabels = ["B", "A"]
 
-    ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    ccyc = plt.rcParams["axes.prop_cycle"].by_key()["color"]
 
     # Pull the solutions for the entire timerange and the
     # 60-s data from the measurement set tables
-    antenna_delays, times, _flags, _ant1, _ant2 = \
-        read_caltable('{0}_{1}_2kcal'.format(msname, calname), cparam=False)
+    antenna_delays, times, _flags, _ant1, _ant2 = read_caltable(
+        "{0}_{1}_2kcal".format(msname, calname), cparam=False
+    )
     npol = antenna_delays.shape[-1]
-    kcorr, _tkcorr, _flags, antenna_order, _ant2 = \
-        read_caltable('{0}_{1}_kcal'.format(msname, calname), cparam=False)
+    kcorr, _tkcorr, _flags, antenna_order, _ant2 = read_caltable(
+        "{0}_{1}_kcal".format(msname, calname), cparam=False
+    )
     nant = len(antenna_order)
 
     val_to_plot = (antenna_delays - kcorr).squeeze(axis=3).mean(axis=2)
     mean_along_time = np.abs(val_to_plot.reshape(nant, -1, npol).mean(1))
     idx_to_plot = np.where(
-        (mean_along_time[..., 0] > 1e-10) |
-        (mean_along_time[..., 1] > 1e-10))[0]
-    tplot = (times-times[0])*ct.SECONDS_PER_DAY/60.
-    ny = max(len(idx_to_plot)//10+1, 2)
-    _, ax = plt.subplots(ny, 1, figsize=(10, 8*ny))
-    lcyc = ['.', 'x']
+        (mean_along_time[..., 0] > 1e-10) | (mean_along_time[..., 1] > 1e-10)
+    )[0]
+    tplot = (times - times[0]) * ct.SECONDS_PER_DAY / 60.0
+    ny = max(len(idx_to_plot) // 10 + 1, 2)
+    _, ax = plt.subplots(ny, 1, figsize=(10, 8 * ny))
+    lcyc = [".", "x"]
     for i, bidx in enumerate(idx_to_plot):
         for j in range(npol):
-            ax[i//10].plot(
+            ax[i // 10].plot(
                 tplot,
                 val_to_plot[bidx, :, j],
-                marker=lcyc[j%len(lcyc)],
-                label='{0} {1}'.format(antenna_order[bidx]+1, plabels[j]),
+                marker=lcyc[j % len(lcyc)],
+                label="{0} {1}".format(antenna_order[bidx] + 1, plabels[j]),
                 alpha=0.5,
-                color=ccyc[i%len(ccyc)]
+                color=ccyc[i % len(ccyc)],
             )
     for i in range(ny):
         ax[i].set_ylim(-5, 5)
-        ax[i].set_ylabel('delay (ns)')
+        ax[i].set_ylabel("delay (ns)")
         ax[i].legend(
-            ncol=len(idx_to_plot)//15+1,
-            fontsize='small',
+            ncol=len(idx_to_plot) // 15 + 1,
+            fontsize="small",
             bbox_to_anchor=(1.05, 1),
-            loc='upper left'
+            loc="upper left",
         )
-        ax[i].set_xlabel('time (min)')
+        ax[i].set_xlabel("time (min)")
         ax[i].axhline(1.5)
         ax[i].axhline(-1.5)
     if outname is not None:
-        plt.savefig('{0}_antdelays.png'.format(outname), bbox_inches='tight')
+        plt.savefig("{0}_antdelays.png".format(outname), bbox_inches="tight")
     if not show:
         plt.close()
 
     return times, antenna_delays, kcorr, antenna_order
 
-def plot_gain_calibration(msname, calname, plabels=None, outname=None,
-                          show=True):
+
+def plot_gain_calibration(msname, calname, plabels=None, outname=None, show=True):
     r"""Plots the gain calibration solutions from the gacal and gpcal tables.
 
     Parameters
@@ -597,10 +677,11 @@ def plot_gain_calibration(msname, calname, plabels=None, outname=None,
         solutions.
     """
     if plabels is None:
-        plabels = ['A', 'B']
+        plabels = ["A", "B"]
 
-    gain_phase, time_phase, _flags, ant1, ant2 = \
-        read_caltable('{0}_{1}_gpcal'.format(msname, calname), cparam=True)
+    gain_phase, time_phase, _flags, ant1, ant2 = read_caltable(
+        "{0}_{1}_gpcal".format(msname, calname), cparam=True
+    )
     gain_phase = gain_phase.squeeze(axis=3)
     gain_phase = gain_phase.mean(axis=2)
     npol = gain_phase.shape[-1]
@@ -610,20 +691,20 @@ def plot_gain_calibration(msname, calname, plabels=None, outname=None,
         labels = np.array([ant1, ant2]).T
     nlab = labels.shape[0]
 
-    gain_amp, time, _flags, _ant1, _ant2 = \
-        read_caltable('{0}_{1}_gacal'.format(msname, calname), cparam=True)
+    gain_amp, time, _flags, _ant1, _ant2 = read_caltable(
+        "{0}_{1}_gacal".format(msname, calname), cparam=True
+    )
     gain_amp = gain_amp.squeeze(axis=3)
     gain_amp = gain_amp.mean(axis=2)
     time_days = time.copy()
     t0 = time[0]
-    time = ((time-t0)*u.d).to_value(u.min)
-    time_phase = ((time_phase-t0)*u.d).to_value(u.min)
+    time = ((time - t0) * u.d).to_value(u.min)
+    time_phase = ((time_phase - t0) * u.d).to_value(u.min)
 
-    idx_to_plot = np.where(np.abs(gain_amp.reshape(nlab, -1).mean(1)-1)
-                           > 1e-10)[0]
+    idx_to_plot = np.where(np.abs(gain_amp.reshape(nlab, -1).mean(1) - 1) > 1e-10)[0]
 
-    ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    lcyc = ['-', ':']
+    ccyc = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    lcyc = ["-", ":"]
     _, ax = plt.subplots(1, 2, figsize=(16, 6), sharex=True)
 
     if gain_amp.shape[1] > 1:
@@ -635,39 +716,48 @@ def plot_gain_calibration(msname, calname, plabels=None, outname=None,
 
     for i, bidx in enumerate(idx_to_plot):
         for pidx in range(npol):
-            ax[0].plot(tplot, np.abs(gplot[bidx, :, pidx]),
-                       label='{0} {1}'.format(labels[bidx]+1, plabels[pidx]),
-                       color=ccyc[i%len(ccyc)], ls=lcyc[pidx])
+            ax[0].plot(
+                tplot,
+                np.abs(gplot[bidx, :, pidx]),
+                label="{0} {1}".format(labels[bidx] + 1, plabels[pidx]),
+                color=ccyc[i % len(ccyc)],
+                ls=lcyc[pidx],
+            )
 
     if gain_phase.shape[1] > 1:
         tplot = time_phase
         gplot = gain_phase
     else:
-        tplot = [tplot[0], tplot[-1]] # use the time from the gains
+        tplot = [tplot[0], tplot[-1]]  # use the time from the gains
         gplot = np.tile(gain_phase, [1, 2, 1])
 
     for i, bidx in enumerate(idx_to_plot):
         for pidx in range(npol):
-            ax[1].plot(tplot, np.angle(gplot[bidx, :, pidx]),
-                       label='{0} {1}'.format(labels[bidx]+1, plabels[pidx]),
-                       color=ccyc[i%len(ccyc)], ls=lcyc[pidx])
+            ax[1].plot(
+                tplot,
+                np.angle(gplot[bidx, :, pidx]),
+                label="{0} {1}".format(labels[bidx] + 1, plabels[pidx]),
+                color=ccyc[i % len(ccyc)],
+                ls=lcyc[pidx],
+            )
 
     ax[0].set_xlim(tplot[0], tplot[-1])
     ax[1].set_ylim(-np.pi, np.pi)
-    ax[0].legend(ncol=10, fontsize='x-small', bbox_to_anchor=(0.05, -0.1),
-                 loc='upper left')
-    ax[0].set_xlabel('time (min)')
-    ax[1].set_xlabel('time (min)')
-    ax[0].set_ylabel('Abs of gain')
-    ax[1].set_ylabel('Phase of gain')
+    ax[0].legend(
+        ncol=10, fontsize="x-small", bbox_to_anchor=(0.05, -0.1), loc="upper left"
+    )
+    ax[0].set_xlabel("time (min)")
+    ax[1].set_xlabel("time (min)")
+    ax[0].set_ylabel("Abs of gain")
+    ax[1].set_ylabel("Phase of gain")
     if outname is not None:
-        plt.savefig('{0}_gaincal.png'.format(outname), bbox_inches='tight')
+        plt.savefig("{0}_gaincal.png".format(outname), bbox_inches="tight")
     if not show:
         plt.close()
     return time_days, gain_amp, gain_phase, labels
 
-def plot_bandpass(msname, calname,
-                  plabels=None, outname=None, show=True):
+
+def plot_bandpass(msname, calname, plabels=None, outname=None, show=True):
     r"""Plots the bandpass calibration solutions in the bcal table.
 
     Parameters
@@ -699,57 +789,74 @@ def plot_bandpass(msname, calname,
         solutions.
     """
     if plabels is None:
-        plabels = ['A', 'B']
+        plabels = ["A", "B"]
 
-    bpass, _tbpass, _flags, ant1, ant2 = read_caltable('{0}_{1}_bcal'.format(
-        msname, calname), cparam=True)
+    bpass, _tbpass, _flags, ant1, ant2 = read_caltable(
+        "{0}_{1}_bcal".format(msname, calname), cparam=True
+    )
     # squeeze along the time axis
     # baseline, time, spw, frequency, pol
     bpass = bpass.squeeze(axis=1)
     bpass = bpass.reshape(bpass.shape[0], -1, bpass.shape[-1])
     npol = bpass.shape[-1]
 
-    with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
-        fobs = (np.array(tb.col('CHAN_FREQ')[:])/1e9).reshape(-1)
+    with table("{0}.ms/SPECTRAL_WINDOW".format(msname)) as tb:
+        fobs = (np.array(tb.col("CHAN_FREQ")[:]) / 1e9).reshape(-1)
 
     if bpass.shape[1] != fobs.shape[0]:
-        nint = fobs.shape[0]//bpass.shape[1]
-        fobs_plot = np.mean(fobs[:nint]) + \
-            np.arange(bpass.shape[1])*np.median(np.diff(fobs))*nint
+        nint = fobs.shape[0] // bpass.shape[1]
+        fobs_plot = (
+            np.mean(fobs[:nint])
+            + np.arange(bpass.shape[1]) * np.median(np.diff(fobs)) * nint
+        )
     else:
         fobs_plot = fobs.copy()
 
     if np.all(ant2 == ant2[0]):
-        labels = ant1+1
+        labels = ant1 + 1
     else:
-        labels = np.array([ant1+1, ant2+1]).T
+        labels = np.array([ant1 + 1, ant2 + 1]).T
     nant = len(ant1)
 
-    idxs_to_plot = np.where(np.abs(np.abs(bpass).reshape(nant, -1).mean(1)-1) >
-                            1e-5)[0]
+    idxs_to_plot = np.where(np.abs(np.abs(bpass).reshape(nant, -1).mean(1) - 1) > 1e-5)[
+        0
+    ]
 
-    ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    lcyc = ['-', ':']
+    ccyc = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    lcyc = ["-", ":"]
     _, ax = plt.subplots(1, 2, figsize=(16, 6), sharex=True)
     for i, bidx in enumerate(idxs_to_plot):
         for pidx in range(npol):
-            ax[0].plot(fobs_plot, np.abs(bpass[bidx, :, pidx]), '.',
-                       label='{0} {1}'.format(labels[bidx], plabels[pidx]),
-                       alpha=0.5, ls=lcyc[pidx], color=ccyc[i%len(ccyc)])
-            ax[1].plot(fobs_plot, np.angle(bpass[bidx, :, pidx]), '.',
-                       label='{0} {1}'.format(labels[bidx], plabels[pidx]),
-                       alpha=0.5, ls=lcyc[pidx], color=ccyc[i%len(ccyc)])
-    ax[0].set_xlabel('freq (GHz)')
-    ax[1].set_xlabel('freq (GHz)')
-    ax[0].set_ylabel('B cal amp')
-    ax[1].set_ylabel('B cal phase (rad)')
-    ax[0].legend(ncol=3, fontsize='small')
+            ax[0].plot(
+                fobs_plot,
+                np.abs(bpass[bidx, :, pidx]),
+                ".",
+                label="{0} {1}".format(labels[bidx], plabels[pidx]),
+                alpha=0.5,
+                ls=lcyc[pidx],
+                color=ccyc[i % len(ccyc)],
+            )
+            ax[1].plot(
+                fobs_plot,
+                np.angle(bpass[bidx, :, pidx]),
+                ".",
+                label="{0} {1}".format(labels[bidx], plabels[pidx]),
+                alpha=0.5,
+                ls=lcyc[pidx],
+                color=ccyc[i % len(ccyc)],
+            )
+    ax[0].set_xlabel("freq (GHz)")
+    ax[1].set_xlabel("freq (GHz)")
+    ax[0].set_ylabel("B cal amp")
+    ax[1].set_ylabel("B cal phase (rad)")
+    ax[0].legend(ncol=3, fontsize="small")
     if outname is not None:
-        plt.savefig('{0}_bandpass.png'.format(outname), bbox_inches='tight')
+        plt.savefig("{0}_bandpass.png".format(outname), bbox_inches="tight")
     if not show:
         plt.close()
 
     return bpass, fobs, labels
+
 
 def plot_autocorr(UV):
     """Plots autocorrelations from UVData object.
@@ -765,64 +872,65 @@ def plot_autocorr(UV):
     time = UV.time_array.reshape(UV.Ntimes, -1)[:, 0]
     vis = UV.data_array.reshape(UV.Ntimes, -1, UV.Nfreqs, UV.Npols)
     autocorrs = np.where(ant1 == ant2)[0]
-    ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
+    ccyc = plt.rcParams["axes.prop_cycle"].by_key()["color"]
     _, ax = plt.subplots(
-        len(autocorrs)//len(ccyc)+1,
+        len(autocorrs) // len(ccyc) + 1,
         1,
-        figsize=(8, 4*len(autocorrs)//len(ccyc)+1),
+        figsize=(8, 4 * len(autocorrs) // len(ccyc) + 1),
         sharex=True,
-        sharey=True
+        sharey=True,
     )
-    for j in range(len(autocorrs)//len(ccyc)+1):
-        for i, ac in enumerate(autocorrs[len(ccyc)*j:len(ccyc)*(j+1)]):
+    for j in range(len(autocorrs) // len(ccyc) + 1):
+        for i, ac in enumerate(autocorrs[len(ccyc) * j : len(ccyc) * (j + 1)]):
             ax[j].plot(
-                freq.squeeze()/1e9,
+                freq.squeeze() / 1e9,
                 np.abs(np.nanmean(vis[:, ac, ..., 0], axis=0)),
                 alpha=0.5,
-                color=ccyc[i%len(ccyc)],
-                ls='-',
-                label=ant1[ac]+1
+                color=ccyc[i % len(ccyc)],
+                ls="-",
+                label=ant1[ac] + 1,
             )
             ax[j].plot(
-                freq.squeeze()/1e9,
+                freq.squeeze() / 1e9,
                 np.abs(np.nanmean(vis[:, ac, ..., 1], axis=0)),
                 alpha=0.5,
-                color=ccyc[i%len(ccyc)],
-                ls=':'
+                color=ccyc[i % len(ccyc)],
+                ls=":",
             )
         ax[j].legend()
-    ax[-1].set_xlabel('freq (GHz)')
-    ax[0].set_yscale('log')
+    ax[-1].set_xlabel("freq (GHz)")
+    ax[0].set_yscale("log")
     plt.subplots_adjust(hspace=0)
 
     _, ax = plt.subplots(
-        len(autocorrs)//len(ccyc)+1,
+        len(autocorrs) // len(ccyc) + 1,
         1,
-        figsize=(8, 4*len(autocorrs)//len(ccyc)+1),
+        figsize=(8, 4 * len(autocorrs) // len(ccyc) + 1),
         sharex=True,
-        sharey=True
+        sharey=True,
     )
-    for j in range(len(autocorrs)//len(ccyc)+1):
-        for i, ac in enumerate(autocorrs[len(ccyc)*j:len(ccyc)*(j+1)]):
+    for j in range(len(autocorrs) // len(ccyc) + 1):
+        for i, ac in enumerate(autocorrs[len(ccyc) * j : len(ccyc) * (j + 1)]):
             ax[j].plot(
-                (time-time[0])*24*60,
+                (time - time[0]) * 24 * 60,
                 np.abs(vis[:, ac, ..., 0].mean(axis=1)),
                 alpha=0.5,
-                color=ccyc[i%len(ccyc)],
-                ls='-',
-                label=ant1[ac]+1
+                color=ccyc[i % len(ccyc)],
+                ls="-",
+                label=ant1[ac] + 1,
             )
             ax[j].plot(
-                (time-time[0])*24*60,
+                (time - time[0]) * 24 * 60,
                 np.abs(vis[:, ac, ..., 1].mean(axis=1)),
                 alpha=0.5,
-                color=ccyc[i%len(ccyc)],
-                ls=':'
+                color=ccyc[i % len(ccyc)],
+                ls=":",
             )
         ax[j].legend()
-    ax[-1].set_xlabel('time (min)')
-    ax[0].set_yscale('log')
+    ax[-1].set_xlabel("time (min)")
+    ax[0].set_yscale("log")
     plt.subplots_adjust(hspace=0)
+
 
 def summary_plot(msname, calname, npol, plabels, antennas):
     r"""Generates a summary plot showing the calibration solutions.
@@ -847,124 +955,119 @@ def summary_plot(msname, calname, npol, plabels, antennas):
         The handle for the generated figure.
     """
     # TODO: remove npol, and assert that plabels and npol have the same shapes
-    ny = len(antennas)//10
-    if len(antennas)%10 != 0:
+    ny = len(antennas) // 10
+    if len(antennas) % 10 != 0:
         ny += 1
-    ccyc = plt.rcParams['axes.prop_cycle'].by_key()['color']
-    mcyc = ['.', 'x']
-    lcyc = ['-', '--']
+    ccyc = plt.rcParams["axes.prop_cycle"].by_key()["color"]
+    mcyc = [".", "x"]
+    lcyc = ["-", "--"]
 
-    fig, ax = plt.subplots(4, ny*2, figsize=(12, 12))
+    fig, ax = plt.subplots(4, ny * 2, figsize=(12, 12))
     ax = ax.reshape(4, ny, 2).swapaxes(0, 1)
-    ax[0, 0, 0].axis('off')
+    ax[0, 0, 0].axis("off")
 
     # Plot kcal
-    if os.path.exists('{0}_{1}_2kcal'.format(msname, calname)):
+    if os.path.exists("{0}_{1}_2kcal".format(msname, calname)):
         antenna_delays, times, _flags, _ant1, _ant2 = read_caltable(
-            '{0}_{1}_2kcal'.format(msname, calname),
-            cparam=False
+            "{0}_{1}_2kcal".format(msname, calname), cparam=False
         )
         npol = antenna_delays.shape[-1]
         kcorr, _tkcorr, _flags, _antenna_order, _ant2 = read_caltable(
-            '{0}_{1}_kcal'.format(msname, calname),
-            cparam=False
+            "{0}_{1}_kcal".format(msname, calname), cparam=False
         )
         val_to_plot = (antenna_delays - kcorr).squeeze(axis=3).mean(axis=2)
-        tplot = (times-times[0])*ct.SECONDS_PER_DAY/60.
+        tplot = (times - times[0]) * ct.SECONDS_PER_DAY / 60.0
 
         for i, ant in enumerate(antennas):
             for j in range(npol):
-                ax[i//10, 0, 1].plot(
+                ax[i // 10, 0, 1].plot(
                     tplot,
-                    val_to_plot[ant-1, :, j],
-                    marker=mcyc[j%len(mcyc)],
-                    linestyle=lcyc[j%len(lcyc)],
-                    label='{0} {1}'.format(ant, plabels[j]),
+                    val_to_plot[ant - 1, :, j],
+                    marker=mcyc[j % len(mcyc)],
+                    linestyle=lcyc[j % len(lcyc)],
+                    label="{0} {1}".format(ant, plabels[j]),
                     alpha=0.5,
-                    color=ccyc[i%len(ccyc)]
+                    color=ccyc[i % len(ccyc)],
                 )
         for i in range(ny):
             ax[i, 0, 1].set_ylim(-5, 5)
             ax[i, 0, 1].axhline(1.5)
             ax[i, 0, 1].axhline(-1.5)
-        ax[0, 0, 1].legend(ncol=3, loc='upper left', bbox_to_anchor=(-1, 1))
+        ax[0, 0, 1].legend(ncol=3, loc="upper left", bbox_to_anchor=(-1, 1))
 
-    if os.path.exists('{0}_{1}_bcal'.format(
-            msname,
-            calname
-    )):
+    if os.path.exists("{0}_{1}_bcal".format(msname, calname)):
         bpass, _tbpass, _flags, ant1, ant2 = read_caltable(
-            '{0}_{1}_bcal'.format(
-                msname, calname
-            ),
-            cparam=True
+            "{0}_{1}_bcal".format(msname, calname), cparam=True
         )
         bpass = bpass.squeeze(axis=1)
         bpass = bpass.reshape(bpass.shape[0], -1, bpass.shape[-1])
         npol = bpass.shape[-1]
 
-        with table('{0}.ms/SPECTRAL_WINDOW'.format(msname)) as tb:
-            fobs = (np.array(tb.col('CHAN_FREQ')[:])/1e9).reshape(-1)
+        with table("{0}.ms/SPECTRAL_WINDOW".format(msname)) as tb:
+            fobs = (np.array(tb.col("CHAN_FREQ")[:]) / 1e9).reshape(-1)
 
         if bpass.shape[1] != fobs.shape[0]:
-            nint = fobs.shape[0]//bpass.shape[1]
-            fobs_plot = np.mean(fobs[:nint]) + \
-                np.arange(bpass.shape[1])*np.median(np.diff(fobs))*nint
+            nint = fobs.shape[0] // bpass.shape[1]
+            fobs_plot = (
+                np.mean(fobs[:nint])
+                + np.arange(bpass.shape[1]) * np.median(np.diff(fobs)) * nint
+            )
         else:
             fobs_plot = fobs.copy()
 
         for i, ant in enumerate(antennas):
             for pidx in range(npol):
-                ax[i//10, 1, 0].plot(
+                ax[i // 10, 1, 0].plot(
                     fobs_plot,
-                    np.abs(bpass[ant-1, :, pidx]),
-                    label='{0} {1}'.format(ant, plabels[pidx]),
+                    np.abs(bpass[ant - 1, :, pidx]),
+                    label="{0} {1}".format(ant, plabels[pidx]),
                     alpha=0.5,
-                    ls=lcyc[pidx%len(lcyc)],
-                    color=ccyc[i%len(ccyc)]
+                    ls=lcyc[pidx % len(lcyc)],
+                    color=ccyc[i % len(ccyc)],
                 )
-                ax[i//10, 2, 0].plot(
+                ax[i // 10, 2, 0].plot(
                     fobs_plot,
-                    np.angle(bpass[ant-1, :, pidx]),
-                    label='{0} {1}'.format(ant, plabels[pidx]),
+                    np.angle(bpass[ant - 1, :, pidx]),
+                    label="{0} {1}".format(ant, plabels[pidx]),
                     alpha=0.5,
                     ls=lcyc[pidx],
-                    color=ccyc[i%len(ccyc)]
+                    color=ccyc[i % len(ccyc)],
                 )
-                ax[i//10, 1, 0].set_yscale('log')
+                ax[i // 10, 1, 0].set_yscale("log")
 
-    if os.path.exists('{0}_{1}_2gcal'.format(msname, calname)):
-        gain, time, _flags, ant1, ant2 = \
-            read_caltable('{0}_{1}_2gcal'.format(msname, calname), cparam=True)
+    if os.path.exists("{0}_{1}_2gcal".format(msname, calname)):
+        gain, time, _flags, ant1, ant2 = read_caltable(
+            "{0}_{1}_2gcal".format(msname, calname), cparam=True
+        )
         gain = gain.squeeze(axis=3)
         gain = gain.mean(axis=2)
         t0 = time[0]
-        time = ((time-t0)*u.d).to_value(u.min)
+        time = ((time - t0) * u.d).to_value(u.min)
 
         for i, ant in enumerate(antennas):
             for pidx in range(npol):
-                ax[i//10, 1, 1].plot(
+                ax[i // 10, 1, 1].plot(
                     time,
-                    np.abs(gain[ant-1, :, pidx]),
-                    label='{0} {1}'.format(ant, plabels[pidx]),
-                    color=ccyc[i%len(ccyc)],
-                    ls=lcyc[pidx%len(lcyc)],
-                    marker=mcyc[pidx%len(mcyc)]
+                    np.abs(gain[ant - 1, :, pidx]),
+                    label="{0} {1}".format(ant, plabels[pidx]),
+                    color=ccyc[i % len(ccyc)],
+                    ls=lcyc[pidx % len(lcyc)],
+                    marker=mcyc[pidx % len(mcyc)],
                 )
 
         for i, ant in enumerate(antennas):
             for pidx in range(npol):
-                ax[i//10, 2, 1].plot(
+                ax[i // 10, 2, 1].plot(
                     time,
-                    np.angle(gain[ant-1, :, pidx]),
-                    label='{0} {1}'.format(ant, plabels[pidx]),
-                    color=ccyc[i%len(ccyc)],
-                    ls=lcyc[pidx]
+                    np.angle(gain[ant - 1, :, pidx]),
+                    label="{0} {1}".format(ant, plabels[pidx]),
+                    color=ccyc[i % len(ccyc)],
+                    ls=lcyc[pidx],
                 )
         for i in range(ny):
             ax[i, 1, 1].set_xlim(tplot[0], tplot[-1])
             ax[i, 2, 1].set_xlim(tplot[0], tplot[-1])
-            ax[i, 2, 1].set_ylim(-np.pi/10, np.pi/10)
+            ax[i, 2, 1].set_ylim(-np.pi / 10, np.pi / 10)
     else:
         t0 = None
 
@@ -972,61 +1075,67 @@ def summary_plot(msname, calname, npol, plabels, antennas):
     autocorr_idx = np.where(ant1 == ant2)[0]
     vis_autocorr = vis[autocorr_idx, ...]
     vis_time = np.median(
-        vis_autocorr.reshape(
-            vis_autocorr.shape[0], vis_autocorr.shape[1], -1, 2
-        ), axis=-2
+        vis_autocorr.reshape(vis_autocorr.shape[0], vis_autocorr.shape[1], -1, 2),
+        axis=-2,
     )
     vis_freq = np.median(
-        vis_autocorr.reshape(
-            vis_autocorr.shape[0], vis_autocorr.shape[1], -1, 2
-        ), axis=1
+        vis_autocorr.reshape(vis_autocorr.shape[0], vis_autocorr.shape[1], -1, 2),
+        axis=1,
     )
     if t0 is None:
         t0 = time[0]
-    time = ((time-t0)*u.d).to_value(u.min)
+    time = ((time - t0) * u.d).to_value(u.min)
     vis_ant_order = ant1[autocorr_idx]
     for i, ant in enumerate(antennas):
-        vis_idx = np.where(vis_ant_order == ant-1)[0]
+        vis_idx = np.where(vis_ant_order == ant - 1)[0]
         if len(vis_idx) > 0:
             vis_idx = vis_idx[0]
             for pidx in range(npol):
-                ax[i//10, 3, 1].plot(
-                    time-time[0],
+                ax[i // 10, 3, 1].plot(
+                    time - time[0],
                     np.abs(vis_time[vis_idx, :, pidx]),
-                    label='{0} {1}'.format(ant, plabels[pidx]),
-                    color=ccyc[i%len(ccyc)],
-                    ls=lcyc[pidx%len(lcyc)],
-                    alpha=0.5
+                    label="{0} {1}".format(ant, plabels[pidx]),
+                    color=ccyc[i % len(ccyc)],
+                    ls=lcyc[pidx % len(lcyc)],
+                    alpha=0.5,
                 )
-                ax[i//10, 3, 0].plot(
+                ax[i // 10, 3, 0].plot(
                     fobs,
                     np.abs(vis_freq[vis_idx, :, pidx]),
-                    label='{0} {1}'.format(ant, plabels[pidx]),
-                    color=ccyc[i%len(ccyc)],
-                    ls=lcyc[pidx%len(lcyc)],
-                    alpha=0.5
+                    label="{0} {1}".format(ant, plabels[pidx]),
+                    color=ccyc[i % len(ccyc)],
+                    ls=lcyc[pidx % len(lcyc)],
+                    alpha=0.5,
                 )
 
     for i in range(ny):
-        ax[i, 3, 1].set_xlabel('time (min)')
-        ax[i, 3, 0].set_xlabel('freq (GHz)')
-        ax[i, 3, 1].set_ylabel('autocorr power')
-        ax[i, 3, 0].set_ylabel('autocorr power')
-        ax[i, 3, 0].set_yscale('log')
-        ax[i, 3, 1].set_yscale('log')
-        ax[i, 1, 1].set_ylabel('Abs of gain')
-        ax[i, 2, 1].set_ylabel('Phase of gain')
-        ax[i, 1, 0].set_ylabel('B cal amp')
-        ax[i, 2, 0].set_ylabel('B cal phase (rad)')
-        ax[i, 0, 1].set_ylabel('delay (ns)')
-    fig.suptitle('{0}'.format(msname))
+        ax[i, 3, 1].set_xlabel("time (min)")
+        ax[i, 3, 0].set_xlabel("freq (GHz)")
+        ax[i, 3, 1].set_ylabel("autocorr power")
+        ax[i, 3, 0].set_ylabel("autocorr power")
+        ax[i, 3, 0].set_yscale("log")
+        ax[i, 3, 1].set_yscale("log")
+        ax[i, 1, 1].set_ylabel("Abs of gain")
+        ax[i, 2, 1].set_ylabel("Phase of gain")
+        ax[i, 1, 0].set_ylabel("B cal amp")
+        ax[i, 2, 0].set_ylabel("B cal phase (rad)")
+        ax[i, 0, 1].set_ylabel("delay (ns)")
+    fig.suptitle("{0}".format(msname))
     return fig
 
+
 def plot_current_beamformer_solutions(
-        filenames, calname, date, beamformer_name, corrlist=np.arange(1, 16+1),
-        antennas_to_plot=None, antennas=None, outname=None, show=True,
-        gaindir='/home/user/beamformer_weights/',
-        hdf5dir='/mnt/data/dsa110/correlator/'
+    filenames,
+    calname,
+    date,
+    beamformer_name,
+    corrlist=np.arange(1, 16 + 1),
+    antennas_to_plot=None,
+    antennas=None,
+    outname=None,
+    show=True,
+    gaindir="/home/user/beamformer_weights/",
+    hdf5dir="/mnt/data/dsa110/correlator/",
 ):
     r"""Plots the phase difference between the two polarizations.
 
@@ -1073,95 +1182,84 @@ def plot_current_beamformer_solutions(
         stored. Files were be searched for in `hdf5dir`/corr??/
     """
     if antennas is None:
-        antennas = np.array(list(CONF.get('corr')['antenna_order'].values))
+        antennas = np.array(list(CONF.get("corr")["antenna_order"].values))
     assert len(antennas) == 64
     if antennas_to_plot is None:
         antennas_to_plot = antennas
     # Should be generalized to different times, baselines
-    visdata_corr = np.zeros(
-        (len(filenames)*280, 325, 16, 48, 2),
-        dtype=np.complex
-    )
+    visdata_corr = np.zeros((len(filenames) * 280, 325, 16, 48, 2), dtype=np.complex)
     for corridx, corr in enumerate(corrlist):
-        visdata = np.zeros(
-            (len(filenames), 91000, 1, 48, 2),
-            dtype=np.complex
-        )
+        visdata = np.zeros((len(filenames), 91000, 1, 48, 2), dtype=np.complex)
         for i, filename in enumerate(filenames):
-            files = sorted(glob.glob(
-                '{0}/corr{1:02d}/{2}??.hdf5'.format(
-                    hdf5dir,
-                    corr,
-                    filename[:-2]
+            files = sorted(
+                glob.glob(
+                    "{0}/corr{1:02d}/{2}??.hdf5".format(hdf5dir, corr, filename[:-2])
                 )
-            ))
+            )
             if len(files) > 0:
-                with h5py.File(files[0], 'r') as f:
-                    visdata[i, ...] = np.array(f['Data']['visdata'][:])
-                    ant1 = np.array(f['Header']['ant_1_array'][:])
-                    ant2 = np.array(f['Header']['ant_2_array'][:])
+                with h5py.File(files[0], "r") as f:
+                    visdata[i, ...] = np.array(f["Data"]["visdata"][:])
+                    ant1 = np.array(f["Header"]["ant_1_array"][:])
+                    ant2 = np.array(f["Header"]["ant_2_array"][:])
         visdata = visdata.reshape((-1, 325, 48, 2))
         ant1 = ant1.reshape(-1, 325)[0, :]
         ant2 = ant2.reshape(-1, 325)[0, :]
         with open(
-                '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
-                    gaindir,
-                    corr,
-                    beamformer_name
-                ),
-                'rb'
+            "{0}/beamformer_weights_corr{1:02d}_{2}.dat".format(
+                gaindir, corr, beamformer_name
+            ),
+            "rb",
         ) as f:
-            data = np.fromfile(f, '<f4')
+            data = np.fromfile(f, "<f4")
         gains = data[64:].reshape(64, 48, 2, 2)
-        gains = gains[..., 0]+1.0j*gains[..., 1]
+        gains = gains[..., 0] + 1.0j * gains[..., 1]
         my_gains = np.zeros((325, 48, 2), dtype=np.complex)
         for i in range(325):
-            idx1 = np.where(antennas == ant1[i]+1)[0][0]
-            idx2 = np.where(antennas == ant2[i]+1)[0][0]
-            my_gains[i, ...] = np.conjugate(gains[idx1, ...])*gains[idx2, ...]
-        visdata_corr[:, :, corridx, ...] = (
-            visdata*my_gains[np.newaxis, :, :, :]
-        )
-    visdata_corr = visdata_corr.reshape((-1, 325, 16*48, 2))
+            idx1 = np.where(antennas == ant1[i] + 1)[0][0]
+            idx2 = np.where(antennas == ant2[i] + 1)[0][0]
+            my_gains[i, ...] = np.conjugate(gains[idx1, ...]) * gains[idx2, ...]
+        visdata_corr[:, :, corridx, ...] = visdata * my_gains[np.newaxis, :, :, :]
+    visdata_corr = visdata_corr.reshape((-1, 325, 16 * 48, 2))
 
     fig, ax = plt.subplots(5, 4, figsize=(25, 12), sharex=True, sharey=True)
     for axi in ax[-1, :]:
-        axi.set_xlabel('freq channel')
+        axi.set_xlabel("freq channel")
     for axi in ax[:, 0]:
-        axi.set_ylabel('time bin')
+        axi.set_ylabel("time bin")
     ax = ax.flatten()
-    for i, ant in enumerate(antennas_to_plot-1):
+    for i, ant in enumerate(antennas_to_plot - 1):
         idx = np.where((ant1 == 23) & (ant2 == ant))[0][0]
         ax[i].imshow(
-            np.angle(
-                visdata_corr[:, idx, :, 0]/visdata_corr[:, idx, :, 1]
-            ),
-            aspect='auto',
-            origin='lower',
-            interpolation='none',
-            cmap=plt.get_cmap('RdBu'),
+            np.angle(visdata_corr[:, idx, :, 0] / visdata_corr[:, idx, :, 1]),
+            aspect="auto",
+            origin="lower",
+            interpolation="none",
+            cmap=plt.get_cmap("RdBu"),
             vmin=-np.pi,
-            vmax=np.pi
+            vmax=np.pi,
         )
         ax[i].set_title(
-            '24-{0}, {1:.2f}'.format(
-                ant+1,
+            "24-{0}, {1:.2f}".format(
+                ant + 1,
                 np.angle(
-                    np.mean(
-                        visdata_corr[:, idx, :, 0]/visdata_corr[:, idx, :, 1]
-                    )
-                )
+                    np.mean(visdata_corr[:, idx, :, 0] / visdata_corr[:, idx, :, 1])
+                ),
             )
         )
-    fig.suptitle('{0} {1}'.format(date, calname))
+    fig.suptitle("{0} {1}".format(date, calname))
     if outname is not None:
-        plt.savefig('{0}_beamformerweights.png'.format(outname))
+        plt.savefig("{0}_beamformerweights.png".format(outname))
     if not show:
         plt.close()
 
+
 def plot_bandpass_phases(
-        beamformer_names, antennas, refant=24, outname=None, show=True,
-        msdir='/mnt/data/dsa110/calibration/'
+    beamformer_names,
+    antennas,
+    refant=24,
+    outname=None,
+    show=True,
+    msdir="/mnt/data/dsa110/calibration/",
 ):
     r"""Plot the bandpass phase observed over multiple calibrators.
 
@@ -1187,31 +1285,31 @@ def plot_bandpass_phases(
     transit_times = []
     dates = []
     for beamformer_name in beamformer_names:
-        cal, transit_time = beamformer_name.split('_')
+        cal, transit_time = beamformer_name.split("_")
         cals += [cal]
         transit_times += [transit_time]
-        dates += [transit_time.split('T')[0]]
+        dates += [transit_time.split("T")[0]]
 
     # Sort beamformer weights by transit time
     transit_times, cals, dates = zip(*sorted(zip(transit_times, cals, dates)))
 
     # Read in gain phase calibration tables for each calibrator pass
     calnames = []
-    gains = [None]*nentries
+    gains = [None] * nentries
     gshape = None
     for i, cal in enumerate(cals):
         date = dates[i]
-        calnames += [f'{date}_{cal}']
-        msname = f'{msdir}/{date}_{cal}'
+        calnames += [f"{date}_{cal}"]
+        msname = f"{msdir}/{date}_{cal}"
 
-        bpcal_table = f'{msname}_{cal}_bpcal'
+        bpcal_table = f"{msname}_{cal}_bpcal"
         if os.path.exists(bpcal_table):
             with table(bpcal_table) as tb:
                 gains[i] = np.array(tb.CPARAM[:])
             if gshape is None:
                 gshape = gains[i].shape
 
-    if gshape is None: # We have no data to plot
+    if gshape is None:  # We have no data to plot
         return
 
     # Fill missing data with default to safely convert to an array
@@ -1222,10 +1320,10 @@ def plot_bandpass_phases(
 
     # Set up the plot
     nx = 4
-    ny = len(antennas)//nx
-    if len(antennas)%nx > 0:
+    ny = len(antennas) // nx
+    if len(antennas) % nx > 0:
         ny += 1
-    fig, ax = plt.subplots(ny, nx, figsize=(3*nx, 3*ny), sharex=True, sharey=True)
+    fig, ax = plt.subplots(ny, nx, figsize=(3 * nx, 3 * ny), sharex=True, sharey=True)
 
     # Set the yticks to display the calibrator pass details
     ax[0, 0].set_yticks(np.arange(nentries))
@@ -1236,26 +1334,32 @@ def plot_bandpass_phases(
     ax = ax.flatten()
     for i in np.arange(len(antennas)):
         ax[i].imshow(
-            np.angle(gains[:, antennas[i]-1, :, 0]/gains[:, refant-1, :, 0]),
-            vmin=-np.pi, vmax=np.pi,
-            aspect='auto', origin='lower', interpolation='None', cmap=plt.get_cmap('RdBu'))
-        ax[i].annotate(str(antennas[i]), (0, 1), xycoords='axes fraction')
-        ax[i].set_xlabel('Frequency channel')
+            np.angle(gains[:, antennas[i] - 1, :, 0] / gains[:, refant - 1, :, 0]),
+            vmin=-np.pi,
+            vmax=np.pi,
+            aspect="auto",
+            origin="lower",
+            interpolation="None",
+            cmap=plt.get_cmap("RdBu"),
+        )
+        ax[i].annotate(str(antennas[i]), (0, 1), xycoords="axes fraction")
+        ax[i].set_xlabel("Frequency channel")
 
     if outname is not None:
-        plt.savefig('{0}_phases.png'.format(outname))
+        plt.savefig("{0}_phases.png".format(outname))
     if not show:
         plt.close(fig)
 
+
 def plot_beamformer_weights(
-        beamformer_names,
-        corrlist=np.arange(1, 16+1),
-        antennas_to_plot=None,
-        antennas=None,
-        outname=None,
-        pols=None,
-        show=True,
-        gaindir='/home/user/beamformer_weights/'
+    beamformer_names,
+    corrlist=np.arange(1, 16 + 1),
+    antennas_to_plot=None,
+    antennas=None,
+    outname=None,
+    pols=None,
+    show=True,
+    gaindir="/home/user/beamformer_weights/",
 ):
     """Plot beamformer weights from a number of beamformer solutions.
 
@@ -1287,79 +1391,73 @@ def plot_beamformer_weights(
         The beamformer weights.
     """
     if pols is None:
-        pols = ['B', 'A']
+        pols = ["B", "A"]
     if antennas is None:
-        antennas = np.array(list(CONF.get('corr')['antenna_order'].values()))
+        antennas = np.array(list(CONF.get("corr")["antenna_order"].values()))
     assert len(antennas) == 64
     if antennas_to_plot is None:
         antennas_to_plot = antennas
     # Set shape of the figure
     nplots = 4
     nx = 5
-    ny = len(antennas_to_plot)//nx
-    if len(antennas_to_plot)%nx != 0:
+    ny = len(antennas_to_plot) // nx
+    if len(antennas_to_plot) % nx != 0:
         ny += 1
     gains = np.zeros(
-        (len(beamformer_names), len(antennas), len(corrlist), 48, 2),
-        dtype=np.complex
+        (len(beamformer_names), len(antennas), len(corrlist), 48, 2), dtype=np.complex
     )
     for i, beamformer_name in enumerate(beamformer_names):
         for corridx, corr in enumerate(corrlist):
             with open(
-                    '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
-                        gaindir,
-                        corr,
-                        beamformer_name
-                    ),
-                    'rb'
+                "{0}/beamformer_weights_corr{1:02d}_{2}.dat".format(
+                    gaindir, corr, beamformer_name
+                ),
+                "rb",
             ) as f:
-                data = np.fromfile(f, '<f4')
+                data = np.fromfile(f, "<f4")
             temp = data[64:].reshape(64, 48, 2, 2)
-            gains[i, :, corridx, :, :] = temp[..., 0]+1.0j*temp[..., 1]
-    gains = gains.reshape(
-        (len(beamformer_names), len(antennas), len(corrlist)*48, 2)
-    )
-    #ymax = np.nanmax(np.log10(np.abs(gains)))
-    #ymin = np.nanmin(np.log10(np.abs(gains)))
+            gains[i, :, corridx, :, :] = temp[..., 0] + 1.0j * temp[..., 1]
+    gains = gains.reshape((len(beamformer_names), len(antennas), len(corrlist) * 48, 2))
+    # ymax = np.nanmax(np.log10(np.abs(gains)))
+    # ymin = np.nanmin(np.log10(np.abs(gains)))
     # Phase, polarization B
     fig, ax = plt.subplots(
-        nplots*ny,
-        nx,
-        figsize=(6*nx, 2.5*ny*nplots),
-        sharex=True,
-        sharey=False
+        nplots * ny, nx, figsize=(6 * nx, 2.5 * ny * nplots), sharex=True, sharey=False
     )
     for axi in ax[-1, :]:
-        axi.set_xlabel('freq channel')
+        axi.set_xlabel("freq channel")
     for nplot in range(nplots):
-        polidx = nplot%2
-        angle = nplot//2
-        axi = ax[ny*nplot:ny*(nplot+1), :]
+        polidx = nplot % 2
+        angle = nplot // 2
+        axi = ax[ny * nplot : ny * (nplot + 1), :]
         for axii in axi[:, 0]:
-            axii.set_ylabel('phase (rad)' if angle else 'amplitude (arb)')
+            axii.set_ylabel("phase (rad)" if angle else "amplitude (arb)")
         axi = axi.flatten()
         for i, ant in enumerate(antennas_to_plot):
             for bnidx, beamformer_name in enumerate(beamformer_names):
                 idx = np.where(antennas == ant)[0][0]
                 axi[i].plot(
-                    np.angle(gains[bnidx, idx, :, polidx]) if angle else \
-                        np.abs(gains[bnidx, idx, :, polidx]),
+                    np.angle(gains[bnidx, idx, :, polidx])
+                    if angle
+                    else np.abs(gains[bnidx, idx, :, polidx]),
                     alpha=0.4,
-                    ls='None',
-                    marker='.',
-                    label=beamformer_name
+                    ls="None",
+                    marker=".",
+                    label=beamformer_name,
                 )
-                axi[i].set_title('{0} {1}: {2}'.format(
-                    ant, pols[polidx], 'phase' if angle else 'amp'
-                ))
+                axi[i].set_title(
+                    "{0} {1}: {2}".format(
+                        ant, pols[polidx], "phase" if angle else "amp"
+                    )
+                )
             if angle:
                 axi[i].set_ylim(-np.pi, np.pi)
-            #else:
+            # else:
             #    axi[i].set_ylim(ymin, ymax)
         axi[0].legend()
 
     if outname is not None:
-        plt.savefig('{0}_averagedweights.png'.format(outname))
+        plt.savefig("{0}_averagedweights.png".format(outname))
     if not show:
         plt.close(fig)
     return gains
