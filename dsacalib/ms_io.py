@@ -9,27 +9,34 @@ Routines to interact with CASA measurement sets and calibration tables.
 # To do:
 # Replace to_deg w/ astropy versions
 
-# Always import scipy before importing casatools.
-import shutil
-import os
 import glob
+import os
+import shutil
 import traceback
-import numpy as np
-import scipy # pylint: disable=unused-import
+
+import astropy.constants as c
 import astropy.units as u
 import casatools as cc
-from casatasks import virtualconcat
-from casacore.tables import table
-from dsautils import dsa_store
-from dsautils import calstatus as cs
 import dsautils.cnf as dsc
-from dsacalib.uvh5_to_ms import uvh5_to_ms
-from dsacalib import constants as ct
+import numpy as np
+import scipy  # pylint: disable=unused-import
+from antpos.utils import get_itrf  # pylint: disable=wrong-import-order
+from astropy.utils import iers  # pylint: disable=wrong-import-order
+from casacore.tables import addImagingColumns, table
+from casatasks import importuvfits, virtualconcat
+from dsamfs.fringestopping import calc_uvw_blt
+from dsautils import calstatus as cs
+from dsautils import dsa_store
+from pyuvdata import UVData
+
 import dsacalib.utils as du
-from astropy.utils import iers # pylint: disable=wrong-import-order
+from dsacalib import constants as ct
+from dsacalib.fringestopping import amplitude_sky_model
+
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=wrong-import-position wrong-import-order
+from astropy.time import \
+    Time  # pylint: disable=wrong-import-position wrong-import-order
 
 de = dsa_store.DsaStore()
 

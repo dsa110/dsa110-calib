@@ -2,28 +2,32 @@
 
 Author: Dana Simard, dana.simard@astro.caltech.edu, 2020/06
 """
-import shutil
-import os
 import glob
-import numpy as np
-from astropy.coordinates import Angle
-import pandas
-import scipy # pylint: disable=unused-import
-from casacore.tables import table
+import os
+import shutil
+
+import astropy.units as u  # pylint: disable=wrong-import-order
 import dsautils.calstatus as cs
-import dsacalib.utils as du
-import dsacalib.ms_io as dmsio
-import dsacalib.fits_io as dfio
+import numpy as np
+import pandas
+import scipy  # pylint: disable=unused-import
+from astropy.coordinates import Angle
+from astropy.utils import iers  # pylint: disable=wrong-import-order
+from casacore.tables import table
+
 import dsacalib.calib as dc
-import dsacalib.plotting as dp
-import dsacalib.fringestopping as df
 import dsacalib.constants as ct
+import dsacalib.fits_io as dfio
+import dsacalib.fringestopping as df
+import dsacalib.ms_io as dmsio
+import dsacalib.plotting as dp
+import dsacalib.utils as du
 from dsacalib.ms_io import extract_vis_from_ms
-import astropy.units as u # pylint: disable=wrong-import-order
-from astropy.utils import iers # pylint: disable=wrong-import-order
+
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=wrong-import-position
+from astropy.time import Time  # pylint: disable=wrong-import-position
+
 
 def __init__():
     return

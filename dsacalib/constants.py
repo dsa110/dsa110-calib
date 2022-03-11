@@ -2,11 +2,12 @@
 
 Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 """
-import astropy.units as u
 import astropy.constants as c
-import scipy # pylint: disable=unused-import
+import astropy.units as u
 import casatools as cc
 import numpy as np
+import scipy  # pylint: disable=unused-import
+
 import dsacalib
 
 # The number of seconds in a sidereal day

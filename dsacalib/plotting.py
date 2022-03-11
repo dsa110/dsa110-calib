@@ -5,17 +5,20 @@ the calibration solutions for DSA-110.
 
 Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 """
-import os
 import glob
+import os
+
+import astropy.units as u
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
-import astropy.units as u
-import scipy # pylint: disable=unused-import
+import scipy  # pylint: disable=unused-import
 from casacore.tables import table
-from dsacalib.ms_io import read_caltable, extract_vis_from_ms
-import dsacalib.constants as ct
 from dsautils import cnf
+
+import dsacalib.constants as ct
+from dsacalib.ms_io import extract_vis_from_ms, read_caltable
+
 CONF = cnf.Conf()
 
 def plot_dyn_spec(vis, fobs, mjd, bname, normalize=False, outname=None,
