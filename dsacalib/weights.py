@@ -379,6 +379,7 @@ def average_beamformer_solutions(fnames, ttime, corridxs=None, tol=0.3):
     antenna_flags_badsolns:
         Flags for antenna/polarization dimensions of gains.
     """
+
     if corridxs is None:
         corridxs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     gains = read_gains(fnames)
