@@ -9,6 +9,7 @@ Routines to interact w/ hdf5 visibilities recorded by DSA-110.
 # set before astropy.time.Time is imported.
 import astropy.units as u
 import h5py
+
 # Always import scipy before importing casatools.
 import numpy as np
 from antpos.utils import get_baselines
@@ -22,7 +23,7 @@ from astropy.time import Time  # pylint: disable=wrong-import-position
 
 
 def read_hdf5_file(
-    fl, source=None, dur=50*u.min, autocorrs=True, badants=None, quiet=True
+    fl, source=None, dur=50 * u.min, autocorrs=True, badants=None, quiet=True
 ):
     """Reads visibilities from a hdf5 file written by dsa110-fringestopping.
 
@@ -79,57 +80,80 @@ def read_hdf5_file(
     tsamp : float
         The sampling time in seconds.
     """
-    with h5py.File(fl, 'r') as f:
-        antenna_order = list(f['antenna_order'][...])
+    with h5py.File(fl, "r") as f:
+        antenna_order = list(f["antenna_order"][...])
         nant = len(antenna_order)
-        fobs = f['fobs_GHz'][...]
-        mjd = (f['time_seconds'][...]+f['tstart_mjd_seconds'])/ \
-            ct.SECONDS_PER_DAY
+        fobs = f["fobs_GHz"][...]
+        mjd = (f["time_seconds"][...] + f["tstart_mjd_seconds"]) / ct.SECONDS_PER_DAY
         nt = len(mjd)
-        tsamp = (mjd[-1]-mjd[0])/(nt-1)*ct.SECONDS_PER_DAY
-        lst0 = Time(mjd[0], format='mjd').sidereal_time(
-            'apparent', longitude=ct.OVRO_LON*u.rad).to_value(u.rad)
-        lst = np.angle(np.exp(
-            1j*(lst0+2*np.pi/ct.SECONDS_PER_SIDEREAL_DAY*np.arange(nt)*tsamp)))
+        tsamp = (mjd[-1] - mjd[0]) / (nt - 1) * ct.SECONDS_PER_DAY
+        lst0 = (
+            Time(mjd[0], format="mjd")
+            .sidereal_time("apparent", longitude=ct.OVRO_LON * u.rad)
+            .to_value(u.rad)
+        )
+        lst = np.angle(
+            np.exp(
+                1j
+                * (
+                    lst0
+                    + 2 * np.pi / ct.SECONDS_PER_SIDEREAL_DAY * np.arange(nt) * tsamp
+                )
+            )
+        )
 
         if source is not None:
             lstmid = lst0 - source.direction.hadec(obstime=mjd[0])[0]
-            seg_len = (dur/2*(15*u.deg/u.h)).to_value(u.rad)
+            seg_len = (dur / 2 * (15 * u.deg / u.h)).to_value(u.rad)
             if not quiet:
                 print("\n-------------EXTRACT DATA--------------------")
-                print("Extracting data around {0}".format(lstmid*180/np.pi))
+                print("Extracting data around {0}".format(lstmid * 180 / np.pi))
                 print("{0} Time samples in data".format(nt))
-                print("LST range: {0:.1f} --- ({1:.1f}-{2:.1f}) --- {3:.1f}deg"
-                      .format(lst[0]*180./np.pi, (lstmid-seg_len)*180./np.pi,
-                              (lstmid+seg_len)*180./np.pi, lst[-1]*180./np.pi))
-            idxl = np.argmax(np.absolute(np.exp(1j*lst)+
-                                         np.exp(1j*lstmid)*
-                                         np.exp(-1j*seg_len)))
-            idxr = np.argmax(np.absolute(np.exp(1j*lst)+
-                                         np.exp(1j*lstmid)*np.exp(1j*seg_len)))
-            transit_idx = np.argmax(np.absolute(np.exp(1j*lst)+
-                                                np.exp(1j*(lstmid))))
+                print(
+                    "LST range: {0:.1f} --- ({1:.1f}-{2:.1f}) --- {3:.1f}deg".format(
+                        lst[0] * 180.0 / np.pi,
+                        (lstmid - seg_len) * 180.0 / np.pi,
+                        (lstmid + seg_len) * 180.0 / np.pi,
+                        lst[-1] * 180.0 / np.pi,
+                    )
+                )
+            idxl = np.argmax(
+                np.absolute(
+                    np.exp(1j * lst) + np.exp(1j * lstmid) * np.exp(-1j * seg_len)
+                )
+            )
+            idxr = np.argmax(
+                np.absolute(
+                    np.exp(1j * lst) + np.exp(1j * lstmid) * np.exp(1j * seg_len)
+                )
+            )
+            transit_idx = np.argmax(
+                np.absolute(np.exp(1j * lst) + np.exp(1j * (lstmid)))
+            )
 
             mjd = mjd[idxl:idxr]
-            vis = f['vis'][idxl:idxr, ...]
+            vis = f["vis"][idxl:idxr, ...]
             if not quiet:
-                print("Extract: {0} ----> {1} sample; transit at {2}".format(
-                    idxl, idxr, transit_idx))
+                print(
+                    "Extract: {0} ----> {1} sample; transit at {2}".format(
+                        idxl, idxr, transit_idx
+                    )
+                )
                 print("----------------------------------------------")
 
         else:
-            vis = f['vis'][...]
+            vis = f["vis"][...]
             transit_idx = None
 
     df_bls = get_baselines(antenna_order, autocorrs=True, casa_order=True)
-    blen = np.array([df_bls['x_m'], df_bls['y_m'], df_bls['z_m']]).T
-    bname = np.array([bn.split('-') for bn in df_bls['bname']])
+    blen = np.array([df_bls["x_m"], df_bls["y_m"], df_bls["z_m"]]).T
+    bname = np.array([bn.split("-") for bn in df_bls["bname"]])
     bname = bname.astype(int)
 
     if not autocorrs:
-        cross_bls = list(range((nant*(nant+1))//2))
+        cross_bls = list(range((nant * (nant + 1)) // 2))
         i = -1
-        for j in range(1, nant+1):
+        for j in range(1, nant + 1):
             i += j
             cross_bls.remove(i)
         vis = vis[:, cross_bls, ...]
@@ -155,19 +179,17 @@ def read_hdf5_file(
     vis = vis.swapaxes(0, 1)
     dt = np.median(np.diff(mjd))
     if len(mjd) > 0:
-        tstart = mjd[0]-dt/2
-        tstop = mjd[-1]+dt/2
+        tstart = mjd[0] - dt / 2
+        tstop = mjd[-1] + dt / 2
     else:
         tstart = None
         tstop = None
 
     bname = bname.tolist()
-    return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx, \
-        antenna_order, tsamp
+    return fobs, blen, bname, tstart, tstop, vis, mjd, transit_idx, antenna_order, tsamp
 
-def initialize_hdf5_file(
-    fhdf, fobs, antenna_order, t0, nbls, nchan, npol, nant
-):
+
+def initialize_hdf5_file(fhdf, fobs, antenna_order, t0, nbls, nchan, npol, nant):
     """Initializes the hdf5 file for the fringestopped visibilities.
 
     Parameters
@@ -196,18 +218,26 @@ def initialize_hdf5_file(
     t_ds : hdf5 dataset
         The dataset for the times.
     """
-    _ds_fobs = fhdf.create_dataset("fobs_GHz", (nchan, ), dtype=np.float32,
-                                   data=fobs)
-    _ds_ants = fhdf.create_dataset("antenna_order", (nant, ), dtype=np.int,
-                                   data=antenna_order)
-    _t_st = fhdf.create_dataset("tstart_mjd_seconds", (1, ), maxshape=(1, ),
-                                dtype=int, data=t0)
-    vis_ds = fhdf.create_dataset("vis", (0, nbls, nchan, npol),
-                                 maxshape=(None, nbls, nchan, npol),
-                                 dtype=np.complex64, chunks=True, data=None)
-    t_ds = fhdf.create_dataset("time_seconds", (0, ), maxshape=(None, ),
-                               dtype=np.float32, chunks=True, data=None)
+    _ds_fobs = fhdf.create_dataset("fobs_GHz", (nchan,), dtype=np.float32, data=fobs)
+    _ds_ants = fhdf.create_dataset(
+        "antenna_order", (nant,), dtype=np.int, data=antenna_order
+    )
+    _t_st = fhdf.create_dataset(
+        "tstart_mjd_seconds", (1,), maxshape=(1,), dtype=int, data=t0
+    )
+    vis_ds = fhdf.create_dataset(
+        "vis",
+        (0, nbls, nchan, npol),
+        maxshape=(None, nbls, nchan, npol),
+        dtype=np.complex64,
+        chunks=True,
+        data=None,
+    )
+    t_ds = fhdf.create_dataset(
+        "time_seconds", (0,), maxshape=(None,), dtype=np.float32, chunks=True, data=None
+    )
     return vis_ds, t_ds
+
 
 def extract_applied_delays(file, antennas):
     """Extracts the current snap delays from the hdf5 file.
@@ -227,13 +257,10 @@ def extract_applied_delays(file, antennas):
     ndarray
         The applied delays in ns.
     """
-    with h5py.File(file, 'r') as f:
-        delaystring = (
-            f['Header']['extra_keywords']['applied_delays_ns']
-            [()]
-        ).astype(np.str)
-        applied_delays = np.array(
-            delaystring.split(' ')
-        ).astype(np.int).reshape(-1, 2)
-        applied_delays = applied_delays[np.array(antennas)-1, :]
+    with h5py.File(file, "r") as f:
+        delaystring = (f["Header"]["extra_keywords"]["applied_delays_ns"][()]).astype(
+            np.str
+        )
+        applied_delays = np.array(delaystring.split(" ")).astype(np.int).reshape(-1, 2)
+        applied_delays = applied_delays[np.array(antennas) - 1, :]
     return applied_delays
