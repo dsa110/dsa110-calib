@@ -40,9 +40,9 @@ def get_good_solution(
 
     if select is None:
         today = datetime.now(timezone.utc)
-        select = [f"{today.year}-{today.month}-{today.day:02}"]
+        select = [f"{today.year}-{today.month:02}-{today.day:02}"]
         today = today - timedelta(days=1)
-        select += [f"{today.year}-{today.month}-{today.day:02}"]
+        select += [f"{today.year}-{today.month:02}-{today.day:02}"]
 
     print(f"Selecting for string {select}")
     if isinstance(select, str):
