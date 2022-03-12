@@ -340,13 +340,13 @@ def filter_beamformer_solutions(beamformer_names, start_time):
         try:
             with open(f"{BEAMFORMER_DIR}/beamformer_weights_{bfname}.yaml") as f:
                 solns = yaml.load(f, Loader=yaml.FullLoader)
-            assert consistent_correlator(solns['cal_solutions'], latest_solns['cal_solutions'])
+            assert consistent_correlator(solns['cal_solutions'], latest_solns['cal_solutions'], start_time)
         except (AssertionError, FileNotFoundError):
             beamformer_names.remove(bfname)
 
     return beamformer_names, latest_solns
 
-def consistent_correlator(solns, latest_solns):
+def consistent_correlator(solns, latest_solns, start_time):
     """Check that the new beamformer weight solution have the same correlator setup as `latest_solns`."""
     if solns['antenna_order'] != latest_solns['antenna_order'] or \
         solns['corr_order'] != latest_solns['corr_order'] or \
