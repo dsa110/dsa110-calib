@@ -8,13 +8,13 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 """
 import os
 
-import casatools as cc
-import numpy as np
-from casacore.tables import table
-
 # Always import scipy before casatools
 from scipy.fftpack import fft, fftfreq, fftshift
 from scipy.signal import medfilt
+
+import casatools as cc
+import numpy as np
+from casacore.tables import table
 
 from dsacalib.ms_io import read_caltable
 

@@ -10,7 +10,6 @@ import astropy.units as u  # pylint: disable=wrong-import-order
 import dsautils.calstatus as cs
 import numpy as np
 import pandas
-import scipy  # pylint: disable=unused-import
 from astropy.coordinates import Angle
 from astropy.utils import iers  # pylint: disable=wrong-import-order
 from casacore.tables import table

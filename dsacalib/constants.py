@@ -6,7 +6,6 @@ import astropy.constants as c
 import astropy.units as u
 import casatools as cc
 import numpy as np
-import scipy  # pylint: disable=unused-import
 
 import dsacalib
 

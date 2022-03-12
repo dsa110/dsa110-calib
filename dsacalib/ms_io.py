@@ -19,7 +19,6 @@ import astropy.units as u
 import casatools as cc
 import dsautils.cnf as dsc
 import numpy as np
-import scipy  # pylint: disable=unused-import
 from antpos.utils import get_itrf  # pylint: disable=wrong-import-order
 from astropy.utils import iers  # pylint: disable=wrong-import-order
 from casacore.tables import addImagingColumns, table

@@ -12,7 +12,6 @@ import astropy.units as u
 import h5py
 import matplotlib.pyplot as plt
 import numpy as np
-import scipy  # pylint: disable=unused-import
 from casacore.tables import table
 from dsautils import cnf
 
