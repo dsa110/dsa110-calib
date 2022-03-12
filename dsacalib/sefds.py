@@ -4,13 +4,13 @@
 import glob
 import os
 
+from scipy.optimize import curve_fit
 import astropy.units as u
 import casatools as cc
 import matplotlib.pyplot as plt
 import numpy as np
 from casacore.tables import table
 from dsautils import cnf
-from scipy.optimize import curve_fit
 
 from dsacalib.calib import apply_calibration_tables, apply_delay_bp_cal
 from dsacalib.fringestopping import amplitude_sky_model

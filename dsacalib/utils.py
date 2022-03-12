@@ -15,12 +15,12 @@ recorded by DSA-110, and visibility in CASA measurement sets.
 # Always import scipy before importing casatools.
 import traceback
 
+from scipy.ndimage.filters import median_filter
 import astropy.units as u
 import casatools as cc
 import numpy as np
 from antpos.utils import get_itrf
 from astropy.coordinates import Angle
-from scipy.ndimage.filters import median_filter
 
 from dsacalib import constants as ct
 
