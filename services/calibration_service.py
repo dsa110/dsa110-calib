@@ -228,7 +228,7 @@ def calibrate_file(calname, flist):
     if len(beamformer_names) > 0:
         print('checking reference gains')
         bfweights_ref = etcd.get_dict('/mon/cal/bfweights')
-        if consistent_correlator(bfweights_ref, latest_solutions['cal_solutions'], start_time.mjd):
+        if consistent_correlator(bfweights_ref, latest_solns['cal_solutions'], start_time.mjd):
             beamformer_names.append(bfweights_ref['bfname'])
 
         print('averaging beamformer weights')
