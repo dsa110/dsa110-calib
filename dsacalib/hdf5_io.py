@@ -10,7 +10,6 @@ Routines to interact w/ hdf5 visibilities recorded by DSA-110.
 import astropy.units as u
 import h5py
 
-# Always import scipy before importing casatools.
 import numpy as np
 from antpos.utils import get_baselines
 from astropy.utils import iers
