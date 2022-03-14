@@ -2,6 +2,7 @@
 
 Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 """
+import scipy
 import astropy.constants as c
 import astropy.units as u
 import casatools as cc

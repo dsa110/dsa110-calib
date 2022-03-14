@@ -6,6 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 from antpos.utils import get_itrf
+import scipy  # must come before casacore
 from casacore.tables import table
 from dsautils import cnf
 

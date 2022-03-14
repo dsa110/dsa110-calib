@@ -6,6 +6,7 @@ import glob
 import os
 import shutil
 
+import scipy
 import astropy.units as u  # pylint: disable=wrong-import-order
 import dsautils.calstatus as cs
 import numpy as np
