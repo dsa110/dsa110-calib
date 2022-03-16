@@ -349,13 +349,21 @@ def filter_beamformer_solutions(beamformer_names, start_time):
 
 def consistent_correlator(solns, latest_solns, start_time):
     """Check that the new beamformer weight solution have the same correlator setup as `latest_solns`."""
-    if solns['cal_solutions']['antenna_order'] != latest_solns['cal_solutions']['antenna_order'] or \
-        solns['cal_solutions']['corr_order'] != latest_solns['cal_solutions']['corr_order'] or \
-        solns['cal_solutions']['delays'] != latest_solns['cal_solutions']['delays'] or \
-        solns['cal_solutions']['eastings'] != latest_solns['cal_solutions']['eastings'] or \
-        solns['cal_solutions']['caltime'] < latest_solns['cal_solutions']['caltime']-1 or \
-        solns['cal_solutions']['caltime'] < start_time:
+
+    # pull from cal_solutions, if present
+    if 'cal_solutions' in solns:
+        sols = solns['cal_solutions']
+    if 'cal_solutions' in latest_solns:
+        latest_sols = latest_solns['cal_solutions']
+
+    if solns['antenna_order'] != latest_solns['antenna_order'] or \
+        solns['corr_order'] != latest_solns['corr_order'] or \
+        solns['delays'] != latest_solns['delays'] or \
+        solns['eastings'] != latest_solns['eastings'] or \
+        solns['caltime'] < latest_solns['caltime']-1 or \
+        solns['caltime'] < start_time:
         return False
+
     return True
 
 def average_beamformer_solutions(
