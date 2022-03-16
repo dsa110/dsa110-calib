@@ -227,9 +227,7 @@ def calibrate_file(calname, flist):
     # Average beamformer solutions
     if len(beamformer_names) > 0:
         print('checking reference gains')
-        bfweights_ref = etcd.get_dict('/mon/cal/bfweights')
-        if consistent_correlator(bfweights_ref, latest_solns, start_time.mjd):
-            beamformer_names.append(bfweights_ref['bfname'])
+        add_reference_bfname(beamformer_names, latest_solns, start_time)
 
         print('averaging beamformer weights')
         averaged_files, avg_flags = average_beamformer_solutions(
@@ -328,6 +326,22 @@ def calibrate_file(calname, flist):
         f'{PLOTDIR}/{ttime}_phases.png',
         target
     )
+
+def add_reference_bfname(beamformer_names, latest_solns, start_time):
+    """
+    If the setup of the current beamformer weights matches that of the latest file, 
+    add the current weights to the beamformer_names list
+    """
+
+    ref_bfname = etcd.get_dict('/mon/cal/bfweights')['bfname']
+
+    with open(
+        "{0}/beamformer_weights_{1}.yaml".format(BEAMFORMER_DIR, ref_bfname)
+    ) as f:
+        ref_solns = yaml.load(f, Loader=yaml.FullLoader)
+
+    if consistent_correlator(ref_solns, latest_solns, start_time.mjd):
+        beamformer_names.append(ref_bfname)
 
 # TODO: Etcd watch robust to etcd connection failures.
 def calibrate_file_manager(inqueue=CALIB_Q):
