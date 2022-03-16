@@ -346,15 +346,21 @@ def filter_beamformer_solutions(beamformer_names, start_time):
             beamformer_names.remove(bfname)
 
     return beamformer_names, latest_solns
+    
+def pull_out_cal_solutions(input_dict):
+    key = 'cal_solutions'
+    output_dict = input_dict[key] if key in input_dict else input_dict
+    return output_dict
 
-def consistent_correlator(solns, latest_solns, start_time):
-    """Check that the new beamformer weight solution have the same correlator setup as `latest_solns`."""
-
+def consistent_correlator(full_solns, full_latest_solns, start_time):
+    """
+    Return True if new beamformer weight solution have the same correlator setup
+    as `latest_solns`.
+    """
     # pull from cal_solutions, if present
-    if 'cal_solutions' in solns:
-        sols = solns.copy()['cal_solutions']
-    if 'cal_solutions' in latest_solns:
-        latest_sols = latest_solns.copy()['cal_solutions']
+
+    solns = pull_out_cal_solutions(full_solns)
+    latest_solns = pull_out_cal_solutions(full_latest_solns)
 
     if solns['antenna_order'] != latest_solns['antenna_order'] or \
         solns['corr_order'] != latest_solns['corr_order'] or \
