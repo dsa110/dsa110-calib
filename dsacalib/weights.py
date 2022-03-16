@@ -352,9 +352,9 @@ def consistent_correlator(solns, latest_solns, start_time):
 
     # pull from cal_solutions, if present
     if 'cal_solutions' in solns:
-        sols = solns['cal_solutions']
+        sols = solns.copy()['cal_solutions']
     if 'cal_solutions' in latest_solns:
-        latest_sols = latest_solns['cal_solutions']
+        latest_sols = latest_solns.copy()['cal_solutions']
 
     if solns['antenna_order'] != latest_solns['antenna_order'] or \
         solns['corr_order'] != latest_solns['corr_order'] or \
