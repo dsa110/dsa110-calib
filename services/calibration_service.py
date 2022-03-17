@@ -103,18 +103,21 @@ def calibrate_file(calname, flist):
             "status": -1
         }
     )
-    print('writing ms')
-    convert_calibrator_pass_to_ms(
-        cal=filenames[date][calname]['cal'],
-        date=date,
-        files=filenames[date][calname]['files'],
-        duration=CALTIME,
-        # antenna_list=ANTENNAS_IN_MS,
-        logger=LOGGER,
-        msdir=MSDIR
-    )
-    print('done writing ms')
-    LOGGER.info('{0}.ms created'.format(msname))
+
+    if not os.path.exists(f'{msname}.ms'):
+        print('writing ms')
+        convert_calibrator_pass_to_ms(
+            cal=filenames[date][calname]['cal'],
+            date=date,
+            files=filenames[date][calname]['files'],
+            duration=CALTIME,
+            logger=LOGGER,
+            msdir=MSDIR
+        )
+        print('done writing ms')
+        LOGGER.info(f'{msname}.ms created.')
+    else:
+        LOGGER.info(f'{msname}.ms already exists.  Not recreating.')
 
     status = calibrate_measurement_set(
         msname,
