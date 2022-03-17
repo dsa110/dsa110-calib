@@ -333,6 +333,7 @@ def add_reference_bfname(beamformer_names, latest_solns, start_time):
     add the current weights to the beamformer_names list
     """
 
+    etcd = ds.DsaStore()
     ref_bfname = etcd.get_dict('/mon/cal/bfweights')['bfname']
 
     with open(
