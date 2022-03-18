@@ -230,7 +230,10 @@ def calibrate_file(calname, flist):
     # Average beamformer solutions
     if len(beamformer_names) > 0:
         print('checking reference gains')
-        add_reference_bfname(beamformer_names, latest_solns, start_time)
+        try:
+            add_reference_bfname(beamformer_names, latest_solns, start_time)
+        except:
+            print(f'could not get reference bname. continuing...')
 
         print('averaging beamformer weights')
         averaged_files, avg_flags = average_beamformer_solutions(
@@ -337,7 +340,13 @@ def add_reference_bfname(beamformer_names, latest_solns, start_time):
     """
 
     etcd = ds.DsaStore()
-    ref_bfname = etcd.get_dict('/mon/cal/bfweights')['bfname']
+    ref_bfweights = etcd.get_dict('/mon/cal/bfweights')
+    if 'bfname' in ref_bfweights['val']:
+        ref_bfname = ref_bfweights['val']['bfname']
+    else:
+#        parse from name like "beamformer_weights_corr03_2022-03-18T04:40:15.dat"
+        ref_bfname = ref_bfweights['val']['weights_files'].rstrip('.dat').split('_')[-1]
+    print(f'Got reference bfname of {ref_bfname}. Checking solutions...')
 
     with open(
         "{0}/beamformer_weights_{1}.yaml".format(BEAMFORMER_DIR, ref_bfname)
@@ -346,6 +355,7 @@ def add_reference_bfname(beamformer_names, latest_solns, start_time):
 
     if consistent_correlator(ref_solns, latest_solns, start_time.mjd):
         beamformer_names.append(ref_bfname)
+
 
 # TODO: Etcd watch robust to etcd connection failures.
 def calibrate_file_manager(inqueue=CALIB_Q):
