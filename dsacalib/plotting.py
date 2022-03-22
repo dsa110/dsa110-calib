@@ -1277,7 +1277,7 @@ def plot_bandpass_phases(
     show : boolean
         If set to ``False`` the plot is closed after being generated.
     """
-    nentries = len(beamformer_names)
+
 
     # Parse cal name and date information from the beamformer names
     cals = []
@@ -1296,6 +1296,7 @@ def plot_bandpass_phases(
     # Sort beamformer weights by transit time
     transit_times, cals, dates = zip(*sorted(zip(transit_times, cals, dates)))
 
+    nentries = len(cals)
     # Read in gain phase calibration tables for each calibrator pass
     calnames = []
     gains = [None] * nentries
