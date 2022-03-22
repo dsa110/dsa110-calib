@@ -21,10 +21,11 @@ from dsacalib.calib import calibrate_phase_single_ms
 from dsacalib.routines import get_files_for_cal, calibrate_measurement_set
 from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd
 from dsacalib.hdf5_io import extract_applied_delays
-from dsacalib.weights import write_beamformer_solutions, average_beamformer_solutions, filter_beamformer_solutions, get_good_solution, \
-    consistent_correlator
-from dsacalib.plotting import summary_plot, plot_bandpass_phases, \
-    plot_beamformer_weights
+from dsacalib.weights import (
+    write_beamformer_solutions, average_beamformer_solutions, filter_beamformer_solutions,
+    get_good_solution, consistent_correlator
+)
+from dsacalib.plotting import summary_plot, plot_bandpass_phases, plot_beamformer_weights
 
 import matplotlib
 matplotlib.use('Agg')
@@ -110,7 +111,6 @@ def calibrate_file(calname, flist):
             cal=filenames[date][calname]['cal'],
             date=date,
             files=filenames[date][calname]['files'],
-            duration=CALTIME,
             logger=LOGGER,
             msdir=MSDIR
         )
@@ -335,7 +335,7 @@ def calibrate_file(calname, flist):
 
 def add_reference_bfname(beamformer_names, latest_solns, start_time):
     """
-    If the setup of the current beamformer weights matches that of the latest file, 
+    If the setup of the current beamformer weights matches that of the latest file,
     add the current weights to the beamformer_names list
     """
 
