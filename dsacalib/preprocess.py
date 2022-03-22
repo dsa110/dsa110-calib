@@ -4,7 +4,6 @@ Prepares hdf5 files written by dsa-meridian-fs for conversion to ms.
 """
 import os
 import re
-import shutil
 import subprocess
 from urllib.request import urlretrieve
 
@@ -16,7 +15,6 @@ import pandas
 from pkg_resources import resource_exists, resource_filename
 from pyuvdata import UVData
 
-import dsacalib.constants as ct
 from dsacalib.fringestopping import pb_resp
 
 LOGGER = dsl.DsaSyslogger()

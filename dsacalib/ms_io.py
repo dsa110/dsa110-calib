@@ -14,30 +14,23 @@ import os
 import shutil
 import traceback
 
-import astropy.constants as c
 import astropy.units as u
 import casatools as cc
 import dsautils.cnf as dsc
 import numpy as np
-from antpos.utils import get_itrf  # pylint: disable=wrong-import-order
 from astropy.utils import iers  # pylint: disable=wrong-import-order
-from casacore.tables import addImagingColumns, table
-from casatasks import importuvfits, virtualconcat
-from dsamfs.fringestopping import calc_uvw_blt
+from casacore.tables import table
+from casatasks import virtualconcat
 from dsautils import calstatus as cs
 from dsautils import dsa_store
-from pyuvdata import UVData
 
 import dsacalib.utils as du
 from dsacalib.uvh5_to_ms import uvh5_to_ms
 from dsacalib import constants as ct
-from dsacalib.fringestopping import amplitude_sky_model
 
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import (
-    Time,
-)  # pylint: disable=wrong-import-position wrong-import-order
+from astropy.time import Time
 
 de = dsa_store.DsaStore()
 
@@ -46,7 +39,7 @@ CORR_PARAMS = CONF.get('corr')
 REFMJD = CONF.get('fringe')['refmjd']
 
 def convert_calibrator_pass_to_ms(
-        cal, date, files, duration, msdir='/mnt/data/dsa110/calibration/',
+        cal, date, files, msdir='/mnt/data/dsa110/calibration/',
         hdf5dir='/mnt/data/dsa110/correlator/', antenna_list=None,
         logger=None, overwrite=True
 ):
@@ -65,8 +58,6 @@ def convert_calibrator_pass_to_ms(
         One ms will be written per filename in `files`. If the length of
         `files` is greater than 1, the mss created will be virtualconcated into
         a single ms.
-    duration : astropy quantity
-        Amount of data to extract, unit minutes or equivalent.
     msdir : str
         The full path to the directory to place the measurement set in. The ms
         will be written to `msdir`/`date`\_`cal.name`.ms

@@ -6,7 +6,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 from antpos.utils import get_itrf
-import scipy  # must come before casacore
+import scipy  #pylint: disable=unused-import # must come before casacore
 from casacore.tables import table
 from dsautils import cnf
 
@@ -53,7 +53,7 @@ def get_good_solution(
         if len(select) > 1:
             for sel in select[1:]:
                 bfnames += get_bfnames(select=sel)
-    if not len(bfnames):
+    if not bfnames:
         return bfnames
     times = [bfname.split("_")[1] for bfname in bfnames]
     times, bfnames = zip(*sorted(zip(times, bfnames), reverse=True))
@@ -96,9 +96,9 @@ def get_bfnames(select=None):
         bfnames2 = [bfn for bfn in bfnames if select in bfn]
         print(f"Selecting {len(bfnames2)} from {len(bfnames)} gain files.")
         return bfnames2
-    else:
-        print(f"Selecting all {len(bfnames)} gain files.")
-        return bfnames
+
+    print(f"Selecting all {len(bfnames)} gain files.")
+    return bfnames
 
 
 def read_gains(bfnames, selectants=ANTENNAS, path=None):
@@ -216,7 +216,7 @@ def find_good_solutions(
                 print(
                     f"Rel phase for cal pairs ({k}, {j}), ({bfnames[k]}, {bfnames[j]}), pol {p}: {angle} degrees => {status_pair}"
                 )
-    if len(bad):
+    if bad:
         keepcount = 2 * (len(keep) - 1)
         for k in np.arange(len(bfnames)):
             if k not in keep:
@@ -255,7 +255,7 @@ def show_gains(bfnames, gains, keep, selectcore=True, ret=False, show=True):
 
     try:
         refant_ind = ants.index(int(REFANTS[0]))
-    except:
+    except ValueError:
         refant_ind = 0
         print(f"Using first listed antenna ({ants[0]}) as refant")
 
@@ -346,7 +346,7 @@ def filter_beamformer_solutions(beamformer_names, start_time):
             beamformer_names.remove(bfname)
 
     return beamformer_names, latest_solns
-    
+
 def pull_out_cal_solutions(input_dict):
     key = 'cal_solutions'
     output_dict = input_dict[key] if key in input_dict else input_dict

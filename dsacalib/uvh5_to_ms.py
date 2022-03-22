@@ -74,7 +74,9 @@ def uvh5_to_ms(fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
 
     set_ms_model_column(msname, UV, pt_dec, ra, dec, flux)
 
-def phase_visibilities(UV, phase_ra, phase_dec, fringestop=True, interpolate_uvws=False, refmjd=None):
+def phase_visibilities(
+        UV, phase_ra, phase_dec, fringestop=True, interpolate_uvws=False, refmjd=None
+):
     """Phase a UVData instance.
 
     If fringestop is False, then no phasing is done,
@@ -100,7 +102,8 @@ def phase_visibilities(UV, phase_ra, phase_dec, fringestop=True, interpolate_uvw
         else:
             blen = np.tile(blen[np.newaxis, :, :], (UV.Ntimes, 1, 1)).reshape(-1, 3)
             uvw = calc_uvw_blt(
-                blen, time.mjd, 'RADEC', phase_ra.to(u.rad), phase_dec.to(u.rad))            
+                blen, time.mjd, 'RADEC', phase_ra.to(u.rad), phase_dec.to(u.rad)
+            )
 
         # Fringestop and phase
         phase_model = generate_phase_model_antbased(
@@ -128,16 +131,26 @@ def phase_visibilities(UV, phase_ra, phase_dec, fringestop=True, interpolate_uvw
     #if hasattr(UV, )
     #UV._set_app_coords_helper()
 
-def load_uvh5_file(fname: str, antenna_list: list=None, dt: "astropy.Quantity"=None,
-                   phase_ra: "Quantity"=None, phase_dec: "Quantity"=None, phase_time: "Time"=None) -> "UVData":
+def load_uvh5_file(
+        fname: str,
+        antenna_list: list=None,
+        dt: "astropy.Quantity"=None,
+        phase_ra: "Quantity"=None,
+        phase_dec: "Quantity"=None,
+        phase_time: "Time"=None
+) -> "UVData":
     """Load specific antennas and times for a uvh5 file.
 
     phase_ra and phase_dec are set here, but the uvh5 file is not phased.
     """
     if (phase_ra is None and phase_dec is not None) or (phase_ra is not None and phase_dec is None):
-        raise RuntimeError("Only one of phase_ra and phase_dec defined.  Please define both or neither.")
+        raise RuntimeError(
+            "Only one of phase_ra and phase_dec defined.  Please define both or neither."
+        )
     if phase_time is not None and phase_ra is not None:
-        raise RuntimeError("Please specific only one of phase_time and phasing direction (phase_ra + phase_dec)")
+        raise RuntimeError(
+            "Please specific only one of phase_time and phasing direction (phase_ra + phase_dec)"
+        )
 
     UV = UVData()
 
