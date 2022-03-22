@@ -29,6 +29,7 @@ from dsautils import dsa_store
 from pyuvdata import UVData
 
 import dsacalib.utils as du
+from dsacalib.uvh5_to_ms import uvh5_to_ms
 from dsacalib import constants as ct
 from dsacalib.fringestopping import amplitude_sky_model
 
