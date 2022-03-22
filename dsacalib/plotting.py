@@ -1284,10 +1284,14 @@ def plot_bandpass_phases(
     transit_times = []
     dates = []
     for beamformer_name in beamformer_names:
-        cal, transit_time = beamformer_name.split("_")
-        cals += [cal]
-        transit_times += [transit_time]
-        dates += [transit_time.split("T")[0]]
+        try:
+            cal, transit_time = beamformer_name.split("_")
+        except ValueError:
+            print(f'Not plotting phases for {beamformer_name}')
+        else:
+            cals += [cal]
+            transit_times += [transit_time]
+            dates += [transit_time.split("T")[0]]
 
     # Sort beamformer weights by transit time
     transit_times, cals, dates = zip(*sorted(zip(transit_times, cals, dates)))
