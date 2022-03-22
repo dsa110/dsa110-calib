@@ -15,12 +15,13 @@ import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
 import dsautils.cnf as cnf
 import dsacalib.constants as ct
-from dsacalib.preprocess import rsync_file, fscrunch_file, first_true
+from dsacalib.preprocess import rsync_file, first_true
 from dsacalib.preprocess import update_caltable
 from dsacalib.utils import exception_logger
 # make sure warnings do not spam syslog
 warnings.filterwarnings("ignore")
 
+# TODO: Get these parameters from a function, rather tahn as defaults
 CONF = cnf.Conf()
 CORR_CONF = CONF.get('corr')
 CAL_CONF = CONF.get('cal')
@@ -108,7 +109,7 @@ def task_handler(task_fn, inqueue, outqueue=None):
         else:
             time.sleep(TSLEEP)
 
-def gather_worker(inqueue, outqueue, corrlist=CORRLIST):
+def gather_worker(inqueue, outqueue, corrlist=None):
     """Gather all files that match a filename.
 
     Will wait for a maximum of 15 minutes from the time the first file is
@@ -122,6 +123,8 @@ def gather_worker(inqueue, outqueue, corrlist=CORRLIST):
     outqueue : multiprocessing.Queue instance
         The queue in which to place the gathered files (as a list).
     """
+    if not corrlist:
+        corrlist = CORRLIST
     ncorr = len(corrlist)
     filelist = [None]*ncorr
     nfiles = 0
@@ -272,18 +275,18 @@ if __name__=="__main__":
     # Start etcd watch
     ETCD.add_watch('/cmd/cal', populate_queue)
     # Start all threads
-    for name in processes.keys():
-        for i in range(processes[name]['nthreads']):
-            processes[name]['processes'] += [Process(
+    for name, pinfo in processes.items():
+        for i in range(pinfo['nthreads']):
+            pinfo['processes'] += [Process(
                 target=task_handler,
                 args=(
-                    processes[name]['task_fn'],
-                    processes[name]['queue'],
-                    processes[name]['outqueue'],
+                    pinfo['task_fn'],
+                    pinfo['queue'],
+                    pinfo['outqueue'],
                 ),
                 daemon=True
             )]
-        for pinst in processes[name]['processes']:
+        for pinst in pinfo['processes']:
             pinst.start()
 
     try:
@@ -321,25 +324,25 @@ if __name__=="__main__":
         processes['assess']['processes'][0].start()
 
         while True:
-            for name in processes.keys():
+            for name, pinfo in processes.items():
                 ETCD.put_dict(
-                    '/mon/cal/{0}_process'.format(name),
+                    f'/mon/cal/{name}_process',
                     {
-                        "queue_size": processes[name]['queue'].qsize(),
+                        "queue_size": pinfo['queue'].qsize(),
                         "ntasks_alive": sum([
                             pinst.is_alive() for pinst in
-                            processes[name]['processes']
+                            pinfo['processes']
                         ]),
-                        "ntasks_total": processes[name]['nthreads']
+                        "ntasks_total": pinfo['nthreads']
                     }
                 )
-                ETCD.put_dict(
-                    '/mon/service/calpreprocess',
-                    {
-                        "cadence": 60,
-                        "time": Time(datetime.datetime.utcnow()).mjd
-                        }
-                    )
+            ETCD.put_dict(
+                '/mon/service/calpreprocess',
+                {
+                    "cadence": 60,
+                    "time": Time(datetime.datetime.utcnow()).mjd
+                }
+            )
             while not CALIB_Q.empty():
                 (calname_fromq, flist_fromq) = CALIB_Q.get()
                 ETCD.put_dict(
