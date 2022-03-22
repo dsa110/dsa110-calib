@@ -129,7 +129,10 @@ def calc_uvw_interpolate(
     buvw_end = calc_uvw(blen, tobs.mjd[-1], epoch, lon, lat)
     buvw_end = np.array(buvw_end).T
 
-    buvw = buvw_start + ((buvw_end-buvw_start)/(ntimebins-1))*np.arange(ntimebins)[:, np.newaxis, np.newaxis]
+    buvw = (
+        buvw_start +
+        ((buvw_end-buvw_start) / (ntimebins - 1)) * np.arange(ntimebins)[:, np.newaxis, np.newaxis]
+    )
 
     return buvw
 

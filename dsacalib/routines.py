@@ -6,7 +6,7 @@ import glob
 import os
 import shutil
 
-import scipy
+import scipy # pylint: disable=unused-import
 import astropy.units as u  # pylint: disable=wrong-import-order
 import dsautils.calstatus as cs
 import numpy as np
@@ -654,7 +654,7 @@ def dsa10_cal(fname, msname, cal, pt_dec, antpos, refant, badants=None):
         _check_path("{0}_{1}_{2}".format(msname, cal.name, tbl))
 
 
-def flag_pixels(msname, thresh=6.0, logger=None):
+def flag_pixels(msname, thresh=6.0):
     """Flags pixels using dsautils.mask_bad_pixels.
 
     Parameters
@@ -666,28 +666,12 @@ def flag_pixels(msname, thresh=6.0, logger=None):
         thresh*stddev + mean will be flagged.
     """
     # Flag RFI - only for single spw
-    vis, _, _, flags, ant1, ant2, _, _, orig_shape = extract_vis_from_ms(
+    vis, _, _, flags, _, _, _, _, orig_shape = extract_vis_from_ms(
         msname,
     )
-    good_pixels, fraction_flagged = du.mask_bad_pixels(
+    good_pixels, _ = du.mask_bad_pixels(
         vis.squeeze(2), mask=~flags.squeeze(2), thresh=thresh
     )
-
-    # # Not properly account for shape - getting repeat messages
-    # (idx1s, idx2s) = np.where(fraction_flagged > 0.3)
-    # for idx1 in idx1s:
-    #     for idx2 in idx2s:
-    #         message = \
-    #             'Baseline {0}-{1} {2}: {3} percent of data flagged'.format(
-    #                 ant1[idx1],
-    #                 ant2[idx1],
-    #                 'A' if idx2==1 else 'B',
-    #                 fraction_flagged[idx1, idx2]*100
-    #             )
-    #         if logger is not None:
-    #             logger.info(message)
-    #         else:
-    #             print(message)
 
     flags = flags + ~good_pixels[:, :, np.newaxis, :, :]
     if orig_shape[0] == "time":

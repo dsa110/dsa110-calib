@@ -3,7 +3,7 @@
 
 import astropy.units as u
 import numpy as np
-import scipy  # must come before casacore
+import scipy  # pylint: disable=unused-import # must come before casacore
 from casacore.tables import table
 from numba import jit
 
