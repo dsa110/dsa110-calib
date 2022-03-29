@@ -7,12 +7,12 @@ import os
 import shutil
 
 import scipy # pylint: disable=unused-import
-import astropy.units as u  # pylint: disable=wrong-import-order
 import dsautils.calstatus as cs
 import numpy as np
 import pandas
+import astropy.units as u
 from astropy.coordinates import Angle
-from astropy.utils import iers  # pylint: disable=wrong-import-order
+from astropy.utils import iers
 from casacore.tables import table
 from casatasks import flagdata
 
@@ -35,21 +35,21 @@ def __init__():
 
 
 def calibrate_measurement_set(
-    msname: str,
-    cal: du.src,
-    refants,
-    throw_exceptions=True,
-    bad_antennas=None,
-    bad_uvrange="2~27m",
-    keepdelays=False,
-    forsystemhealth=False,
-    interp_thresh=1.5,
-    interp_polyorder=7,
-    blbased=False,
-    manual_flags=None,
-    logger=None,
-    t2="60s",
-):
+        msname: str,
+        cal: du.src,
+        refants: list,
+        throw_exceptions: bool=True,
+        bad_antennas: bool=None,
+        bad_uvrange: str="2~50m",
+        keepdelays: bool=False,
+        forsystemhealth: bool=False,
+        interp_thresh: float=1.5,
+        interp_polyorder: int=7,
+        blbased: bool=False,
+        manual_flags: str=None,
+        logger: "DsaSyslogger"=None,
+        t2: str="60s",
+) -> int
     r"""Calibrates the measurement set.
 
     Calibration can be done with the aim of monitoring system health (set
@@ -375,7 +375,9 @@ def _check_path(fname: str) -> None:
     assert os.path.exists(fname), "File {0} does not exist".format(fname)
 
 
-def plot_solutions(msname, calname, figure_path, show_plots=False, logger=None):
+def plot_solutions(
+        msname: str, calname: str, figure_path: str, show_plots: bool=False, logger: "DsaSyslogger"=None
+) -> None:
     r"""Plots the antenna delay, gain and bandpass calibration solutions.
 
     Creates separate files for all solutions.  To create one plot with all
@@ -433,13 +435,15 @@ def plot_solutions(msname, calname, figure_path, show_plots=False, logger=None):
             print(message)
 
 
-def cal_in_datetime(dt, transit_time, duration=5 * u.min, filelength=15 * u.min):
+def cal_in_datetime(
+        dt: str, transit_time: "Time", duration: "Quantity" = 5*u.min, filelength: "Quantity" = 15*u.min
+) -> bool:
     """Check to see if a transit is in a given file.
 
     Parameters
     ----------
     dt : str
-        The start time of the file, given as a string.
+        The start time of the file, given as an isot string.
         E.g. '2020-10-06T23:19:02'
     transit_time : astropy.time.Time instance
         The transit time of the source.
@@ -475,13 +479,13 @@ def cal_in_datetime(dt, transit_time, duration=5 * u.min, filelength=15 * u.min)
 
 
 def get_files_for_cal(
-    caltable,
-    refcorr="01",
-    duration=5 * u.min,
-    filelength=15 * u.min,
-    hdf5dir="/mnt/data/dsa110/correlator/",
-    date_specifier="*",
-):
+        caltable: str,
+        refcorr: str = "01",
+        duration: "Quantity" = 5*u.min,
+        filelength: "Quantity" = 15*u.min,
+        hdf5dir: str = "/mnt/data/dsa110/correlator/",
+        date_specifier: str = "*"
+) -> dict:
     """Returns a dictionary containing the filenames for each calibrator pass.
 
     Parameters
