@@ -14,20 +14,15 @@ import astropy.units as u
 from astropy.coordinates import Angle
 from astropy.utils import iers
 from casacore.tables import table
-from casatasks import flagdata
 
 import dsacalib.calib as dc
 import dsacalib.constants as ct
-import dsacalib.fits_io as dfio
-import dsacalib.fringestopping as df
-import dsacalib.ms_io as dmsio
 import dsacalib.plotting as dp
 import dsacalib.utils as du
-from dsacalib.ms_io import extract_vis_from_ms
 
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import Time  # pylint: disable=wrong-import-position
+from astropy.time import Time  # pylint: disable=wrong-import-order,ungrouped-imports,wrong-import-position
 
 
 def __init__():
@@ -49,7 +44,7 @@ def calibrate_measurement_set(
         manual_flags: str=None,
         logger: "DsaSyslogger"=None,
         t2: str="60s",
-) -> int
+) -> int:
     r"""Calibrates the measurement set.
 
     Calibration can be done with the aim of monitoring system health (set
@@ -195,7 +190,7 @@ def calibrate_measurement_set(
             for entry in manual_flags:
                 dc.flag_manual(msname, entry[0], entry[1])
         print("flagging rfi")
-        flag_rfi(msname)
+        dc.flag_rfi(msname)
         if error > 0:
             message = "Non-fatal error occured in flagging bad pixels of {0}.".format(
                 msname
@@ -242,7 +237,7 @@ def calibrate_measurement_set(
         _times, antenna_delays, kcorr, _ant_nos = dp.plot_antenna_delays(
             msname, cal.name, show=False
         )
-        error += flag_antennas_using_delays(antenna_delays, kcorr, msname)
+        error += dc.flag_antennas_using_delays(antenna_delays, kcorr, msname)
         if error > 0:
             status = cs.update(status, cs.FLAGGING_ERR)
             message = (
@@ -376,7 +371,8 @@ def _check_path(fname: str) -> None:
 
 
 def plot_solutions(
-        msname: str, calname: str, figure_path: str, show_plots: bool=False, logger: "DsaSyslogger"=None
+        msname: str, calname: str, figure_path: str, show_plots: bool=False,
+        logger: "DsaSyslogger"=None
 ) -> None:
     r"""Plots the antenna delay, gain and bandpass calibration solutions.
 
@@ -436,7 +432,8 @@ def plot_solutions(
 
 
 def cal_in_datetime(
-        dt: str, transit_time: "Time", duration: "Quantity" = 5*u.min, filelength: "Quantity" = 15*u.min
+        dt: str, transit_time: "Time", duration: "Quantity" = 5*u.min,
+        filelength: "Quantity" = 15*u.min
 ) -> bool:
     """Check to see if a transit is in a given file.
 
