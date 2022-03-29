@@ -743,6 +743,53 @@ def flag_badtimes(msname, times, bad, nant, datacolumn="data", verbose=False):
     return error
 
 
+def flag_rfi(msname: str) -> None:
+    """Flag RFI using tfcrop in casa."""
+    flagdata(f"{msname}.ms", mode="tfcrop")
+
+
+def flag_antennas_using_delays(
+    antenna_delays: np.ndarray, kcorr: np.ndarray, msname: str, kcorr_thresh: float=0.3,
+    logger: "DsaSyslogger"=None
+):
+    """Flags antennas by comparing the delay on short times to the delay cal.
+
+    Parameters
+    ----------
+    antenna_delays : ndarray
+        The antenna delays from the 2kcal calibration file, calculated on short
+        timescales.
+    kcorr : ndarray
+        The antenna delays from the kcal calibration file, calculated over the
+        entire calibration pass.
+    msname : str
+        The path to the measurement set. Will open `msname`.ms
+    kcorr_thresh : float
+        The tolerance for descrepancies between the antenna_delays and kcorr,
+        in nanoseconds.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
+    """
+    error = 0
+    percent_bad = (np.abs(antenna_delays - kcorr) > 1).sum(1).squeeze(1).squeeze(
+        1
+    ) / antenna_delays.shape[1]
+    for i in range(percent_bad.shape[0]):
+        for j in range(percent_bad.shape[1]):
+            if percent_bad[i, j] > kcorr_thresh:
+                error += not dc.flag_antenna(
+                    msname, "{0}".format(i + 1), pol="A" if j == 0 else "B"
+                )
+                message = "Flagged antenna {0}{1} in {2}".format(
+                    i + 1, "A" if j == 0 else "B", msname
+                )
+                if logger is not None:
+                    logger.info(message)
+                else:
+                    print(message)
+    return error
+
+
 def calc_delays(vis, df, nfavg=5, tavg=True):
     """Calculates power as a function of delay from the visibilities.
 
@@ -800,82 +847,6 @@ def calc_delays(vis, df, nfavg=5, tavg=True):
     delay_arr = delay_arr.reshape(-1, nfavg).mean(-1)
 
     return vis_ft, delay_arr
-
-
-# def get_bad_times(msname, sourcename, refant, tint='59s', combine_spw=False,
-#                   nspw=1):
-#     r"""Flags bad times in the calibrator data.
-
-#     Calculates delays on short time periods and compares them to the delay
-#     calibration solution. Can only be run after delay calibration.
-
-#     Parameters
-#     ----------
-#     msname : str
-#         The name of the measurement set. The MS `msname`.ms will be opened.
-#     sourcename : str
-#         The name of the calibrator source.  The calibration table will be
-#         written to `msname`\_`sourcename`\_kcal.
-#     refant : str
-#         The reference antenna to use in calibration. If type *str*, the name of
-#         the reference antenna, if type *int*, the index of the antenna in the
-#         CASA measurement set. This must be the same as the reference antenna
-#         used in the delay calibration, or unexpected errors may occur.
-#     tint : str
-#         The timescale on which to calculate the delay solutions (and evaluate
-#         the data quality). Must be a CASA-interpreted string, e.g. ``'inf'``
-#         (average all of the data) or ``'60s'`` (average data to 60-second bins
-#         before delay calibration).  Defaults to ``'59s'``.
-#     combine_spw : bool
-#         Set to True if the spws were combined before delay calibration.
-#     nspw : int
-#         The number of spws in the measurement set.
-
-#     Returns
-#     -------
-#     bad_times : array
-#         Booleans, ``True`` if the data quality is poor and the time-bin should
-#         be flagged, ``False`` otherwise.  Same dimensions as times.
-#     times : array
-#         Floats, the time (mjd) for each delay solution.
-#     error : int
-#         The number of errors that occured during calibration.
-#     """
-#     if combine_spw:
-#         combine = 'field,scan,obs,spw'
-#     else:
-#         combine = 'field,scan,obs'
-#     error = 0
-#     # Solve the calibrator data on minute timescales
-#     cb = cc.calibrater()
-#     error += not cb.open('{0}.ms'.format(msname))
-#     error += not cb.setsolve(type='K', t=tint, refant=refant, combine=combine,
-#                              table='{0}_{1}_2kcal'.format(msname, sourcename))
-#     error += not cb.solve()
-#     error += not cb.close()
-#     # Pull the solutions for the entire timerange and the 60-s data from the
-#     # measurement set tables
-#     antenna_delays, times, _flags, _ant1, _ant2 = read_caltable(
-#         '{0}_{1}_2kcal'.format(msname, sourcename), cparam=False)
-#     npol = antenna_delays.shape[-1]
-#     kcorr, _tkcorr, _flags, _ant1, _ant2 = read_caltable(
-#         '{0}_{1}_kcal'.format(msname, sourcename), cparam=False)
-#     # Shapes (baseline, time, spw, frequency, pol)
-#     # Squeeze on the freqeuncy axis
-#     antenna_delays = antenna_delays.squeeze(axis=3)
-#     kcorr = kcorr.squeeze(axis=3)
-#     nant = antenna_delays.shape[0]
-#     nspw = antenna_delays.shape[2]
-
-#     threshold = nant*nspw*npol//2
-#     bad_pixels = (np.abs(antenna_delays-kcorr) > 1.5)
-#     bad_times = (bad_pixels.reshape(bad_pixels.shape[0],
-#                                             bad_pixels.shape[1], -1)
-#                          .sum(axis=-1).sum(axis=0) > threshold)
-#     # bad_times[:, np.sum(np.sum(bad_times, axis=0), axis=1) > threshold, :] \
-#     #    = np.ones((nant, 1, npol))
-
-#     return bad_times, times, error
 
 
 def apply_calibration(
@@ -996,64 +967,6 @@ def apply_delay_bp_cal(
     ]
     error += apply_and_correct_calibrations(msname, caltables)
     return error
-
-
-def fill_antenna_gains(gains, flags=None):
-    """Fills in the antenna gains for triple-antenna calibration.
-
-    Takes the gains from baseline-based calibration for a trio of antennas and
-    calculates the corresponding antenna gains using products of the baseline
-    gains. Also propagates flag information for the input baseline gains to
-    the antenna gains.
-
-    Parameters
-    ----------
-    gains : narray
-        The complex gains matrix, first dimension is baseline. Indices 1, 2 and
-        4 contain the gains for the cross-correlations. Information in indices
-        0, 3 and 5 is ignored and overwritten.
-    flags : ndarray
-        A boolean array, containing flag information for the `gains` array. 1
-        if the data is flagged, 0 otherwise. If ``None``, assumes no flag
-        information available.  The first dimension is baseline.  Indices 1, 2
-        and 4 contain the flags for the cross-correlations.  Information in
-        indices 0, 3 and 5 is ignored and overwritten.
-
-    Returns
-    -------
-    gains : ndarray
-        The complex gains matrix, first dimension is baseline. Indices 1, 2 and
-        4 contain the gains for the cross-correlations. Indices 0, 3 and 5
-        contain the calculated values for the antennas.
-    flags : ndarray
-        A boolean array, containing flag information for the `gains` array. 1
-        if the data is flagged, 0 otherwise. If None, assumes no flag
-        information available. The first dimension is baseline.  Indices 1, 2
-        and 4 contain the flags for the cross-correlations.  Indices 0,3 and 5
-        contain the calculated values for the antennas.
-    """
-    assert gains.shape[0] == 6, "Will only calculate antenna gains for trio"
-    #   use ant1 and ant2 to do this?
-    #     for i in range(6):
-    #         if ant1[i] != ant2[i]:
-    #             idxp = np.where((ant1 == ant1[i]) & (ant2 == ant1[i]))[0][0]
-    #             idxn = np.where((ant1 == ant2[i]) & (ant2 == ant2[i]))[0][0]
-    #             idxd = np.where((ant1 == ant2) & (ant1 != ant1[i]) &
-    #                             (ant1 != ant2[i]))[0][0]
-    #             gains[i] = np.conjugate(gains[idxn])*gains[idxp]/gains[idxd]
-    gains[0] = np.conjugate(gains[1]) * gains[2] / gains[4]
-    gains[3] = gains[1] * gains[4] / gains[2]
-    gains[5] = gains[2] * np.conjugate(gains[4]) / gains[1]
-
-    if flags is not None:
-        flags[[0, 3, 5], ...] = np.min(
-            np.array(
-                [flags[1] + flags[2] + flags[4], np.ones(flags[0].shape, dtype=int)]
-            ),
-            axis=0,
-        )
-        return gains, flags
-    return gains
 
 
 def calibrate_gain(
