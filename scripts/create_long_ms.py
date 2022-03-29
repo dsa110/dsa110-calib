@@ -37,7 +37,7 @@ for i, calpass in enumerate(calpasses):
         cal,
         date,
         files,
-        duration,
+#        duration, # Note - I got rid of this, since it's not being used
         msdir=msdir,
         hdf5dir=hdf5dir
     )
