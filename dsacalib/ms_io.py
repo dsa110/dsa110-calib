@@ -15,6 +15,7 @@ import shutil
 import traceback
 
 import astropy.units as u
+import scipy # pylint: disable=unused-import
 import casatools as cc
 import dsautils.cnf as dsc
 import numpy as np
