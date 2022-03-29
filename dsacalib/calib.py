@@ -12,9 +12,10 @@ import os
 from scipy.fftpack import fft, fftfreq, fftshift
 from scipy.signal import medfilt
 
-import casatools as cc
 import numpy as np
+import casatools as cc
 from casacore.tables import table
+from casatask import flagdata
 
 from dsacalib.ms_io import read_caltable
 
