@@ -133,6 +133,7 @@ def calibrate_measurement_set(
         for path in tables_to_remove:
             if os.path.exists(path):
                 shutil.rmtree(path)
+
         print("flagging of ms data")
         calstring = "flagging of ms data"
         current_error = (
@@ -151,6 +152,7 @@ def calibrate_measurement_set(
         dc.reset_flags(msname, datacolumn="data")
         dc.reset_flags(msname, datacolumn="model")
         dc.reset_flags(msname, datacolumn="corrected")
+
         print("flagging baselines")
         current_error = cs.FLAGGING_ERR
         error = dc.flag_baselines(msname, uvrange=bad_uvrange)
@@ -199,6 +201,7 @@ def calibrate_measurement_set(
                 logger.warning(message)
             else:
                 print(message)
+
         print("delay cal")
         # Antenna-based delay calibration
         calstring = "delay calibration"
@@ -224,6 +227,7 @@ def calibrate_measurement_set(
             else:
                 print(message)
         _check_path("{0}_{1}_kcal".format(msname, cal.name))
+
         print("flagging based on delay cal")
         calstring = "flagging of ms data"
         current_error = (
@@ -262,6 +266,7 @@ def calibrate_measurement_set(
                 logger.warning(message)
             else:
                 print(message)
+        
         print("delay cal again")
         # Antenna-based delay calibration
         calstring = "delay calibration"
@@ -301,8 +306,28 @@ def calibrate_measurement_set(
             | cs.INV_GAINPHASE_P2
             | cs.INV_GAINCALTIME
         )
+        
 
-        error = dc.gain_calibration(
+    except Exception as exc:
+        status = cs.update(status, current_error)
+        du.exception_logger(logger, calstring, exc, throw_exceptions)
+    print("end of cal routine")
+    return status
+
+@persistent(
+    "bandpass and gain calibration",
+    (
+        cs.GAIN_BP_CAL_ERR
+        | cs.INV_GAINAMP_P1
+        | cs.INV_GAINAMP_P2
+        | cs.INV_GAINPHASE_P1
+        | cs.INV_GAINPHASE_P2
+        | cs.INV_GAINCALTIME
+    ),
+    cs.GAIN_BP_CAL_ERR
+)
+def bandpass_and_gain_cal(msname, cal, refant ):
+    error = dc.gain_calibration(
             msname,
             cal.name,
             refant,
@@ -312,51 +337,53 @@ def calibrate_measurement_set(
             interp_thresh=interp_thresh,
             interp_polyorder=interp_polyorder,
             tbeam=t2,
-        )
-        if error > 0:
-            status = cs.update(status, cs.GAIN_BP_CAL_ERR)
-            message = (
-                "Non-fatal error occured in gain/bandpass calibration of {0}.".format(
-                    msname
-                )
-            )
-            if logger is not None:
-                logger.warning(message)
-            else:
-                print(message)
-        fnames = [
-            "{0}_{1}_bcal".format(msname, cal.name),
-            "{0}_{1}_bacal".format(msname, cal.name),
-            "{0}_{1}_bpcal".format(msname, cal.name),
-            "{0}_{1}_gpcal".format(msname, cal.name),
-            "{0}_{1}_gacal".format(msname, cal.name),
-        ]
-        if forsystemhealth:
-            fnames += ["{0}_{1}_2gcal".format(msname, cal.name)]
-        if not keepdelays and not forsystemhealth:
-            fnames += ["{0}_{1}_bkcal".format(msname, cal.name)]
-        for fname in fnames:
-            _check_path(fname)
-        print("combining bandpass and delay solns")
-        # Combine bandpass solutions and delay solutions
-        with table("{0}_{1}_bacal".format(msname, cal.name)) as tb:
-            bpass = np.array(tb.CPARAM[:])
-        with table("{0}_{1}_bpcal".format(msname, cal.name)) as tb:
-            bpass *= np.array(tb.CPARAM[:])
-        if not forsystemhealth:
-            with table("{0}_{1}_bkcal".format(msname, cal.name)) as tb:
-                bpass = np.array(tb.CPARAM[:])
-        with table("{0}_{1}_bcal".format(msname, cal.name), readonly=False) as tb:
-            tb.putcol("CPARAM", bpass)
-            if not forsystemhealth:
-                tbflag = np.array(tb.FLAG[:])
-                tb.putcol("FLAG", np.zeros(tbflag.shape, tbflag.dtype))
+    )
 
-    except Exception as exc:
-        status = cs.update(status, current_error)
-        du.exception_logger(logger, calstring, exc, throw_exceptions)
-    print("end of cal routine")
-    return status
+    fnames = [
+        "{0}_{1}_bcal".format(msname, cal.name),
+        "{0}_{1}_bacal".format(msname, cal.name),
+        "{0}_{1}_bpcal".format(msname, cal.name),
+        "{0}_{1}_gpcal".format(msname, cal.name),
+        "{0}_{1}_gacal".format(msname, cal.name),
+    ]
+    if forsystemhealth:
+        fnames += ["{0}_{1}_2gcal".format(msname, cal.name)]
+    if not keepdelays and not forsystemhealth:
+        fnames += ["{0}_{1}_bkcal".format(msname, cal.name)]
+    for fname in fnames:
+        _check_path(fname)
+
+    print("combining bandpass and delay solns")
+    # Combine bandpass solutions and delay solutions
+    with table("{0}_{1}_bacal".format(msname, cal.name)) as tb:
+        bpass = np.array(tb.CPARAM[:])
+    with table("{0}_{1}_bpcal".format(msname, cal.name)) as tb:
+        bpass *= np.array(tb.CPARAM[:])
+    if not forsystemhealth:
+        with table("{0}_{1}_bkcal".format(msname, cal.name)) as tb:
+            bpass = np.array(tb.CPARAM[:])
+    with table("{0}_{1}_bcal".format(msname, cal.name), readonly=False) as tb:
+        tb.putcol("CPARAM", bpass)
+        if not forsystemhealth:
+            tbflag = np.array(tb.FLAG[:])
+            tb.putcol("FLAG", np.zeros(tbflag.shape, tbflag.dtype))
+
+
+def persistent(target: "Callable", name: str, errorcode: int, nonfatal_errorcode: int=None):
+    @wraps(target)
+    def inner(status, *args, **kwargs):
+        try:
+            error = target(*args, **kwargs)
+        except Exception as exc:
+            status = cs.update(status, errorcode)
+            du.exception_logger(logger, name, exc, throw_exceptions)
+            error = 0
+        if error:
+            status = cs.update(status, nonfatal_errorcode)
+            message = f'Non-fatal error occured in {name}.'
+            info_logger(logger, message)
+        return status
+    return
 
 
 def _check_path(fname: str) -> None:
