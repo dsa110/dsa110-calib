@@ -108,7 +108,7 @@ def read_psrfits_file(
         The antenna indices, in the order that they are in in the visibilities.
     """
     if antpos is None:
-        antpos = "{0}/antpos_ITRF.txt".format(ct.PKG_DATA_PATH)
+        antpos = f"{ct.PKG_DATA_PATH}/antpos_ITRF.txt"
     fo = pf.open(fl, ignore_missing_end=True)
     f = fo[1]
     if dsa10:
@@ -266,7 +266,7 @@ def get_header_info(f, antpos=None, verbose=False, antenna_order=None, dsa10=Tru
         The antenna names, in the order they are in in the visibilities.
     """
     if antpos is None:
-        antpos = "{0}/antpos_ITRF.txt".format(ct.PKG_DATA_PATH)
+        antpos = f"{ct.PKG_DATA_PATH}/antpos_ITRF.txt"
     if dsa10:
         aname = f.header["ANTENNAS"].split("-")
         aname = [int(an) for an in aname]
@@ -398,8 +398,8 @@ def extract_vis_from_psrfits(f, lstmid, seg_len, antenna_order, mjd0, mjd1, quie
 
     if not quiet:
         print("\n-------------EXTRACT DATA--------------------")
-        print("Extracting data around {0}".format(lstmid * 180 / np.pi))
-        print("{0} Time samples in data".format(nt))
+        print(f"Extracting data around {lstmid * 180 / np.pi}")
+        print(f"{nt} Time samples in data")
         print(
             "LST range: {0:.1f} --- ({1:.1f}-{2:.1f}) --- {3:.1f}deg".format(
                 lst[0] * 180.0 / np.pi,
@@ -425,7 +425,7 @@ def extract_vis_from_psrfits(f, lstmid, seg_len, antenna_order, mjd0, mjd1, quie
     ]
 
     if not quiet:
-        print("Extract: {0} ----> {1} sample; transit at {2}".format(idxl, idxr, idx0))
+        print(f"Extract: {idxl} ----> {idxr} sample; transit at {idx0}")
         print("----------------------------------------------")
 
     # Fancy indexing can have downfalls and may change in future numpy versions

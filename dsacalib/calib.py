@@ -60,13 +60,13 @@ def delay_calibration_worker(msname, sourcename, refant, t, combine_spw, name):
         combine = "field,scan,obs"
     error = 0
     cb = cc.calibrater()
-    error += not cb.open("{0}.ms".format(msname))
+    error += not cb.open(f"{msname}.ms")
     error += not cb.setsolve(
         type="K",
         t=t,
         refant=refant,
         combine=combine,
-        table="{0}_{1}_{2}".format(msname, sourcename, name),
+        table=f"{msname}_{sourcename}_{name}",
     )
     error += not cb.solve()
     error += not cb.close()
@@ -128,21 +128,17 @@ def delay_calibration(
                 refant,
                 t,
                 combine_spw,
-                "ref{0}_{1}kcal".format(refant, "" if t == t1 else "2"),
+                f"ref{refant}_{'' if t == t1 else '2'}kcal",
             )
             if kcorr is None:
                 kcorr, _, flags, _, ant2 = read_caltable(
-                    "{0}_{1}_ref{2}_{3}kcal".format(
-                        msname, sourcename, refant, "" if t == t1 else "2"
-                    ),
+                    f"{msname}_{sourcename}_ref{refant}_{'' if t==t1 else '2'}kcal",
                     cparam=False,
                     reshape=False,
                 )
             else:
                 kcorrtmp, _, flagstmp, _, ant2tmp = read_caltable(
-                    "{0}_{1}_ref{2}_{3}kcal".format(
-                        msname, sourcename, refant, "" if t == t1 else "2"
-                    ),
+                    f"{msname}_{sourcename}_ref{refant}_{'' if t==t1 else '2'}kcal",
                     cparam=False,
                     reshape=False,
                 )
@@ -150,8 +146,8 @@ def delay_calibration(
                     np.abs(flags.reshape(flags.shape[0], -1).mean(axis=1) - 1) < 1e-5
                 )
                 assert antflags[refantidx] == 0, (
-                    "Refant {0} is flagged in kcorr!".format(refant)
-                    + "Choose refants that are separated in uv-space."
+                    f"Refant {refant} is flagged in kcorr! "
+                    "Choose refants that are separated in uv-space."
                 )
                 kcorr[antflags, ...] = kcorrtmp[antflags, ...] - kcorr[refantidx, ...]
                 ant2[antflags, ...] = ant2tmp[antflags, ...]
@@ -235,23 +231,23 @@ def gain_calibration(
     # Convert delay calibration into a bandpass representation
     caltables = [
         {
-            "table": "{0}_{1}_kcal".format(msname, sourcename),
+            "table": f"{msname}_{sourcename}_kcal",
             "type": "K",
             "spwmap": spwmap,
         }
     ]
 
     if not forsystemhealth:
-        with table("{0}.ms/SPECTRAL_WINDOW".format(msname)) as tb:
+        with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
             fobs = np.array(tb.CHAN_FREQ[:]).squeeze(0) / 1e9
             fref = np.array(tb.REF_FREQUENCY[:]) / 1e9
         cb = cc.calibrater()
-        error += not cb.open("{0}.ms".format(msname))
+        error += not cb.open(f"{msname}.ms")
         error += apply_calibration_tables(cb, caltables)
         error += not cb.setsolve(
             type="MF" if blbased else "B",
             combine=combine,
-            table="{0}_{1}_bkcal".format(msname, sourcename),
+            table=f"{msname}_{sourcename}_bkcal",
             refant=refant,
             apmode="a",
             solnorm=True,
@@ -259,11 +255,11 @@ def gain_calibration(
         error += not cb.solve()
         error += not cb.close()
 
-        with table("{0}_{1}_kcal".format(msname, sourcename), readonly=False) as tb:
+        with table(f"{msname}_{sourcename}_kcal", readonly=False) as tb:
             kcorr = np.array(tb.FPARAM[:])
             tb.putcol("FPARAM", np.zeros(kcorr.shape, kcorr.dtype))
 
-        with table("{0}_{1}_bkcal".format(msname, sourcename), readonly=False) as tb:
+        with table(f"{msname}_{sourcename}_bkcal", readonly=False) as tb:
             bpass = np.array(tb.CPARAM[:])
             bpass = np.ones(bpass.shape, bpass.dtype)
             kcorr = kcorr.squeeze()
@@ -276,7 +272,7 @@ def gain_calibration(
             tb.putcol("CPARAM", bpass)
         caltables += [
             {
-                "table": "{0}_{1}_bkcal".format(msname, sourcename),
+                "table": f"{msname}_{sourcename}_bkcal",
                 "type": "B",
                 "spwmap": spwmap,
             }
@@ -284,12 +280,12 @@ def gain_calibration(
 
     # Rough bandpass calibration
     cb = cc.calibrater()
-    error += not cb.open("{0}.ms".format(msname))
+    error += not cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
     error += cb.setsolve(
         type="B",
         combine=combine,
-        table="{0}_{1}_bcal".format(msname, sourcename),
+        table=f"{msname}_{sourcename}_bcal",
         refant=refant,
         apmode="ap",
         t="inf",
@@ -300,7 +296,7 @@ def gain_calibration(
 
     caltables += [
         {
-            "table": "{0}_{1}_bcal".format(msname, sourcename),
+            "table": f"{msname}_{sourcename}_bcal",
             "type": "B",
             "spwmap": spwmap,
         }
@@ -308,12 +304,12 @@ def gain_calibration(
 
     # Gain calibration
     cb = cc.calibrater()
-    error += cb.open("{0}.ms".format(msname))
+    error += cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
     error += cb.setsolve(
         type="G",
         combine=combine,
-        table="{0}_{1}_gacal".format(msname, sourcename),
+        table=f"{msname}_{sourcename}_gacal",
         refant=refant,
         apmode="a",
         t="inf",
@@ -323,19 +319,19 @@ def gain_calibration(
 
     caltables += [
         {
-            "table": "{0}_{1}_gacal".format(msname, sourcename),
+            "table": f"{msname}_{sourcename}_gacal",
             "type": "G",
             "spwmap": spwmap,
         }
     ]
 
     cb = cc.calibrater()
-    error += cb.open("{0}.ms".format(msname))
+    error += cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
     error += cb.setsolve(
         type="G",
         combine=combine,
-        table="{0}_{1}_gpcal".format(msname, sourcename),
+        table=f"{msname}_{sourcename}_gpcal",
         refant=refant,
         apmode="p",
         t="inf",
@@ -346,12 +342,12 @@ def gain_calibration(
     # Final bandpass calibration
     caltables = [
         {
-            "table": "{0}_{1}_gacal".format(msname, sourcename),
+            "table": f"{msname}_{sourcename}_gacal",
             "type": "G",
             "spwmap": spwmap,
         },
         {
-            "table": "{0}_{1}_gpcal".format(msname, sourcename),
+            "table": f"{msname}_{sourcename}_gpcal",
             "type": "G",
             "spwmap": spwmap,
         },
@@ -360,7 +356,7 @@ def gain_calibration(
     if not forsystemhealth:
         caltables += [
             {
-                "table": "{0}_{1}_bkcal".format(msname, sourcename),
+                "table": f"{msname}_{sourcename}_bkcal",
                 "type": "B",
                 "spwmap": spwmap,
             }
@@ -406,7 +402,7 @@ def gain_calibration(
     ]
 
     cb = cc.calibrater()
-    error += cb.open("{0}.ms".format(msname))
+    error += cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
     error += cb.setsolve(
         type="B",

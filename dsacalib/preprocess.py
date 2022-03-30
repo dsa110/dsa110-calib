@@ -63,11 +63,9 @@ def rsync_file(rsync_string, remove_source_files=True):
     """
     fname, fdir = rsync_string.split(" ")
     if remove_source_files:
-        command = ". ~/.keychain/dsa-storage-sh; rsync -avv --remove-source-files {0} {1}".format(
-            fname, fdir
-        )
+        command = f". ~/.keychain/dsa-storage-sh; rsync -avv --remove-source-files {fname} {fdir}"
     else:
-        command = ". ~/.keychain/dsa-storage-sh; rsync -avv {0} {1}".format(fname, fdir)
+        command = f". ~/.keychain/dsa-storage-sh; rsync -avv {fname} {fdir}"
     process = subprocess.Popen(
         command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True
     )
@@ -77,7 +75,7 @@ def rsync_file(rsync_string, remove_source_files=True):
     fname = fname.split("/")[-1]
     # if output.returncode != 0:
     #    print(output)
-    return "{0}{1}".format(fdir, fname)
+    return f"{fdir}{fname}"
 
 
 def remove_outrigger_delays(UVhandler, outrigger_delays=OUTRIGGER_DELAYS):
@@ -143,9 +141,7 @@ def fscrunch_file(fname):
         corrname = re.findall("corr\d\d", fname)[0]
         os.rename(
             fname,
-            fname.replace(
-                "{0}".format(corrname), "{0}/full_freq_resolution/".format(corrname)
-            ),
+            fname.replace(f"{corrname}", f"{corrname}/full_freq_resolution/"),
         )
         os.rename(fname.replace(".hdf5", "_favg.hdf5"), fname)
     return fname
@@ -158,11 +154,7 @@ def read_nvss_catalog():
             "https://heasarc.gsfc.nasa.gov/FTP/heasarc/dbase/tdat_files/heasarc_nvss.tdat.gz",
             resource_filename("dsacalib", "data/heasarc_nvss.tdat.gz"),
         )
-        os.system(
-            "gunzip {0}".format(
-                resource_filename("dsacalib", "data/heasarc_nvss.tdat.gz")
-            )
-        )
+        os.system(f"gunzip {resource_filename("dsacalib", "data/heasarc_nvss.tdat.gz")}")
 
     df = pandas.read_csv(
         resource_filename("dsacalib", "data/heasarc_nvss.tdat"),
