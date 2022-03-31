@@ -8,6 +8,7 @@ from multiprocessing import Process, Queue
 import datetime
 import time
 import yaml
+
 import h5py
 import numpy as np
 import astropy.units as u
@@ -15,6 +16,13 @@ from astropy.time import Time
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
 import dsautils.cnf as dsc
+
+import matplotlib
+matplotlib.use('Agg')
+# pylint: disable=wrong-import-position
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+
 from dsacalib.preprocess import first_true, update_caltable
 from dsacalib.utils import exception_logger
 from dsacalib.calib import calibrate_phase_single_ms
@@ -27,10 +35,6 @@ from dsacalib.weights import (
 )
 from dsacalib.plotting import summary_plot, plot_bandpass_phases, plot_beamformer_weights
 
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 warnings.filterwarnings("ignore")
 
 # Logger
@@ -59,7 +63,7 @@ ANTENNAS_IN_MS = CAL_PARAMS['antennas_in_ms']
 ANTENNAS_NOT_IN_BF = CAL_PARAMS['antennas_not_in_bf']
 CORR_LIST = list(CORR_PARAMS['ch0'].keys())
 CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
-REFCORR = '{0:02d}'.format(CORR_LIST[0])
+REFCORR = f"{CORR_LIST[0]:02d}"
 WEBPLOTS = '/mnt/data/dsa110/webPLOTS/calibration/'
 PLOTDIR = f'{WEBPLOTS}/allpngs/'
 
@@ -70,9 +74,9 @@ def calibrate_file(calname, flist):
     """Calibrate a calibrator pass.
     """
     etcd = ds.DsaStore()
-    date = first_true(flist).split('/')[-1][:-14]
-    msname = '{0}/{1}_{2}'.format(MSDIR, date, calname)
-    date_specifier = '{0}*'.format(date)
+    date = first_true(flist).split("/")[-1][:-14]
+    msname = f"{MSDIR}/{date}_{calname}"
+    date_specifier = f"{date}*"
     # Get the start time for the snaps
     start_time = Time(
        etcd.get_dict('/mon/snap/1/armed_mjd')['armed_mjd'], format='mjd'
@@ -80,7 +84,7 @@ def calibrate_file(calname, flist):
     with h5py.File(first_true(flist), mode='r') as h5file:
         pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value*u.rad
     caltable = update_caltable(pt_dec)
-    LOGGER.info('Creating {0}.ms at dec {1}'.format(msname, pt_dec))
+    LOGGER.info(f"Creating {msname}.ms at dec {pt_dec}")
     filenames = get_files_for_cal(
         caltable,
         REFCORR,
@@ -124,7 +128,7 @@ def calibrate_file(calname, flist):
         filenames[date][calname]['cal'],
         refants=REFANTS,
         bad_antennas=None,
-        bad_uvrange='2~27m',
+        bad_uvrange='2~50m',
         forsystemhealth=True,
         throw_exceptions=True,
         logger=LOGGER
@@ -149,13 +153,12 @@ def calibrate_file(calname, flist):
     )
     print('solns written to etcd')
     LOGGER.info(
-        'Calibrated {0}.ms for system health with status {1}'
-        .format(msname, status)
+        f"Calibrated {msname}.ms for system health with status {status}"
     )
     print('creating figures')
-    figure_path = '{0}/{1}_{2}'.format(PLOTDIR, date, calname)
+    figure_path = f"{PLOTDIR}/{date}_{calname}"
     try:
-        with PdfPages('{0}.pdf'.format(figure_path)) as pdf:
+        with PdfPages(f"{figure_path}.pdf") as pdf:
             for j in range(len(ANTENNAS)//10+1):
                 fig = summary_plot(
                     msname,
@@ -166,7 +169,7 @@ def calibrate_file(calname, flist):
                 )
                 pdf.savefig(fig)
                 plt.close(fig)
-        target = f'{WEBPLOTS}/summary_current.pdf'
+        target = f"{WEBPLOTS}/summary_current.pdf"
         if os.path.exists(target):
             os.unlink(target)
         shutil.copyfile(
@@ -176,7 +179,7 @@ def calibrate_file(calname, flist):
     except Exception as exc:
         exception_logger(
             LOGGER,
-            'plotting of calibration solutions for {0}.ms'.format(msname),
+            f"plotting of calibration solutions for {msname}.ms",
             exc,
             throw=False
         )
@@ -186,15 +189,14 @@ def calibrate_file(calname, flist):
         filenames[date][calname]['cal'],
         refants=REFANTS,
         bad_antennas=None,
-        bad_uvrange='2~27m',
+        bad_uvrange='2~50m',
         keepdelays=False,
         forsystemhealth=False,
         throw_exceptions=False,
         logger=LOGGER
     )
     LOGGER.info(
-        'Calibrated {0}.ms for beamformer weights with status {1}'
-        .format(msname, status)
+        f"Calibrated {msname}.ms for beamformer weights with status {status}"
     )
     print('calculating beamformer weights')
     try:
@@ -212,7 +214,7 @@ def calibrate_file(calname, flist):
     except Exception as exc:
         exception_logger(
             LOGGER,
-            'calculation of beamformer weights for {0}.ms'.format(msname),
+            f"calculation of beamformer weights for {msname}.ms",
             exc,
             throw=False
         )
@@ -233,7 +235,7 @@ def calibrate_file(calname, flist):
         try:
             add_reference_bfname(beamformer_names, latest_solns, start_time)
         except:
-            print(f'could not get reference bname. continuing...')
+            print("could not get reference bname. continuing...")
 
         print('averaging beamformer weights')
         averaged_files, avg_flags = average_beamformer_solutions(
@@ -258,7 +260,7 @@ def calibrate_file(calname, flist):
         # Flag new bad solutions
         idxant, idxpol = np.nonzero(avg_flags)
         for i, ant in enumerate(idxant):
-            key = '{0} {1}'.format(ANTENNAS[ant], POLS[idxpol[i]])
+            key = f"{ANTENNAS[ant]} {POLS[idxpol[i]]}"
             if key not in \
                 latest_solns['cal_solutions']['flagged_antennas'].keys():
                 latest_solns['cal_solutions']['flagged_antennas'][key] = []
@@ -271,10 +273,9 @@ def calibrate_file(calname, flist):
         }
         print('opening yaml file')
         with open(
-            '{0}/beamformer_weights_{1}.yaml'.format(
-                BEAMFORMER_DIR, ttime.isot
-            ),
-            'w'
+                f"{BEAMFORMER_DIR}/beamformer_weights_{ttime.isot}.yaml",
+                "w",
+                encoding="utf-8"
         ) as file:
             print('writing bf weights')
             _ = yaml.dump(latest_solns, file)
@@ -289,19 +290,16 @@ def calibrate_file(calname, flist):
         )
         print('done writing')
         os.system(
-            "cd {0} ; "
+            f"cd {BEAMFORMER_DIR} ; "
             "git add beamformer_weights.yaml ; "
-            "git commit -m {1} ; "
-            "cd /home/user/proj/dsa110-shell/dsa110-calib/services/".format(
-                BEAMFORMER_DIR,
-                beamformer_names[0]
-            )
+            f"git commit -m {beamformer_names[0]} ; "
+            "cd /home/user/proj/dsa110-shell/dsa110-calib/services/"
         )
         beamformer_names += [averaged_files[0].split('_')[-1].strip(".dat")]
         _ = plot_beamformer_weights(
             beamformer_names,
             antennas_to_plot=np.array(ANTENNAS),
-            outname='{0}/{1}'.format(PLOTDIR, ttime),
+            outname=f"{PLOTDIR}/{ttime}",
             corrlist=np.array(CORR_LIST),
             show=False
         )
@@ -319,7 +317,7 @@ def calibrate_file(calname, flist):
     plot_bandpass_phases(
         beamformer_names,
         np.array(ANTENNAS),
-        outname='{0}/{1}'.format(PLOTDIR, ttime),
+        outname=f"{PLOTDIR}/{ttime}",
         show=False
     )
     plt.close('all')
@@ -349,7 +347,8 @@ def add_reference_bfname(beamformer_names, latest_solns, start_time):
     print(f'Got reference bfname of {ref_bfname}. Checking solutions...')
 
     with open(
-        "{0}/beamformer_weights_{1}.yaml".format(BEAMFORMER_DIR, ref_bfname)
+            f"{BEAMFORMER_DIR}/beamformer_weights_{ref_bfname}.yaml",
+            encoding="utf-8"
     ) as f:
         ref_solns = yaml.load(f, Loader=yaml.FullLoader)
 
@@ -375,9 +374,6 @@ def calibrate_file_manager(inqueue=CALIB_Q):
                     throw=False
                 )
             else:
-                print('flist[0]: {0}, {1}'.format(
-                    first_true(flist), type(first_true(flist))
-                ))
                 # start a subprocess
                 calib_process = Process(
                     target=calibrate_file,

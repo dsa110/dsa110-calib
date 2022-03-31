@@ -5,19 +5,23 @@ import sys
 import warnings
 from multiprocessing import Process, Queue
 import time
+
 import pandas
 import h5py
 import numpy as np
 from astropy.time import Time
 from astropy.coordinates import Angle
 import astropy.units as u
+
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
-import dsautils.cnf as cnf
+from dsautils import cnf
+
 import dsacalib.constants as ct
 from dsacalib.preprocess import rsync_file, first_true
 from dsacalib.preprocess import update_caltable
 from dsacalib.utils import exception_logger
+
 # make sure warnings do not spam syslog
 warnings.filterwarnings("ignore")
 
@@ -73,10 +77,9 @@ def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=HDF5DIR):
     cmd = etcd_dict['cmd']
     val = etcd_dict['val']
     if cmd == 'rsync':
-        rsync_string = '{0}.sas.pvt:{1} {2}/{0}/'.format(
-            val['hostname'],
-            val['filename'],
-            hdf5dir
+        rsync_string = (
+            f"{val['hostname']}.sas.pvt:{val['filename']} "
+            f"{hdf5dir}/{val['hostname']}/"
         )
         queue.put(rsync_string)
 
@@ -102,7 +105,7 @@ def task_handler(task_fn, inqueue, outqueue=None):
             except Exception as exc:
                 exception_logger(
                     LOGGER,
-                    'preprocessing of file {0}'.format(fname),
+                    f"preprocessing of file {fname}",
                     exc,
                     throw=False
                 )
@@ -181,7 +184,7 @@ def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=T
             except Exception as exc:
                 exception_logger(
                     LOGGER,
-                    'preprocessing of file {0}'.format(fname),
+                    f"preprocessing of file {fname}",
                     exc,
                     throw=False
                 )
@@ -243,12 +246,12 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
                         delta_lst_end -= 2*np.pi
                     if delta_lst_start < a0 < delta_lst_end:
                         calname = row['source']
-                        print('Calibrating {0}'.format(calname))
+                        print(f"Calibrating {calname}")
                         outqueue.put((calname, flist))
             except Exception as exc:
                 exception_logger(
                     LOGGER,
-                    'preprocessing of file {0}'.format(fname),
+                    f"preprocessing of file {fname}",
                     exc,
                     throw=False
                 )
