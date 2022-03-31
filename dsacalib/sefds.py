@@ -68,7 +68,7 @@ def remove_model(msname):
     msname : str
         The path to the measurement set, with the extension omitted.
     """
-    with table("{0}.ms".format(msname), readonly=False) as tb:
+    with table(f"{msname}.ms", readonly=False) as tb:
         model = np.array(tb.MODEL_DATA[:])
         if not os.path.exists(f"{msname}.ms/model.npz"):
             np.savez(f"{msname}.ms/model", model)
@@ -92,23 +92,23 @@ def solve_gains(msname, calname, msname_delaycal, calname_delaycal, refant=REFAN
     """
     caltables = [
         {
-            "table": "{0}_{1}_kcal".format(msname_delaycal, calname_delaycal),
+            "table": f"{msname_delaycal}_{calname_delaycal}_kcal",
             "type": "K",
             "spwmap": [-1],
         },
         {
-            "table": "{0}_{1}_bcal".format(msname_delaycal, calname_delaycal),
+            "table": f"{msname_delaycal}_{calname_delaycal}_bcal",
             "type": "B",
             "spwmap": [-1],
         },
     ]
     cb = cc.calibrater()
-    cb.open("{0}.ms".format(msname))
+    cb.open(f"{msname}.ms")
     apply_calibration_tables(cb, caltables)
     cb.setsolve(
         type="G",
         combine="scan, field, obs",
-        table="{0}_{1}_2gcal".format(msname, calname),
+        table=f"{msname}_{calname}_2gcal",
         t="30s",
         refant=refant,
         apmode="ap",
@@ -300,8 +300,6 @@ def calculate_sefd(
     hwhms : float
         The hwhms of the calibrator transits in days.
     """
-    # TODO: Change beam shape to something that more closely matches than a gaussian
-
     if msname_delaycal is None:
         msname_delaycal = msname
     if calname_delaycal is None:
@@ -333,7 +331,10 @@ def calculate_sefd(
     width = idxr0 - idxl0
     assert (
         width % nfint == 0
-    ), f"the number of frequency channels ({width}) between fmin ({fmin}) and fmax ({fmax}) must be divisible by nfint ({nfint})"
+    ), (
+        f"the number of frequency channels ({width}) between fmin "
+        f"({fmin}) and fmax ({fmax}) must be divisible by nfint ({nfint})"
+    )
     fvis = fvis[idxl0:idxr0].reshape(nfint, -1)
     fref = np.median(fvis, axis=-1)
     max_flux = amplitude_sky_model(cal, cal.ra.to_value(u.rad), pt_dec, fref)
@@ -537,6 +538,6 @@ def plot_sefds(antennas, sefds, esefds, fref, ymax=None):
         ax[i].set_ylim(0, ymax)
     for axi in ax:
         x0, x1 = axi.get_xlim()
-        y0, y1 = axi.get_ylim()
+        _y0, y1 = axi.get_ylim()
         axi.fill_between([x0, x1], [10200, 10200], [y1, y1], color="lightgrey")
     return fig

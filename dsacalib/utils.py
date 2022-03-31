@@ -40,10 +40,9 @@ def exception_logger(logger, task, exception, throw):
         If set to True, the exception is raised after the traceback is written
         to syslogs.
     """
-    error_string = "During {0}, {1} occurred:\n{2}".format(
-        task,
-        type(exception).__name__,
-        "".join(traceback.format_tb(exception.__traceback__)),
+    error_string = (
+        f"During {task}, {type(exception).__name__} occurred:\n"
+        f"{''.join(traceback.format_tb(exception.__traceback__))}"
     )
     if logger is not None:
         logger.error(error_string)
@@ -379,11 +378,9 @@ class direction:
             observatory = self.observatory
 
         me = cc.measures()
-        epoch = me.epoch("UTC", "{0}d".format(obstime))
+        epoch = me.epoch("UTC", f"{obstime}d")
         location = me.observatory(observatory)
-        source = me.direction(
-            "HADEC", "{0}rad".format(self.lon), "{0}rad".format(self.lat)
-        )
+        source = me.direction("HADEC", f"{self.lon}rad", f"{self.lat}rad")
         me.doframe(epoch)
         me.doframe(location)
         output = me.measure(source, "J2000")
@@ -418,11 +415,9 @@ class direction:
             assert self.observatory is not None
             observatory = self.observatory
         me = cc.measures()
-        epoch = me.epoch("UTC", "{0}d".format(obstime))
+        epoch = me.epoch("UTC", f"{obstime}d")
         location = me.observatory(observatory)
-        source = me.direction(
-            "J2000", "{0}rad".format(self.lon), "{0}rad".format(self.lat)
-        )
+        source = me.direction("J2000", f"{self.lon}rad", f"{self.lat}rad")
         me.doframe(epoch)
         me.doframe(location)
         output = me.measure(source, "HADEC")

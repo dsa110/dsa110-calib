@@ -505,7 +505,7 @@ def amplitude_sky_model(source, ant_ra, pt_dec, fobs, dish_dia=4.65, spind=0.7):
     )
 
 
-def pb_resp_uniform_ill(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.65):
+def pb_resp_uniform_ill(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.9):
     """Computes the primary beam response towards a direction on the sky.
 
     Assumes uniform illumination of the disk. Returns a value between 0 and 1
@@ -538,11 +538,11 @@ def pb_resp_uniform_ill(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.65):
         2.0
         * j1(np.pi * dis[:, np.newaxis] * dish_dia / lam)
         / (np.pi * dis[:, np.newaxis] * dish_dia / lam)
-    ) ** 2
+    ) ** 4
     return pb
 
 
-def pb_resp(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.34):
+def pb_resp(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.7):
     """Computes the primary beam response towards a direction on the sky.
 
     Assumes tapered illumination of the disk. Returns a value between 0 and 1
@@ -576,5 +576,5 @@ def pb_resp(ant_ra, ant_dec, src_ra, src_dec, freq, dish_dia=4.34):
 
     lam = 0.299792458 / freq
     arg = 1.2 * dis * dish_dia / lam
-    pb = (np.cos(np.pi * arg) / (1 - 4 * arg**2)) ** 2
+    pb = (np.cos(np.pi * arg) / (1 - 4 * arg**2)) ** 4
     return pb

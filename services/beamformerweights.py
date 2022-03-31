@@ -54,46 +54,33 @@ def update_beamformer_weights(etcd_dict):
                    ANTENNAS.index(ant)
                 ] = 1
         antenna_flags = np.where(antenna_flags)[0]
-        with open('antenna_flags.txt', 'w') as f:
+        with open('antenna_flags.txt', 'w', encoding="utf-8") as f:
             f.write('\n'.join([str(af) for af in antenna_flags]))
             f.write('\n')
         tstamp = Time(datetime.datetime.utcnow())
         tstamp.precision = 0
         with open(
-            '{0}/beamformer_weights_{1}.yaml'.format(BFARCHIVEDIR, tstamp.isot), 'w'
+                f"{BFARCHIVEDIR}/beamformer_weights_{tstamp.isot}.yaml",
+                "w",
+                encoding="utf-8"
         ) as file:
             _ = yaml.dump(bfsolns, file)
         for i, corr in enumerate(CORR_LIST):
-            fname = '{0}/{1}'.format(
-                BFDIR,
-                bfsolns['weight_files'][i]
-            )
-            fnamearchive = '{0}/beamformer_weights_corr{1:02d}_{2}.dat'.format(
-                BFARCHIVEDIR,
-                corr,
-                tstamp.isot
-            )
-            fnameout = 'corr{0:02d}.sas.pvt:{1}'.format(
-                corr,
-                WEIGHTFILE
-            )
-            flagsout = 'corr{0:02d}.sas.pvt:{1}'.format(
-                corr,
-                FLAGFILE
-            )
+            fname = f"{BFDIR}/{bfsolns['weight_files'][i]}"
+            fnamearchive = f"{BFARCHIVEDIR}/beamformer_weights_corr{corr:02d}_{tstamp.isot}.dat"
+            fnameout = f"corr{corr:02d}.sas.pvt:{WEIGHTFILE}"
+            flagsout = f"corr{corr:02d}.sas.pvt:{FLAGFILE}"
             rsync_file(
-                '{0} {1}'.format(fname, fnameout),
+                f"{fname} {fnameout}",
                 remove_source_files=False
             )
             rsync_file(
-                'antenna_flags.txt {0}'.format(flagsout),
+                f"antenna_flags.txt {flagsout}",
                 remove_source_files=False
             )
             shutil.copyfile(fname, fnamearchive)
         LOGGER.info(
-            'Updated beamformer weights using {0}'.format(
-                bfsolns['weight_files']
-            )
+            f"Updated beamformer weights using {bfsolns['weight_files']}"
         )
 
 if __name__ == "__main__":

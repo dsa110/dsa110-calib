@@ -8,7 +8,7 @@ import subprocess
 from urllib.request import urlretrieve
 
 import astropy.units as u
-import dsautils.cnf as cnf
+from dsautils import cnf
 import dsautils.dsa_syslog as dsl
 import numpy as np
 import pandas
@@ -59,25 +59,25 @@ def rsync_file(rsync_string, remove_source_files=True):
     Parameters
     ----------
     rsync_string : str
-        E.g. 'corr06.sas.pvt:/home/ubuntu/data/2020-06-24T12:32:06.hdf5 /mnt/data/dsa110/correlator/corr06/'
+        E.g. 'corr06.sas.pvt:/home/ubuntu/data/2020-06-24T12:32:06.hdf5 '
+        '/mnt/data/dsa110/correlator/corr06/'
     """
     fname, fdir = rsync_string.split(" ")
     if remove_source_files:
-        command = ". ~/.keychain/dsa-storage-sh; rsync -avv --remove-source-files {0} {1}".format(
-            fname, fdir
-        )
+        command = f". ~/.keychain/dsa-storage-sh; rsync -avv --remove-source-files {fname} {fdir}"
     else:
-        command = ". ~/.keychain/dsa-storage-sh; rsync -avv {0} {1}".format(fname, fdir)
-    process = subprocess.Popen(
-        command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True
-    )
-    proc_stdout = str(process.communicate()[0].strip())
+        command = f". ~/.keychain/dsa-storage-sh; rsync -avv {fname} {fdir}"
+    with subprocess.Popen(
+            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True
+    ) as process:
+        proc_stdout = str(process.communicate()[0].strip())
+
     print(proc_stdout)
     LOGGER.info(proc_stdout)
     fname = fname.split("/")[-1]
     # if output.returncode != 0:
     #    print(output)
-    return "{0}{1}".format(fdir, fname)
+    return f"{fdir}{fname}"
 
 
 def remove_outrigger_delays(UVhandler, outrigger_delays=OUTRIGGER_DELAYS):
@@ -140,12 +140,10 @@ def fscrunch_file(fname):
             fname.replace(".hdf5", "_favg.hdf5"), run_check_acceptability=False
         )
         # Move the original data to a new directory
-        corrname = re.findall("corr\d\d", fname)[0]
+        corrname = re.findall(r"corr\d\d", fname)[0]
         os.rename(
             fname,
-            fname.replace(
-                "{0}".format(corrname), "{0}/full_freq_resolution/".format(corrname)
-            ),
+            fname.replace(f"{corrname}", f"{corrname}/full_freq_resolution/"),
         )
         os.rename(fname.replace(".hdf5", "_favg.hdf5"), fname)
     return fname
@@ -158,11 +156,7 @@ def read_nvss_catalog():
             "https://heasarc.gsfc.nasa.gov/FTP/heasarc/dbase/tdat_files/heasarc_nvss.tdat.gz",
             resource_filename("dsacalib", "data/heasarc_nvss.tdat.gz"),
         )
-        os.system(
-            "gunzip {0}".format(
-                resource_filename("dsacalib", "data/heasarc_nvss.tdat.gz")
-            )
-        )
+        os.system(f"gunzip {resource_filename('dsacalib', 'data/heasarc_nvss.tdat.gz')}")
 
     df = pandas.read_csv(
         resource_filename("dsacalib", "data/heasarc_nvss.tdat"),
@@ -307,10 +301,9 @@ def update_caltable(pt_dec):
     pt_el : astropy quantity
         The antenna pointing elevation in degrees or equivalent.
     """
-    csv_string = "data/calibrator_sources_dec{0}{1}.csv".format(
-        "+" if pt_dec.to_value(u.deg) >= 0 else "-",
-        "{0:05.1f}".format(pt_dec.to_value(u.deg)).replace(".", "p"),
-    )
+    decsign = "+" if pt_dec.to_value(u.deg) >= 0 else "-"
+    decval = f"{np.abs(pt_dec.to_value(u.deg)):05.1f}".replace(".", "p")
+    csv_string = f"data/calibrator_sources_dec{decsign}{decval}.csv"
     if not resource_exists("dsacalib", csv_string):
         generate_caltable(pt_dec, csv_string)
     return resource_filename("dsacalib", csv_string)
