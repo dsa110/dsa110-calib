@@ -19,7 +19,7 @@ import scipy # pylint: disable=unused-import
 import casatools as cc
 import dsautils.cnf as dsc
 import numpy as np
-from astropy.utils import iers  # pylint: disable=wrong-import-order
+from astropy.utils import iers
 from casacore.tables import table
 from casatasks import virtualconcat
 from dsautils import calstatus as cs
@@ -31,7 +31,7 @@ from dsacalib import constants as ct
 
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import Time
+from astropy.time import Time # pylint: disable=ungrouped-imports,wrong-import-order,wrong-import-position
 
 de = dsa_store.DsaStore()
 
@@ -378,7 +378,7 @@ def convert_to_ms(
                 ((0, 0), (0, npad), (0, 0), (0, 0)),
                 mode="constant",
                 constant_values=(np.nan,),
-            ).reshape(vis.shape[0], -1, nint, vis.shape[2], vis.shape[3]),
+            ).reshape((vis.shape[0], -1, nint, vis.shape[2], vis.shape[3])),
             axis=2,
         )
         if model is not None:
@@ -388,7 +388,7 @@ def convert_to_ms(
                     ((0, 0), (0, npad), (0, 0), (0, 0)),
                     mode="constant",
                     constant_values=(np.nan,),
-                ).reshape(model.shape[0], -1, nint, model.shape[2], model.shape[3]),
+                ).reshape((model.shape[0], -1, nint, model.shape[2], model.shape[3])),
                 axis=2,
             )
     stoptime = f"{vis.shape[1] * tsamp * nint}s"

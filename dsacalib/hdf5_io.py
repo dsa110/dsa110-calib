@@ -18,7 +18,7 @@ from dsacalib import constants as ct
 
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import Time  # pylint: disable=wrong-import-position
+from astropy.time import Time  # pylint: disable=wrong-import-position,ungrouped-imports,wrong-import-order
 
 
 def read_hdf5_file(
@@ -109,12 +109,10 @@ def read_hdf5_file(
                 print(f"Extracting data around {lstmid * 180 / np.pi}")
                 print(f"{nt} Time samples in data")
                 print(
-                    "LST range: {0:.1f} --- ({1:.1f}-{2:.1f}) --- {3:.1f}deg".format(
-                        lst[0] * 180.0 / np.pi,
-                        (lstmid - seg_len) * 180.0 / np.pi,
-                        (lstmid + seg_len) * 180.0 / np.pi,
-                        lst[-1] * 180.0 / np.pi,
-                    )
+                    f"LST range: {lst[0] * 180.0 / np.pi:.1f} --- "
+                    f"({(lstmid - seg_len) * 180.0 / np.pi:.1f}-"
+                    f"{(lstmid + seg_len) * 180.0 / np.pi:.1f}) --- "
+                    f"{lst[-1] * 180.0 / np.pi:.1f}deg"
                 )
             idxl = np.argmax(
                 np.absolute(

@@ -65,75 +65,74 @@ def uvh5_to_ms(
         The mjd used in the fringestopper.
     """
 
-    UV, pt_dec, ra, dec = load_uvh5_file(fname, antenna_list, dt, ra, dec)
+    uvdata, pt_dec, ra, dec = load_uvh5_file(fname, antenna_list, dt, ra, dec)
 
-    antenna_positions = set_antenna_positions(UV, logger)
+    antenna_positions = set_antenna_positions(uvdata, logger)
 
-    phase_visibilities(UV, ra, dec, fringestop, refmjd=refmjd)
+    phase_visibilities(uvdata, ra, dec, fringestop, refmjd=refmjd)
 
-    fix_descending_missing_freqs(UV)
+    fix_descending_missing_freqs(uvdata)
 
-    write_UV_to_ms(UV, msname, antenna_positions)
+    write_UV_to_ms(uvdata, msname, antenna_positions)
 
-    set_ms_model_column(msname, UV, pt_dec, ra, dec, flux)
+    set_ms_model_column(msname, uvdata, pt_dec, ra, dec, flux)
 
 
 def phase_visibilities(
-        UV, phase_ra, phase_dec, fringestop=True, interpolate_uvws=False, refmjd=None
+        uvdata, phase_ra, phase_dec, fringestop=True, interpolate_uvws=False, refmjd=None
 ):
     """Phase a UVData instance.
 
     If fringestop is False, then no phasing is done,
     but the phase centre is set to the meridian at the midpoint of the observation,
-    and the UV object is modified to indicate that it is phased.
+    and the uvdata object is modified to indicate that it is phased.
     """
-    blen = get_blen(UV)
-    lamb = c.c/(UV.freq_array*u.Hz)
-    time = Time(UV.time_array, format='jd')
+    blen = get_blen(uvdata)
+    lamb = c.c/(uvdata.freq_array*u.Hz)
+    time = Time(uvdata.time_array, format='jd')
     if refmjd is None:
         refmjd = np.mean(time.mjd)
-    pt_dec = UV.extra_keywords['phase_center_dec']*u.rad
+    pt_dec = uvdata.extra_keywords['phase_center_dec']*u.rad
     uvw_m = calc_uvw_blt(
-        blen, np.tile(refmjd, (UV.Nbls)), 'HADEC',
-        np.zeros(UV.Nbls)*u.rad, np.tile(pt_dec, (UV.Nbls)))
+        blen, np.tile(refmjd, (uvdata.Nbls)), 'HADEC',
+        np.zeros(uvdata.Nbls)*u.rad, np.tile(pt_dec, (uvdata.Nbls)))
 
     if fringestop:
         # Calculate uvw coordinates
         if interpolate_uvws:
             uvw = calc_uvw_interpolate(
-                blen, time[::UV.Nbls], 'RADEC', phase_ra.to(u.rad), phase_dec.to(u.rad))
+                blen, time[::uvdata.Nbls], 'RADEC', phase_ra.to(u.rad), phase_dec.to(u.rad))
             uvw = uvw.reshape(-1, 3)
         else:
-            blen = np.tile(blen[np.newaxis, :, :], (UV.Ntimes, 1, 1)).reshape(-1, 3)
+            blen = np.tile(blen[np.newaxis, :, :], (uvdata.Ntimes, 1, 1)).reshape(-1, 3)
             uvw = calc_uvw_blt(
                 blen, time.mjd, 'RADEC', phase_ra.to(u.rad), phase_dec.to(u.rad)
             )
 
         # Fringestop and phase
         phase_model = generate_phase_model_antbased(
-            uvw, uvw_m, UV.Nbls, UV.Ntimes, lamb, UV.ant_1_array[:UV.Nbls],
-            UV.ant_2_array[:UV.Nbls])
-        UV.data_array = UV.data_array/phase_model[..., np.newaxis]
+            uvw, uvw_m, uvdata.Nbls, uvdata.Ntimes, lamb, uvdata.ant_1_array[:uvdata.Nbls],
+            uvdata.ant_2_array[:uvdata.Nbls])
+        uvdata.data_array = uvdata.data_array/phase_model[..., np.newaxis]
 
     else:
         uvw = calc_uvw_blt(
-            blen, np.tile(np.mean(time.mjd), (UV.Nbls)), 'J2000',
-            np.tile(phase_ra, (UV.Nbls)), np.tile(phase_dec, (UV.Nbls)))
+            blen, np.tile(np.mean(time.mjd), (uvdata.Nbls)), 'J2000',
+            np.tile(phase_ra, (uvdata.Nbls)), np.tile(phase_dec, (uvdata.Nbls)))
         phase_model = generate_phase_model_antbased(
-            uvw, uvw_m, UV.Nbls, 1, lamb, UV.ant_1_array[:UV.Nbls],
-            UV.ant_2_array[:UV.Nbls])
-        UV.data_array = UV.data_array/phase_model[..., np.newaxis]
-        uvw = np.tile(uvw.reshape((1, UV.Nbls, 3)),
-                      (1, UV.Ntimes, 1)).reshape((UV.Nblts, 3))
+            uvw, uvw_m, uvdata.Nbls, 1, lamb, uvdata.ant_1_array[:uvdata.Nbls],
+            uvdata.ant_2_array[:uvdata.Nbls])
+        uvdata.data_array = uvdata.data_array/phase_model[..., np.newaxis]
+        uvw = np.tile(uvw.reshape((1, uvdata.Nbls, 3)),
+                      (1, uvdata.Ntimes, 1)).reshape((uvdata.Nblts, 3))
 
-    UV.uvw_array = uvw
-    UV.phase_type = 'phased'
-    UV.phase_center_dec = phase_dec.to_value(u.rad)
-    UV.phase_center_ra = phase_ra.to_value(u.rad)
-    UV.phase_center_epoch = 2000.
-    UV.phase_center_frame = 'icrs'
-    #if hasattr(UV, )
-    #UV._set_app_coords_helper()
+    uvdata.uvw_array = uvw
+    uvdata.phase_type = 'phased'
+    uvdata.phase_center_dec = phase_dec.to_value(u.rad)
+    uvdata.phase_center_ra = phase_ra.to_value(u.rad)
+    uvdata.phase_center_epoch = 2000.
+    uvdata.phase_center_frame = 'icrs'
+    #uvdata._set_app_coords_helper()
 
 
 def load_uvh5_file(
@@ -157,22 +156,22 @@ def load_uvh5_file(
             "Please specific only one of phase_time and phasing direction (phase_ra + phase_dec)"
         )
 
-    UV = UVData()
+    uvdata = UVData()
 
     # Read in the data
     if antenna_list is not None:
-        UV.read(fname, file_type='uvh5', antenna_names=antenna_list,
+        uvdata.read(fname, file_type='uvh5', antenna_names=antenna_list,
                 run_check_acceptability=False, strict_uvw_antpos_check=False)
     else:
-        UV.read(fname, file_type='uvh5', run_check_acceptability=False,
+        uvdata.read(fname, file_type='uvh5', run_check_acceptability=False,
                 strict_uvw_antpos_check=False)
 
-    pt_dec = UV.extra_keywords['phase_center_dec']*u.rad
+    pt_dec = uvdata.extra_keywords['phase_center_dec']*u.rad
 
     # Get pointing information
     if phase_ra is None:
         if phase_time is None:
-            phase_time = Time(np.mean(UV.time_array), format='jd')
+            phase_time = Time(np.mean(uvdata.time_array), format='jd')
         pointing = du.direction(
             'HADEC',
             0.,
@@ -183,12 +182,12 @@ def load_uvh5_file(
         phase_dec = pointing.J2000()[1]*u.rad
 
     if dt is not None:
-        extract_times(UV, phase_ra, dt)
+        extract_times(uvdata, phase_ra, dt)
 
-    return UV, pt_dec, phase_ra, phase_dec
+    return uvdata, pt_dec, phase_ra, phase_dec
 
 
-def extract_times(UV, ra, dt):
+def extract_times(uvdata, ra, dt):
     """Extracts data from specified times from an already open UVData instance.
 
     This is an alternative to opening the file with the times specified using
@@ -203,38 +202,45 @@ def extract_times(UV, ra, dt):
     dt : astropy quantity
         The amount of data to extract, units seconds or equivalent.
     """
-    lst_min = (ra - (dt*2*np.pi*u.rad/(ct.SECONDS_PER_SIDEREAL_DAY*u.s))/2
-              ).to_value(u.rad)%(2*np.pi)
-    lst_max = (ra + (dt*2*np.pi*u.rad/(ct.SECONDS_PER_SIDEREAL_DAY*u.s))/2
-              ).to_value(u.rad)%(2*np.pi)
+    lst_min = (
+        ra - (dt*2*np.pi*u.rad/(ct.SECONDS_PER_SIDEREAL_DAY*u.s))/2
+    ).to_value(u.rad)%(2*np.pi)
+    lst_max = (
+        ra + (dt*2*np.pi*u.rad/(ct.SECONDS_PER_SIDEREAL_DAY*u.s))/2
+    ).to_value(u.rad)%(2*np.pi)
     if lst_min < lst_max:
-        idx_to_extract = np.where((UV.lst_array >= lst_min) &
-                                  (UV.lst_array <= lst_max))[0]
+        idx_to_extract = np.where(
+            (uvdata.lst_array >= lst_min) & (uvdata.lst_array <= lst_max)
+        )[0]
     else:
-        idx_to_extract = np.where((UV.lst_array >= lst_min) |
-                                  (UV.lst_array <= lst_max))[0]
+        idx_to_extract = np.where(
+            (uvdata.lst_array >= lst_min) | (uvdata.lst_array <= lst_max)
+        )[0]
     if len(idx_to_extract) == 0:
-        raise ValueError("No times in uvh5 file match requested timespan "
-                         f"with duration {dt} centered at RA {ra}.")
+        raise ValueError(
+            "No times in uvh5 file match requested timespan "
+            f"with duration {dt} centered at RA {ra}."
+        )
     idxmin = min(idx_to_extract)
     idxmax = max(idx_to_extract)+1
-    assert (idxmax-idxmin)%UV.Nbls == 0
-    UV.uvw_array = UV.uvw_array[idxmin:idxmax, ...]
-    UV.data_array = UV.data_array[idxmin:idxmax, ...]
-    UV.time_array = UV.time_array[idxmin:idxmax, ...]
-    UV.lst_array = UV.lst_array[idxmin:idxmax, ...]
-    UV.nsample_array = UV.nsample_array[idxmin:idxmax, ...]
-    UV.flag_array = UV.flag_array[idxmin:idxmax, ...]
-    UV.ant_1_array = UV.ant_1_array[idxmin:idxmax, ...]
-    UV.ant_2_array = UV.ant_2_array[idxmin:idxmax, ...]
-    UV.baseline_array = UV.baseline_array[idxmin:idxmax, ...]
-    UV.integration_time = UV.integration_time[idxmin:idxmax, ...]
-    UV.Nblts = int(idxmax-idxmin)
-    assert UV.data_array.shape[0] == UV.Nblts
-    UV.Ntimes = UV.Nblts//UV.Nbls
+    assert (idxmax-idxmin)%uvdata.Nbls == 0
+
+    uvdata.uvw_array = uvdata.uvw_array[idxmin:idxmax, ...]
+    uvdata.data_array = uvdata.data_array[idxmin:idxmax, ...]
+    uvdata.time_array = uvdata.time_array[idxmin:idxmax, ...]
+    uvdata.lst_array = uvdata.lst_array[idxmin:idxmax, ...]
+    uvdata.nsample_array = uvdata.nsample_array[idxmin:idxmax, ...]
+    uvdata.flag_array = uvdata.flag_array[idxmin:idxmax, ...]
+    uvdata.ant_1_array = uvdata.ant_1_array[idxmin:idxmax, ...]
+    uvdata.ant_2_array = uvdata.ant_2_array[idxmin:idxmax, ...]
+    uvdata.baseline_array = uvdata.baseline_array[idxmin:idxmax, ...]
+    uvdata.integration_time = uvdata.integration_time[idxmin:idxmax, ...]
+    uvdata.Nblts = int(idxmax-idxmin)
+    assert uvdata.data_array.shape[0] == uvdata.Nblts
+    uvdata.Ntimes = uvdata.Nblts//uvdata.Nbls
 
 
-def set_antenna_positions(UV: "UVData", logger: "DsaSyslogger"=None) -> "np.ndarray":
+def set_antenna_positions(uvdata: "UVData", logger: "DsaSyslogger"=None) -> "np.ndarray":
     """Set and return the antenna positions.
 
     This should already be done by the writer but for some reason they
@@ -243,74 +249,74 @@ def set_antenna_positions(UV: "UVData", logger: "DsaSyslogger"=None) -> "np.ndar
     df_itrf = get_itrf(
         latlon_center=(ct.OVRO_LAT*u.rad, ct.OVRO_LON*u.rad, ct.OVRO_ALT*u.m)
     )
-    if len(df_itrf['x_m']) != UV.antenna_positions.shape[0]:
+    if len(df_itrf['x_m']) != uvdata.antenna_positions.shape[0]:
         message = 'Mismatch between antennas in current environment '+\
             f'({len(df_itrf["x_m"])}) and correlator environment '+\
-            f'({UV.antenna_positions.shape[0]})'
+            f'({uvdata.antenna_positions.shape[0]})'
         if logger is not None:
             logger.info(message)
         else:
             print(message)
-    UV.antenna_positions[:len(df_itrf['x_m'])] = np.array([
+    uvdata.antenna_positions[:len(df_itrf['x_m'])] = np.array([
         df_itrf['x_m'],
         df_itrf['y_m'],
         df_itrf['z_m']
-    ]).T-UV.telescope_location
-    antenna_positions = UV.antenna_positions + UV.telescope_location
+    ]).T-uvdata.telescope_location
+    antenna_positions = uvdata.antenna_positions + uvdata.telescope_location
     return antenna_positions
 
 
-def get_blen(UV: "UVData") -> "np.ndarray":
+def get_blen(uvdata: "UVData") -> "np.ndarray":
     """Calculate baseline lenghts using antenna positions in the UVData file."""
-    blen = np.zeros((UV.Nbls, 3))
-    for i, ant1 in enumerate(UV.ant_1_array[:UV.Nbls]):
-        ant2 = UV.ant_2_array[i]
-        blen[i, ...] = UV.antenna_positions[ant2, :] - \
-            UV.antenna_positions[ant1, :]
+    blen = np.zeros((uvdata.Nbls, 3))
+    for i, ant1 in enumerate(uvdata.ant_1_array[:uvdata.Nbls]):
+        ant2 = uvdata.ant_2_array[i]
+        blen[i, ...] = uvdata.antenna_positions[ant2, :] - \
+            uvdata.antenna_positions[ant1, :]
     return blen
 
 
-def fix_descending_missing_freqs(UV: "UVData") -> None:
+def fix_descending_missing_freqs(uvdata: "UVData") -> None:
     """Flip descending freq arrays, and fills in missing channels."""
     # Look for missing channels
-    freq = UV.freq_array.squeeze()
+    freq = uvdata.freq_array.squeeze()
     # The channels may have been reordered by pyuvdata so check that the
-    # parameter UV.channel_width makes sense now.
+    # parameter uvdata.channel_width makes sense now.
     ascending = np.median(np.diff(freq)) > 0
     if ascending:
         assert np.all(np.diff(freq) > 0)
     else:
         assert np.all(np.diff(freq) < 0)
-        UV.freq_array = UV.freq_array[:, ::-1]
-        UV.data_array = UV.data_array[:, :, ::-1, :]
-        freq = UV.freq_array.squeeze()
+        uvdata.freq_array = uvdata.freq_array[:, ::-1]
+        uvdata.data_array = uvdata.data_array[:, :, ::-1, :]
+        freq = uvdata.freq_array.squeeze()
 
     # TODO: Need to update this for missing on either side as well
-    UV.channel_width = np.abs(UV.channel_width)
+    uvdata.channel_width = np.abs(uvdata.channel_width)
     # Are there missing channels?
-    if not np.all(np.diff(freq)-UV.channel_width < 1e-5):
+    if not np.all(np.diff(freq)-uvdata.channel_width < 1e-5):
         # There are missing channels!
-        nfreq = int(np.rint(np.abs(freq[-1]-freq[0])/UV.channel_width+1))
-        freq_out = freq[0] + np.arange(nfreq)*UV.channel_width
-        existing_idxs = np.rint((freq-freq[0])/UV.channel_width).astype(int)
-        data_out = np.zeros((UV.Nblts, UV.Nspws, nfreq, UV.Npols),
-                            dtype=UV.data_array.dtype)
-        nsample_out = np.zeros((UV.Nblts, UV.Nspws, nfreq, UV.Npols),
-                               dtype=UV.nsample_array.dtype)
-        flag_out = np.zeros((UV.Nblts, UV.Nspws, nfreq, UV.Npols),
-                            dtype=UV.flag_array.dtype)
-        data_out[:, :, existing_idxs, :] = UV.data_array
-        nsample_out[:, :, existing_idxs, :] = UV.nsample_array
-        flag_out[:, :, existing_idxs, :] = UV.flag_array
+        nfreq = int(np.rint(np.abs(freq[-1]-freq[0])/uvdata.channel_width+1))
+        freq_out = freq[0] + np.arange(nfreq)*uvdata.channel_width
+        existing_idxs = np.rint((freq-freq[0])/uvdata.channel_width).astype(int)
+        data_out = np.zeros((uvdata.Nblts, uvdata.Nspws, nfreq, uvdata.Npols),
+                            dtype=uvdata.data_array.dtype)
+        nsample_out = np.zeros((uvdata.Nblts, uvdata.Nspws, nfreq, uvdata.Npols),
+                               dtype=uvdata.nsample_array.dtype)
+        flag_out = np.zeros((uvdata.Nblts, uvdata.Nspws, nfreq, uvdata.Npols),
+                            dtype=uvdata.flag_array.dtype)
+        data_out[:, :, existing_idxs, :] = uvdata.data_array
+        nsample_out[:, :, existing_idxs, :] = uvdata.nsample_array
+        flag_out[:, :, existing_idxs, :] = uvdata.flag_array
         # Now write everything
-        UV.Nfreqs = nfreq
-        UV.freq_array = freq_out[np.newaxis, :]
-        UV.data_array = data_out
-        UV.nsample_array = nsample_out
-        UV.flag_array = flag_out
+        uvdata.Nfreqs = nfreq
+        uvdata.freq_array = freq_out[np.newaxis, :]
+        uvdata.data_array = data_out
+        uvdata.nsample_array = nsample_out
+        uvdata.flag_array = flag_out
 
 
-def write_UV_to_ms(UV: "UVData", msname: "str", antenna_positions: "np.ndarray") -> None:
+def write_UV_to_ms(uvdata: "UVData", msname: "str", antenna_positions: "np.ndarray") -> None:
     """Write a UVData object to a ms.
 
     Uses a fits file as the intermediate between UVData and ms, which is removed after
@@ -319,7 +325,7 @@ def write_UV_to_ms(UV: "UVData", msname: "str", antenna_positions: "np.ndarray")
     if os.path.exists(f'{msname}.fits'):
         os.remove(f'{msname}.fits')
 
-    UV.write_uvfits(
+    uvdata.write_uvfits(
         f'{msname}.fits',
         spoof_nonessential=True,
         run_check_acceptability=False,
@@ -338,19 +344,19 @@ def write_UV_to_ms(UV: "UVData", msname: "str", antenna_positions: "np.ndarray")
     os.remove(f'{msname}.fits')
 
 
-def set_ms_model_column(msname: str, UV: "UVData", pt_dec: "Quantity", ra: "Quantity",
+def set_ms_model_column(msname: str, uvdata: "UVData", pt_dec: "Quantity", ra: "Quantity",
                         dec: "Quantity", flux_Jy: float) -> None:
     """Set the measurement model column."""
     if flux_Jy is not None:
-        fobs = UV.freq_array.squeeze()/1e9
-        lst = UV.lst_array
+        fobs = uvdata.freq_array.squeeze()/1e9
+        lst = uvdata.lst_array
         model = amplitude_sky_model(du.src('cal', ra, dec, flux_Jy),
                                     lst, pt_dec, fobs)
-        model = np.tile(model[:, :, np.newaxis], (1, 1, UV.Npols))
+        model = np.tile(model[:, :, np.newaxis], (1, 1, uvdata.Npols))
     else:
-        model = np.ones((UV.Nblts, UV.Nfreqs, UV.Npols), dtype=np.complex64)
+        model = np.ones((uvdata.Nblts, uvdata.Nfreqs, uvdata.Npols), dtype=np.complex64)
 
-    with table(f'msname.ms'.format(msname), readonly=False) as tb:
+    with table(f'{msname}.ms', readonly=False) as tb:
         tb.putcol('MODEL_DATA', model)
         tb.putcol('CORRECTED_DATA', tb.getcol('DATA')[:])
 
