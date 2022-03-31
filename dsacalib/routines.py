@@ -489,9 +489,9 @@ def get_files_for_cal(
         print("Multiple files exist for the same time.")
     dates = np.unique([dt[:10] for dt in datetimes])
 
-    filenames = dict()
+    filenames = {}
     for date in dates:
-        filenames[date] = dict()
+        filenames[date] = {}
         for _index, row in calsources.iterrows():
             if isinstance(row["ra"], str):
                 rowra = row["ra"]

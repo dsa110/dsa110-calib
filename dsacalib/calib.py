@@ -18,7 +18,6 @@ from casacore.tables import table
 from casatasks import flagdata
 
 from dsacalib.ms_io import read_caltable
-import dsacalib.calib as dc
 
 
 def delay_calibration_worker(msname, sourcename, refant, t, combine_spw, name):
@@ -770,7 +769,7 @@ def flag_antennas_using_delays(
     for i in range(percent_bad.shape[0]):
         for j in range(percent_bad.shape[1]):
             if percent_bad[i, j] > kcorr_thresh:
-                error += not dc.flag_antenna(
+                error += not flag_antenna(
                     msname, str(i + 1), pol="B" if j else "A"
                 )
                 message = f"Flagged antenna {i + 1}{'B' if j else 'A'} in {msname}"

@@ -1184,7 +1184,7 @@ def plot_current_beamformer_solutions(
         for i, filename in enumerate(filenames):
             files = sorted(
                 glob.glob(
-                    f"{hdf5dir}/corr{corr:02d}/{filename[:-2]}??.hdf5".format(hdf5dir, corr, filename[:-2])
+                    f"{hdf5dir}/corr{corr:02d}/{filename[:-2]}??.hdf5"
                 )
             )
             if len(files) > 0:
@@ -1227,14 +1227,10 @@ def plot_current_beamformer_solutions(
             vmin=-np.pi,
             vmax=np.pi,
         )
-        ax[i].set_title(
-            "24-{0}, {1:.2f}".format(
-                ant + 1,
-                np.angle(
-                    np.mean(visdata_corr[:, idx, :, 0] / visdata_corr[:, idx, :, 1])
-                ),
-            )
+        avg_phase = np.angle(
+            np.mean(visdata_corr[:, idx, :, 0] / visdata_corr[:, idx, :, 1])
         )
+        ax[i].set_title(f"24-{ant + 1}, {avg_phase:.2f}")
     fig.suptitle(f"{date} {calname}")
     if outname is not None:
         plt.savefig(f"{outname}_beamformerweights.png")
@@ -1436,14 +1432,14 @@ def plot_beamformer_weights(
                     marker=".",
                     label=beamformer_name,
                 )
-                axi[i].set_title(f"{ant} {pols[polidx]}: {"phase" if angle else "amp"}")
+                axi[i].set_title(f"{ant} {pols[polidx]}: {'phase' if angle else 'amp'}")
             if angle:
                 axi[i].set_ylim(-np.pi, np.pi)
 
         axi[0].legend()
 
     if outname is not None:
-        plt.savefig(f"{outname}_averagedweights.png"))
+        plt.savefig(f"{outname}_averagedweights.png")
     if not show:
         plt.close(fig)
 

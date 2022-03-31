@@ -13,8 +13,6 @@ Routines to interact w/ fits visibilities recorded by DSA-10.
 
 import warnings
 
-# pylint will complain about this, but iers.conf.iers_auto_url_mirror must be
-# set before astropy.time.Time is imported.
 import astropy.io.fits as pf
 import astropy.units as u
 import numpy as np
@@ -25,7 +23,7 @@ from dsacalib.utils import get_autobl_indices
 
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import Time  # pylint: disable=wrong-import-position
+from astropy.time import Time  # pylint: disable=wrong-import-position,ungrouped-imports,wrong-import-order
 
 warnings.warn(
     "the fits_io module is deprecated and will be removed in v2.0.0",
@@ -320,15 +318,13 @@ def get_header_info(f, antpos=None, verbose=False, antenna_order=None, dsa10=Tru
     if verbose:
         if dsa10:
             print(
-                "File covers {0:.2f} hours from MJD {1} to {2}".format(
-                    ((tstop - tstart) * u.d).to(u.h), tstart, tstop
-                )
+                f"File covers {((tstop - tstart) * u.d).to(u.h):.2f} hours "
+                f"from MJD {tstart} to {tstop}"
             )
         else:
             print(
-                "File covers {0:.2f} h from {1} s to {2} s".format(
-                    ((tstop - tstart) * u.s).to(u.h), tstart, tstop
-                )
+                f"File covers {((tstop - tstart) * u.s).to(u.h):.2f} hours "
+                f"from {tstart} s to {tstop} s"
             )
     return nchan, fobs, nt, blen, bname, tstart, tstop, tsamp, aname
 
@@ -401,12 +397,9 @@ def extract_vis_from_psrfits(f, lstmid, seg_len, antenna_order, mjd0, mjd1, quie
         print(f"Extracting data around {lstmid * 180 / np.pi}")
         print(f"{nt} Time samples in data")
         print(
-            "LST range: {0:.1f} --- ({1:.1f}-{2:.1f}) --- {3:.1f}deg".format(
-                lst[0] * 180.0 / np.pi,
-                (lstmid - seg_len) * 180.0 / np.pi,
-                (lstmid + seg_len) * 180.0 / np.pi,
-                lst[-1] * 180.0 / np.pi,
-            )
+            f"LST range: {lst[0] * 180.0 / np.pi:.1f} --- "
+            f"({(lstmid - seg_len) * 180.0 / np.pi:.1f}-{(lstmid + seg_len) * 180.0 / np.pi:.1f}) "
+            f"--- {lst[-1] * 180.0 / np.pi:.1f}deg"
         )
 
     idxl = np.argmax(

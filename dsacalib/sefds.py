@@ -300,8 +300,6 @@ def calculate_sefd(
     hwhms : float
         The hwhms of the calibrator transits in days.
     """
-    # TODO: Change beam shape to something that more closely matches than a gaussian
-
     if msname_delaycal is None:
         msname_delaycal = msname
     if calname_delaycal is None:
@@ -333,7 +331,10 @@ def calculate_sefd(
     width = idxr0 - idxl0
     assert (
         width % nfint == 0
-    ), f"the number of frequency channels ({width}) between fmin ({fmin}) and fmax ({fmax}) must be divisible by nfint ({nfint})"
+    ), (
+        f"the number of frequency channels ({width}) between fmin "
+        f"({fmin}) and fmax ({fmax}) must be divisible by nfint ({nfint})"
+    )
     fvis = fvis[idxl0:idxr0].reshape(nfint, -1)
     fref = np.median(fvis, axis=-1)
     max_flux = amplitude_sky_model(cal, cal.ra.to_value(u.rad), pt_dec, fref)
@@ -537,6 +538,6 @@ def plot_sefds(antennas, sefds, esefds, fref, ymax=None):
         ax[i].set_ylim(0, ymax)
     for axi in ax:
         x0, x1 = axi.get_xlim()
-        y0, y1 = axi.get_ylim()
+        _y0, y1 = axi.get_ylim()
         axi.fill_between([x0, x1], [10200, 10200], [y1, y1], color="lightgrey")
     return fig
