@@ -10,10 +10,8 @@ Routines to interact w/ fits visibilities recorded by DSA-10, hdf5 visibilities
 recorded by DSA-110, and visibility in CASA measurement sets.
 """
 
-# TODO: Update source class
-
-# Always import scipy before importing casatools.
 import traceback
+from collections import namedtuple
 
 from scipy.ndimage.filters import median_filter
 import astropy.units as u
@@ -23,6 +21,174 @@ from antpos.utils import get_itrf
 from astropy.coordinates import Angle
 
 from dsacalib import constants as ct
+
+
+CalibratorSource = namedtuple(
+    "Calibrator Source", "name ra dec flux epoch direction pa maj_axis min_axis")
+
+
+def generate_calibrator_source(
+        name, ra, dec, flux=1.0, epoch="J2000", pa=None, maj_axis=None, min_axis=None
+):
+    """Return a named tuple containing calibrator parameters.
+
+    Parameters
+    ----------
+    name : str
+        Identifier for the source.
+    ra : str
+        The right ascension of the source. e.g. "12h00m19.21s".Astropy
+        quantity also accepted.
+    dec : str
+        The declination of the source. e.g. "+73d00m45.7s". Astropy
+        quantity also accepted.
+    I : float
+        The flux of the source in Jy.  Defaults 1.
+    epoch : str
+        The epoch of `ra` and `dec`. Defaults "J2000".
+    pa : float
+        The position angle in degrees.  Defaults ``None``.
+    maj_axis : float
+        The major axis in arcseconds.  Defaults ``None``.
+    min_axis : float
+        The minor axis in arcseconds.  Defaults ``None``.
+    """
+
+    assert epoch == "J2000"
+
+    if isinstance(ra, str):
+        ra = to_deg(ra)
+    if isinstance(dec, str):
+        dec = to_deg(dec)
+    direction = Direction("J2000", ra.to_value(u.rad), dec.to_value(u.rad))
+
+    if maj_axis:
+        maj_axis = maj_axis * u.arcsecond
+    if min_axis:
+        min_axis = min_axis * u.arcsecond
+
+    return CalibratorSource(
+        name, ra, dec, flux, epoch, direction, pa, maj_axis, min_axis)
+
+
+class Direction:
+    """Class for holding sky coordinates and converting between ICRS and FK5.
+
+    Parameters
+    ----------
+    epoch : str
+        'J2000' (for ICRS or J2000 coordinates) or 'HADEC' (for FK5 coordinates
+        at an equinox of obstime)
+    lon : float
+        The longitude (right ascension or hour angle) in radians
+    lat : float
+        The latitude (declination) in radians
+    obstime : float
+        The observation time in mjd.
+    observatory : str
+        The name of the observatory
+    """
+
+    def __init__(self, epoch, lon, lat, obstime=None, observatory="OVRO_MMA"):
+
+        assert epoch in ["J2000", "HADEC"]
+        if epoch == "HADEC":
+            assert obstime is not None
+        self.epoch = epoch
+        self.lon = lon
+        self.lat = lat
+        self.obstime = obstime
+        self.observatory = observatory
+
+    def J2000(self, obstime=None, observatory=None):
+        """Provides direction in J2000 coordinates.
+
+        Parameters
+        ----------
+        obstime : float
+            Time of observation in mjd.
+        location : str
+            Name of the observatory.
+
+        Returns
+        -------
+        tuple
+            ra, dec at J2000 in units of radians.
+        """
+        if self.epoch == "J2000":
+            return self.lon, self.lat
+
+        assert self.epoch == "HADEC"
+        if obstime is None:
+            assert self.obstime is not None
+            obstime = self.obstime
+        if observatory is None:
+            assert self.observatory is not None
+            observatory = self.observatory
+
+        me = cc.measures()
+        epoch = me.epoch("UTC", f"{obstime}d")
+        location = me.observatory(observatory)
+        source = me.direction("HADEC", f"{self.lon}rad", f"{self.lat}rad")
+        me.doframe(epoch)
+        me.doframe(location)
+        output = me.measure(source, "J2000")
+        assert output["m0"]["unit"] == "rad"
+        assert output["m1"]["unit"] == "rad"
+        return output["m0"]["value"], output["m1"]["value"]
+
+    def hadec(self, obstime=None, observatory=None):
+        """Provides direction in HADEC (FK5) at `obstime`.
+
+        Parameters
+        ----------
+        obstime : float
+            Time of observation in mjd.
+        location : str
+            Name of the observatory.
+
+        Returns
+        -------
+        tuple
+            ha, dec at obstime in units of radians.
+        """
+        if self.epoch == "HADEC":
+            assert obstime is None
+            return self.lon, self.lat
+
+        assert self.epoch == "J2000"
+        if obstime is None:
+            assert self.obstime is not None
+            obstime = self.obstime
+        if observatory is None:
+            assert self.observatory is not None
+            observatory = self.observatory
+        me = cc.measures()
+        epoch = me.epoch("UTC", f"{obstime}d")
+        location = me.observatory(observatory)
+        source = me.direction("J2000", f"{self.lon}rad", f"{self.lat}rad")
+        me.doframe(epoch)
+        me.doframe(location)
+        output = me.measure(source, "HADEC")
+        assert output["m0"]["unit"] == "rad"
+        assert output["m1"]["unit"] == "rad"
+        return output["m0"]["value"], output["m1"]["value"]
+
+
+def to_deg(string):
+    """Converts a string representation of RA or DEC to degrees.
+
+    Parameters
+    ----------
+    string : str
+        RA or DEC in string format e.g. "12h00m19.21s" or "+73d00m45.7s".
+
+    Returns
+    -------
+    deg : astropy quantity
+        The angle in degrees.
+    """
+    return Angle(string).to(u.deg)
 
 
 def exception_logger(logger, task, exception, throw):
@@ -42,81 +208,21 @@ def exception_logger(logger, task, exception, throw):
     """
     error_string = (
         f"During {task}, {type(exception).__name__} occurred:\n"
-        f"{''.join(traceback.format_tb(exception.__traceback__))}"
-    )
-    if logger is not None:
+        f"{''.join(traceback.format_tb(exception.__traceback__))}")
+
+    if logger:
         logger.error(error_string)
-    else:
-        print(error_string)
+    print(error_string)
+
     if throw:
         raise exception
 
 
-class src:
-    """Simple class for holding source parameters."""
-
-    def __init__(
-        self, name, ra, dec, I=1.0, epoch="J2000", pa=None, maj_axis=None, min_axis=None
-    ):
-        """Initializes the src class.
-
-        Parameters
-        ----------
-        name : str
-            Identifier for the source.
-        ra : str
-            The right ascension of the source. e.g. "12h00m19.21s".Astropy
-            quantity also accepted.
-        dec : str
-            The declination of the source. e.g. "+73d00m45.7s". Astropy
-            quantity also accepted.
-        I : float
-            The flux of the source in Jy.  Defaults 1.
-        epoch : str
-            The epoch of `ra` and `dec`. Defaults "J2000".
-        pa : float
-            The position angle in degrees.  Defaults ``None``.
-        maj_axis : float
-            The major axis in arcseconds.  Defaults ``None``.
-        min_axis : float
-            The minor axis in arcseconds.  Defaults ``None``.
-        """
-        self.name = name
-        self.I = I
-        assert epoch == "J2000"
-        self.epoch = "J2000"
-        if isinstance(ra, str):
-            ra = to_deg(ra)
-        if isinstance(dec, str):
-            dec = to_deg(dec)
-        self.ra = ra
-        self.dec = dec
-        self.direction = direction("J2000", ra.to_value(u.rad), dec.to_value(u.rad))
-        self.pa = pa
-        if maj_axis is None:
-            self.maj_axis = None
-        else:
-            self.maj_axis = maj_axis * u.arcsecond
-        if min_axis is None:
-            self.min_axis = None
-        else:
-            self.min_axis = min_axis * u.arcsecond
-
-
-def to_deg(string):
-    """Converts a string representation of RA or DEC to degrees.
-
-    Parameters
-    ----------
-    string : str
-        RA or DEC in string format e.g. "12h00m19.21s" or "+73d00m45.7s".
-
-    Returns
-    -------
-    deg : astropy quantity
-        The angle in degrees.
-    """
-    return Angle(string).to(u.deg)
+def warning_logger(logger, message):
+    """Print and log (if a logger is specified) a message."""
+    if logger:
+        logger.warning(message)
+    print(message)
 
 
 def get_autobl_indices(nant, casa=False):
@@ -321,106 +427,3 @@ def daz_dha(dec, daz=None, dha=None, lat=ct.OVRO_LAT):
         raise RuntimeError("One of daz or dha must be defined")
     return ans
 
-
-class direction:
-    """Class for holding sky coordinates and converting between ICRS and FK5.
-
-    Parameters
-    ----------
-    epoch : str
-        'J2000' (for ICRS or J2000 coordinates) or 'HADEC' (for FK5 coordinates
-        at an equinox of obstime)
-    lon : float
-        The longitude (right ascension or hour angle) in radians
-    lat : float
-        The latitude (declination) in radians
-    obstime : float
-        The observation time in mjd.
-    observatory : str
-        The name of the observatory
-    """
-
-    def __init__(self, epoch, lon, lat, obstime=None, observatory="OVRO_MMA"):
-
-        assert epoch in ["J2000", "HADEC"]
-        if epoch == "HADEC":
-            assert obstime is not None
-        self.epoch = epoch
-        self.lon = lon
-        self.lat = lat
-        self.obstime = obstime
-        self.observatory = observatory
-
-    def J2000(self, obstime=None, observatory=None):
-        """Provides direction in J2000 coordinates.
-
-        Parameters
-        ----------
-        obstime : float
-            Time of observation in mjd.
-        location : str
-            Name of the observatory.
-
-        Returns
-        -------
-        tuple
-            ra, dec at J2000 in units of radians.
-        """
-        if self.epoch == "J2000":
-            return self.lon, self.lat
-
-        assert self.epoch == "HADEC"
-        if obstime is None:
-            assert self.obstime is not None
-            obstime = self.obstime
-        if observatory is None:
-            assert self.observatory is not None
-            observatory = self.observatory
-
-        me = cc.measures()
-        epoch = me.epoch("UTC", f"{obstime}d")
-        location = me.observatory(observatory)
-        source = me.direction("HADEC", f"{self.lon}rad", f"{self.lat}rad")
-        me.doframe(epoch)
-        me.doframe(location)
-        output = me.measure(source, "J2000")
-        assert output["m0"]["unit"] == "rad"
-        assert output["m1"]["unit"] == "rad"
-        return output["m0"]["value"], output["m1"]["value"]
-
-    def hadec(self, obstime=None, observatory=None):
-        """Provides direction in HADEC (FK5) at `obstime`.
-
-        Parameters
-        ----------
-        obstime : float
-            Time of observation in mjd.
-        location : str
-            Name of the observatory.
-
-        Returns
-        -------
-        tuple
-            ha, dec at obstime in units of radians.
-        """
-        if self.epoch == "HADEC":
-            assert obstime is None
-            return self.lon, self.lat
-
-        assert self.epoch == "J2000"
-        if obstime is None:
-            assert self.obstime is not None
-            obstime = self.obstime
-        if observatory is None:
-            assert self.observatory is not None
-            observatory = self.observatory
-        me = cc.measures()
-        epoch = me.epoch("UTC", f"{obstime}d")
-        location = me.observatory(observatory)
-        source = me.direction("J2000", f"{self.lon}rad", f"{self.lat}rad")
-        me.doframe(epoch)
-        me.doframe(location)
-        output = me.measure(source, "HADEC")
-        assert output["m0"]["unit"] == "rad"
-        assert output["m1"]["unit"] == "rad"
-        return output["m0"]["value"], output["m1"]["value"]
