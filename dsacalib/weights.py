@@ -1,3 +1,5 @@
+"""Determine and inspect beamformer weights."""
+
 import glob
 import os
 
@@ -116,10 +118,8 @@ def read_gains(bfnames, selectants=ANTENNAS, path=None):
     for i, beamformer_name in enumerate(bfnames):
         for corridx, corr in enumerate(CORR_LIST):
             with open(
-                "{0}/beamformer_weights_corr{1:02d}_{2}.dat".format(
-                    path, corr, beamformer_name
-                ),
-                "rb",
+                    f"{path}/beamformer_weights_corr{corr:02d}_{beamformer_name}.dat",
+                    "rb",
             ) as f:
                 data = np.fromfile(f, "<f4")
             temp = data[64:].reshape(64, 48, 2, 2)
@@ -214,7 +214,8 @@ def find_good_solutions(
                 else:
                     status_pair = "good"
                 print(
-                    f"Rel phase for cal pairs ({k}, {j}), ({bfnames[k]}, {bfnames[j]}), pol {p}: {angle} degrees => {status_pair}"
+                    f"Rel phase for cal pairs ({k}, {j}), ({bfnames[k]}, {bfnames[j]}), "
+                    f"pol {p}: {angle} degrees => {status_pair}"
                 )
     if bad:
         keepcount = 2 * (len(keep) - 1)
@@ -281,7 +282,7 @@ def show_gains(bfnames, gains, keep, selectcore=True, ret=False, show=True):
             interpolation="None",
             cmap=plt.get_cmap("RdBu"),
         )
-        ax[i].annotate("{0}".format(ants[i]), (0, 1), xycoords="axes fraction")
+        ax[i].annotate(f"{ants[i]}", (0, 1), xycoords="axes fraction")
         ax[i].set_xlabel("Frequency channel")
 
     if show:
@@ -291,6 +292,10 @@ def show_gains(bfnames, gains, keep, selectcore=True, ret=False, show=True):
 
 
 def calc_eastings(antennas):
+    """Calculate the eastings (u).
+
+    Generates them for baselines composed of antennas in `antennas`.
+    """
     antpos_df = get_itrf(
         latlon_center=(ct.OVRO_LAT * u.rad, ct.OVRO_LON * u.rad, ct.OVRO_ALT * u.m)
     )
@@ -333,13 +338,17 @@ def filter_beamformer_solutions(beamformer_names, start_time):
         return [], None
 
     with open(
-        "{0}/beamformer_weights_{1}.yaml".format(BEAMFORMER_DIR, beamformer_names[0])
+            f"{BEAMFORMER_DIR}/beamformer_weights_{beamformer_names[0]}.yaml",
+            encoding="utf-8"
     ) as f:
         latest_solns = yaml.load(f, Loader=yaml.FullLoader)
 
     for bfname in beamformer_names[1:].copy():
         try:
-            with open(f"{BEAMFORMER_DIR}/beamformer_weights_{bfname}.yaml") as f:
+            with open(
+                    f"{BEAMFORMER_DIR}/beamformer_weights_{bfname}.yaml",
+                    encoding="utf-8"
+            ) as f:
                 solns = yaml.load(f, Loader=yaml.FullLoader)
             assert consistent_correlator(solns, latest_solns, start_time)
         except (AssertionError, FileNotFoundError):
@@ -348,7 +357,12 @@ def filter_beamformer_solutions(beamformer_names, start_time):
     return beamformer_names, latest_solns
 
 def pull_out_cal_solutions(input_dict):
-    key = 'cal_solutions'
+    """Extract the cal solutions dictionary from `input_dict`
+
+    If cal_solutions is the the keys of `input_dict`, it is extracted
+    and returned.  Otherwise `input_dict` is returned.
+    """
+    key = "cal_solutions"
     output_dict = input_dict[key] if key in input_dict else input_dict
     return output_dict
 
@@ -405,7 +419,7 @@ def average_beamformer_solutions(
     for i, fname in enumerate(fnames):
         tmp_antflags = []
         filepath = f"{BEAMFORMER_DIR}/beamformer_weights_{fname}.yaml"
-        with open(filepath) as f:
+        with open(filepath, encoding="utf-8") as f:
             calibration_params = yaml.load(f, Loader=yaml.FullLoader)["cal_solutions"]
             antenna_order = calibration_params["antenna_order"]
             for key in calibration_params["flagged_antennas"]:
@@ -433,7 +447,7 @@ def average_beamformer_solutions(
             wcorr = np.concatenate([eastings, wcorr], axis=0)
             with open(f"{BEAMFORMER_DIR}/{fnameout}.dat", "wb") as f:
                 f.write(bytes(wcorr))
-            written_files += ["{0}.dat".format(fnameout)]
+            written_files += [f"{fnameout}.dat"]
     return written_files, antenna_flags_badsolns
 
 
@@ -476,9 +490,6 @@ def write_beamformer_weights(
     filenames : list
         The names of the file containing the beamformer weights.
     """
-    # Get the frequencies we want to write solutions for.
-    # corr_settings = resource_filename("dsamfs", "data/dsa_parameters.yaml")
-    # params = yaml.safe_load(fhand)
     ncorr = len(corr_list)
     weights = np.ones((ncorr, len(antennas), 48, 2), dtype=np.complex64)
     fweights = np.ones((ncorr, 48), dtype=np.float32)
@@ -490,36 +501,30 @@ def write_beamformer_weights(
         fobs = CORR_PARAMS["f0_GHz"] - np.arange(nchan) * dfreq
     nchan_spw = CORR_PARAMS["nchan_spw"]
     for i, corr_id in enumerate(corr_list):
-        ch0 = CORR_PARAMS["ch0"]["corr{0:02d}".format(corr_id)]
+        ch0 = CORR_PARAMS["ch0"][f"corr{corr_id:02d}"]
         fobs_corr = fobs[ch0 : ch0 + nchan_spw]
         fweights[i, :] = fobs_corr.reshape(fweights.shape[1], -1).mean(axis=1)
 
     bu = calc_eastings(antennas)
 
-    with table("{0}.ms/SPECTRAL_WINDOW".format(msname)) as tb:
+    with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
         fobs = np.array(tb.CHAN_FREQ[:]) / 1e9
     fobs = fobs.reshape(fweights.size, -1).mean(axis=1)
     f_reversed = not np.all(np.abs(fobs - fweights.ravel()) / fweights.ravel() < 1e-5)
     if f_reversed:
         assert np.all(np.abs(fobs[::-1] - fweights.ravel()) / fweights.ravel() < 1e-5)
 
-    gains, _time, flags, ant1, ant2 = read_caltable(
-        "{0}_{1}_gacal".format(msname, calname), True
-    )
+    gains, _time, flags, ant1, ant2 = read_caltable(f"{msname}_{calname}_gacal", True)
     gains[flags] = np.nan
     gains = np.nanmean(gains, axis=1)
-    phases, _, flags, ant1p, ant2p = read_caltable(
-        "{0}_{1}_gpcal".format(msname, calname), True
-    )
+    phases, _, flags, ant1p, ant2p = read_caltable(f"{msname}_{calname}_gpcal", True)
     phases[flags] = np.nan
     phases = np.nanmean(phases, axis=1)
     assert np.all(ant1p == ant1)
     assert np.all(ant2p == ant2)
     gantenna, gains = get_antenna_gains(gains * phases, ant1, ant2)
 
-    bgains, _, flags, ant1, ant2 = read_caltable(
-        "{0}_{1}_bcal".format(msname, calname), True
-    )
+    bgains, _, flags, ant1, ant2 = read_caltable(f"{msname}_{calname}_bcal", True)
     bgains[flags] = np.nan
     bgains = np.nanmean(bgains, axis=1)
     bantenna, bgains = get_antenna_gains(bgains, ant1, ant2)
@@ -530,7 +535,7 @@ def write_beamformer_weights(
 
     gains = gains * bgains
     print(gains.shape)
-    gains = gains.reshape(nantenna, -1, npol)
+    gains = gains.reshape((nantenna, -1, npol))
     if f_reversed:
         gains = gains[:, ::-1, :]
     gains = gains.reshape(nantenna, ncorr, -1, npol)
@@ -564,13 +569,13 @@ def write_beamformer_weights(
     for i, corr_idx in enumerate(corr_list):
         wcorr = weights[i, ...].view(np.float32).flatten()
         wcorr = np.concatenate([bu, wcorr], axis=0)
-        fname = "beamformer_weights_corr{0:02d}".format(corr_idx)
-        fname = "{0}_{1}_{2}".format(fname, calname, caltime.isot)
+        fname = f"beamformer_weights_corr{corr_idx:02d}"
+        fname = f"{msname}_{calname}_{caltime.isot}"
         if os.path.exists(f"{BEAMFORMER_DIR}/{fname}.dat"):
             os.unlink(f"{BEAMFORMER_DIR}/{fname}.dat")
         with open(f"{BEAMFORMER_DIR}/{fname}.dat", "wb") as f:
             f.write(bytes(wcorr))
-        filenames += ["{0}.dat".format(fname)]
+        filenames += [f"{fname}.dat".format(fname)]
     return corr_list, bu, fweights, filenames, antenna_flags_badsolns
 
 
@@ -628,7 +633,7 @@ def write_beamformer_solutions(
         for item in flagged_antennas:
             ant, pol = item.split(" ")
             flags[antennas == ant, pols == pol] = 1
-            beamformer_flags["{0} {1}".format(ant, pol)] = ["flagged by user"]
+            beamformer_flags[f"{ant} {pol}"] = ["flagged by user"]
     delays = delays - np.min(delays[~flags])
     # TODO: this is currently flagging antennas that it shouldn't be
     # while not np.all(delays[~flags] < 1024):
@@ -655,8 +660,8 @@ def write_beamformer_solutions(
     ) = write_beamformer_weights(msname, calname, caltime, antennas, corr_list, flags)
     idxant, idxpol = np.nonzero(flags_badsolns)
     for i, ant in enumerate(idxant):
-        key = "{0} {1}".format(antennas[ant], pols[idxpol[i]])
-        if key not in beamformer_flags.keys():
+        key = f"{antennas[ant]} {pols[idxpol[i]]}"
+        if key not in beamformer_flags:
             beamformer_flags[key] = []
         beamformer_flags[key] += ["casa solutions flagged"]
 
@@ -678,7 +683,9 @@ def write_beamformer_solutions(
     }
 
     with open(
-        f"{BEAMFORMER_DIR}/beamformer_weights_{calname}_{caltime.isot}.yaml", "w"
+            f"{BEAMFORMER_DIR}/beamformer_weights_{calname}_{caltime.isot}.yaml",
+            "w",
+            encoding="utf-8"
     ) as file:
         yaml.dump(calibration_dictionary, file)
     return flags

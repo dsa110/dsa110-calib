@@ -121,15 +121,15 @@ def calibrate_measurement_set(
         # doesn't write a table.
         print("removing files")
         tables_to_remove = [
-            "{0}_{1}_2kcal".format(msname, cal.name),
-            "{0}_{1}_kcal".format(msname, cal.name),
-            "{0}_{1}_bkcal".format(msname, cal.name),
-            "{0}_{1}_gacal".format(msname, cal.name),
-            "{0}_{1}_gpcal".format(msname, cal.name),
-            "{0}_{1}_bcal".format(msname, cal.name),
+            f"{msname}_{cal.name}_2kcal",
+            f"{msname}_{cal.name}_kcal",
+            f"{msname}_{cal.name}_bkcal",
+            f"{msname}_{cal.name}_gacal",
+            f"{msname}_{cal.name}_gpcal",
+            f"{msname}_{cal.name}_bcal",
         ]
         if forsystemhealth:
-            tables_to_remove += ["{0}_{1}_2gcal".format(msname, cal.name)]
+            tables_to_remove += [f"{msname}_{cal.name}_2gcal"]
         for path in tables_to_remove:
             if os.path.exists(path):
                 shutil.rmtree(path)
@@ -157,11 +157,7 @@ def calibrate_measurement_set(
         current_error = cs.FLAGGING_ERR
         error = dc.flag_baselines(msname, uvrange=bad_uvrange)
         if error > 0:
-            message = (
-                "Non-fatal error occured in flagging short baselines of {0}.".format(
-                    msname
-                )
-            )
+            message = f"Non-fatal error occured in flagging short baselines of {msname}."
             if logger is not None:
                 logger.warning(message)
             else:
@@ -169,7 +165,7 @@ def calibrate_measurement_set(
         print("flagging zeros")
         error = dc.flag_zeros(msname)
         if error > 0:
-            message = "Non-fatal error occured in flagging zeros of {0}.".format(msname)
+            message = f"Non-fatal error occured in flagging zeros of {msname}."
             if logger is not None:
                 logger.warning(message)
             else:
@@ -179,11 +175,7 @@ def calibrate_measurement_set(
             for ant in bad_antennas:
                 error = dc.flag_antenna(msname, ant)
                 if error > 0:
-                    message = (
-                        "Non-fatal error occured in flagging ant {0} of {1}.".format(
-                            ant, msname
-                        )
-                    )
+                    message = f"Non-fatal error occured in flagging ant {ant} of {msname}."
                     if logger is not None:
                         logger.warning(message)
                     else:
@@ -194,9 +186,7 @@ def calibrate_measurement_set(
         print("flagging rfi")
         dc.flag_rfi(msname)
         if error > 0:
-            message = "Non-fatal error occured in flagging bad pixels of {0}.".format(
-                msname
-            )
+            message = f"Non-fatal error occured in flagging bad pixels of {msname}."
             if logger is not None:
                 logger.warning(message)
             else:
@@ -219,14 +209,12 @@ def calibrate_measurement_set(
         error = dc.delay_calibration(msname, cal.name, refants=refants, t2=t2)
         if error > 0:
             status = cs.update(status, cs.DELAY_CAL_ERR)
-            message = "Non-fatal error occured in delay calibration of {0}.".format(
-                msname
-            )
+            message = f"Non-fatal error occured in delay calibration of {msname}."
             if logger is not None:
                 logger.warning(message)
             else:
                 print(message)
-        _check_path("{0}_{1}_kcal".format(msname, cal.name))
+        _check_path(f"{msname}_{cal.name}_kcal")
 
         print("flagging based on delay cal")
         calstring = "flagging of ms data"
@@ -244,24 +232,16 @@ def calibrate_measurement_set(
         error += dc.flag_antennas_using_delays(antenna_delays, kcorr, msname)
         if error > 0:
             status = cs.update(status, cs.FLAGGING_ERR)
-            message = (
-                "Non-fatal error occured in flagging of bad timebins on {0}".format(
-                    msname
-                )
-            )
+            message = f"Non-fatal error occured in flagging of bad timebins on {msname}"
             if logger is not None:
                 logger.warning(message)
             else:
                 print(message)
         try:
-            _check_path("{0}_{1}_2kcal".format(msname, cal.name))
+            _check_path(f"{msname}_{cal.name}_2kcal")
         except AssertionError:
             status = cs.update(status, cs.FLAGGING_ERR)
-            message = (
-                "Non-fatal error occured in flagging of bad timebins on {0}".format(
-                    msname
-                )
-            )
+            message = f"Non-fatal error occured in flagging of bad timebins on {msname}"
             if logger is not None:
                 logger.warning(message)
             else:
@@ -281,20 +261,17 @@ def calibrate_measurement_set(
             | cs.INV_GAINCALTIME
             | cs.INV_DELAYCALTIME
         )
-        shutil.rmtree("{0}_{1}_kcal".format(msname, cal.name))
-        shutil.rmtree("{0}_{1}_2kcal".format(msname, cal.name))
+        shutil.rmtree(f"{msname}_{cal.name}_kcal")
+        shutil.rmtree(f"{msname}_{cal.name}_2kcal")
         error = dc.delay_calibration(msname, cal.name, refants=refants, t2=t2)
         if error > 0:
             status = cs.update(status, cs.DELAY_CAL_ERR)
-            message = (
-                "Non-fatal error occured in delay calibration "
-                + "of {0}.".format(msname)
-            )
+            message = f"Non-fatal error occured in delay calibration of {msname}."
             if logger is not None:
                 logger.warning(message)
             else:
                 print(message)
-        _check_path("{0}_{1}_kcal".format(msname, cal.name))
+        _check_path(f"{msname}_{cal.name}_kcal")
 
         print("bandpass and gain cal")
         calstring = "bandpass and gain calibration"
@@ -337,36 +314,41 @@ def bandpass_and_gain_cal(msname, cal, refant ):
             interp_thresh=interp_thresh,
             interp_polyorder=interp_polyorder,
             tbeam=t2,
-    )
-
-    fnames = [
-        "{0}_{1}_bcal".format(msname, cal.name),
-        "{0}_{1}_bacal".format(msname, cal.name),
-        "{0}_{1}_bpcal".format(msname, cal.name),
-        "{0}_{1}_gpcal".format(msname, cal.name),
-        "{0}_{1}_gacal".format(msname, cal.name),
-    ]
-    if forsystemhealth:
-        fnames += ["{0}_{1}_2gcal".format(msname, cal.name)]
-    if not keepdelays and not forsystemhealth:
-        fnames += ["{0}_{1}_bkcal".format(msname, cal.name)]
-    for fname in fnames:
-        _check_path(fname)
-
-    print("combining bandpass and delay solns")
-    # Combine bandpass solutions and delay solutions
-    with table("{0}_{1}_bacal".format(msname, cal.name)) as tb:
-        bpass = np.array(tb.CPARAM[:])
-    with table("{0}_{1}_bpcal".format(msname, cal.name)) as tb:
-        bpass *= np.array(tb.CPARAM[:])
-    if not forsystemhealth:
-        with table("{0}_{1}_bkcal".format(msname, cal.name)) as tb:
+        )
+        if error > 0:
+            status = cs.update(status, cs.GAIN_BP_CAL_ERR)
+            message = f"Non-fatal error occured in gain/bandpass calibration of {msname}."
+            if logger is not None:
+                logger.warning(message)
+            else:
+                print(message)
+        fnames = [
+            f"{msname}_{cal.name}_bcal",
+            f"{msname}_{cal.name}_bacal",
+            f"{msname}_{cal.name}_bpcal",
+            f"{msname}_{cal.name}_gpcal",
+            f"{msname}_{cal.name}_gacal",
+        ]
+        if forsystemhealth:
+            fnames += [f"{msname}_{cal.name}_2gcal"]
+        if not keepdelays and not forsystemhealth:
+            fnames += [f"{msname}_{cal.name}_bkcal"]
+        for fname in fnames:
+            _check_path(fname)
+        print("combining bandpass and delay solns")
+        # Combine bandpass solutions and delay solutions
+        with table(f"{msname}_{cal.name}_bacal") as tb:
             bpass = np.array(tb.CPARAM[:])
-    with table("{0}_{1}_bcal".format(msname, cal.name), readonly=False) as tb:
-        tb.putcol("CPARAM", bpass)
+        with table(f"{msname}_{cal.name}_bpcal") as tb:
+            bpass *= np.array(tb.CPARAM[:])
         if not forsystemhealth:
-            tbflag = np.array(tb.FLAG[:])
-            tb.putcol("FLAG", np.zeros(tbflag.shape, tbflag.dtype))
+            with table(f"{msname}_{cal.name}_bkcal") as tb:
+                bpass = np.array(tb.CPARAM[:])
+        with table(f"{msname}_{cal.name}_bcal", readonly=False) as tb:
+            tb.putcol("CPARAM", bpass)
+            if not forsystemhealth:
+                tbflag = np.array(tb.FLAG[:])
+                tb.putcol("FLAG", np.zeros(tbflag.shape, tbflag.dtype))
 
 
 def persistent(target: "Callable", name: str, errorcode: int, nonfatal_errorcode: int=None):
@@ -394,7 +376,7 @@ def _check_path(fname: str) -> None:
     fname : str
         The file to check existence of.
     """
-    assert os.path.exists(fname), "File {0} does not exist".format(fname)
+    assert os.path.exists(fname), f"File {fname} does not exist"
 
 
 def plot_solutions(
@@ -431,7 +413,7 @@ def plot_solutions(
             msname, calname, outname=figure_path, show=show_plots
         )
     except RuntimeError:
-        message = "Plotting antenna delays failed for {0}".format(msname)
+        message = f"Plotting antenna delays failed for {msname}"
         if logger is not None:
             logger.info(message)
         else:
@@ -441,7 +423,7 @@ def plot_solutions(
             msname, calname, outname=figure_path, show=show_plots
         )
     except RuntimeError:
-        message = "Plotting gain calibration solutions failed for {0}".format(msname)
+        message = f"Plotting gain calibration solutions failed for {msname}"
         if logger is not None:
             logger.info(message)
         else:
@@ -449,9 +431,7 @@ def plot_solutions(
     try:
         _ = dp.plot_bandpass(msname, calname, outname=figure_path, show=show_plots)
     except RuntimeError:
-        message = "Plotting bandpass calibration solutions failed for {0}".format(
-            msname
-        )
+        message = f"Plotting bandpass calibration solutions failed for {msname}"
         if logger is not None:
             logger.info(message)
         else:
@@ -539,17 +519,15 @@ def get_files_for_cal(
         requested datesand calibrators.
     """
     calsources = pandas.read_csv(caltable, header=0)
-    files = sorted(
-        glob.glob("{0}/corr{1}/{2}.hdf5".format(hdf5dir, refcorr, date_specifier))
-    )
+    files = sorted(glob.glob(f"{hdf5dir}/corr{refcorr}/{date_specifier}.hdf5"))
     datetimes = [f.split("/")[-1][:19] for f in files]
     if len(np.unique(datetimes)) != len(datetimes):
         print("Multiple files exist for the same time.")
     dates = np.unique([dt[:10] for dt in datetimes])
 
-    filenames = dict()
+    filenames = {}
     for date in dates:
-        filenames[date] = dict()
+        filenames[date] = {}
         for _index, row in calsources.iterrows():
             if isinstance(row["ra"], str):
                 rowra = row["ra"]
@@ -563,7 +541,7 @@ def get_files_for_cal(
                 row["source"], ra=Angle(rowra), dec=Angle(rowdec), I=row["flux (Jy)"]
             )
 
-            midnight = Time("{0}T00:00:00".format(date))
+            midnight = Time(f"{date}T00:00:00")
             delta_lst = -1 * (cal.direction.hadec(midnight.mjd)[0]) % (2 * np.pi)
             transit_time = (
                 midnight + delta_lst / (2 * np.pi) * ct.SECONDS_PER_SIDEREAL_DAY * u.s

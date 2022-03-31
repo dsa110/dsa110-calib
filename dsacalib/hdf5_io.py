@@ -18,7 +18,7 @@ from dsacalib import constants as ct
 
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import Time  # pylint: disable=wrong-import-position
+from astropy.time import Time  # pylint: disable=wrong-import-position,ungrouped-imports,wrong-import-order
 
 
 def read_hdf5_file(
@@ -106,15 +106,13 @@ def read_hdf5_file(
             seg_len = (dur / 2 * (15 * u.deg / u.h)).to_value(u.rad)
             if not quiet:
                 print("\n-------------EXTRACT DATA--------------------")
-                print("Extracting data around {0}".format(lstmid * 180 / np.pi))
-                print("{0} Time samples in data".format(nt))
+                print(f"Extracting data around {lstmid * 180 / np.pi}")
+                print(f"{nt} Time samples in data")
                 print(
-                    "LST range: {0:.1f} --- ({1:.1f}-{2:.1f}) --- {3:.1f}deg".format(
-                        lst[0] * 180.0 / np.pi,
-                        (lstmid - seg_len) * 180.0 / np.pi,
-                        (lstmid + seg_len) * 180.0 / np.pi,
-                        lst[-1] * 180.0 / np.pi,
-                    )
+                    f"LST range: {lst[0] * 180.0 / np.pi:.1f} --- "
+                    f"({(lstmid - seg_len) * 180.0 / np.pi:.1f}-"
+                    f"{(lstmid + seg_len) * 180.0 / np.pi:.1f}) --- "
+                    f"{lst[-1] * 180.0 / np.pi:.1f}deg"
                 )
             idxl = np.argmax(
                 np.absolute(
@@ -133,11 +131,7 @@ def read_hdf5_file(
             mjd = mjd[idxl:idxr]
             vis = f["vis"][idxl:idxr, ...]
             if not quiet:
-                print(
-                    "Extract: {0} ----> {1} sample; transit at {2}".format(
-                        idxl, idxr, transit_idx
-                    )
-                )
+                print(f"Extract: {idxl} ----> {idxr} sample; transit at {transit_idx}")
                 print("----------------------------------------------")
 
         else:
