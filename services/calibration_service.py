@@ -47,35 +47,6 @@ LOGGER.app("dsacalib")
 TSLEEP = 60
 CALIB_Q = Queue()
 
-def get_configuration():
-    """Get the default configuration for calibration."""
-    dsaconf = dsc.Conf()
-    corr_params = dsaconf.get("corr")
-    cal_params = dsaconf.get("cal")
-    fringe_params = dsaconf.get("fringe")
-
-    snap_start_time = Time(
-       ETCD.get_dict("/mon/snap/1/armed_mjd")["armed_mjd"], format="mjd")
-
-    config = {
-        "msdir": cal_params["msdir"],
-        "refcorr": f"{corr_list[0]:02d}",
-        "caltime": cal_params["caltime_minutes"]*u.min,
-        "filelength": mfs_params["filelength_minutes"]*u.min,
-        "hdf5dir":  cal_params["hdf5_dir"],
-        "snap_start_time": snap_start_time,
-        "antennas": list(corr_params["antenna_order"].values()),
-        "antennas_not_in_bf": cal_params["antennas_not_in_bf"],
-        "corr_list": [int(cl.strip("corr")) for cl in corr_params["ch0"].keys()],
-        "webplots": "/mnt/data/dsa110/webPLOTS/calibration/",
-        "refant": (
-            cal_params["refants"][0] if isinstance(cal_params["refants"], list)
-            else cal_params["refants"]),
-        "pols": corr_params["pols_voltage"],
-        "beamformer_dir" : cal_params["beamformer_dir"],
-    }
-    return config
-
 def calibrate_file(calname, flist):
     """Calibrate a calibrator pass."""
 
@@ -101,8 +72,8 @@ def calibrate_file(calname, flist):
         hdf5dir=config["hdf5dir"],
         date_specifier=date_specifier,
     )
-    ttime = filenames[date][calname]["transit_time"]
-    ttime.precision = 0
+    caltime = filenames[date][calname]["transit_time"]
+    caltime.precision = 0
     ETCD.put_dict(
         "/mon/cal/calibration",
         {
@@ -139,6 +110,7 @@ def calibrate_file(calname, flist):
     )
     print("done calibration")
 
+    # Write solutions to etcd
     caltable_to_etcd(
         msname,
         calname,
@@ -193,7 +165,7 @@ def calibrate_file(calname, flist):
         _ = write_beamformer_solutions(
             msname,
             calname,
-            ttime,
+            caltime,
             config["antennas"],
             applied_delays,
             flagged_antennas=config["antennas_not_in_bf"],
@@ -210,8 +182,18 @@ def calibrate_file(calname, flist):
     # Create the bandpass phase table for plotting later
     calibrate_phase_single_ms(msname, config["refant"], calname)
 
-    beamformer_solns, beamformer_names = generate_averaged_beamformer_solns(config["snap_start_time"])
+    beamformer_solns, beamformer_names = generate_averaged_beamformer_solns(
+        config["snap_start_time"], caltime, beamformer_dir)
+
     if beamformer_solns:
+
+        with open(
+                f"{beamformer_dir}/beamformer_weights_{caltime.isot}.yaml",
+                "w",
+                encoding="utf-8"
+        ) as file:
+            yaml.dump(beamformer_solns_solns, file)
+
         ETCD.put_dict(
             "/mon/cal/bfweights",
             {
@@ -220,47 +202,65 @@ def calibrate_file(calname, flist):
             }
         )
 
+        # Plot the beamformer solutions
+        figure_prefix = f"{config['webplots']}/allpngs/{caltime}"
         plot_beamformer_weights(
             beamformer_names,
             antennas_to_plot=np.array(config["antennas"]),
-            outname=f"{config['webplots']}/allpngs/{caltime}",
+            outname=figure_prefix,
             corrlist=np.array(config["corr_list"]),
             show=False
         )
-
-        # Copy plot to "current" WebPLOTS
-        target = f"{config['webplots']}/bfw_current.png"
-        if os.path.exists(target):
-            os.unlink(target)
-        shutil.copyfile(
-            f"{config['webplots']}/allpngs/{caltime}_averagedweights.png",
-            target
-        )
+        copy_figure(f"{figure_prefix}_averagedweights.png", f"{config['webplots']}/bfw_current.png")
 
         # Plot evolution of the phase over the day
         plot_bandpass_phases(
             beamformer_names,
             np.array(config["antennas"]),
-            outname=f"{config['webplots']}/allpngs/{caltime}",
+            outname=figure_prefix,
             show=False
         )
         plt.close("all")
-
-        # Copy plot to "current" WebPLOTS
-        target = f"{config['webplots']}/phase_current.png"
-        if os.path.exists(target):
-            os.unlink(target)
-        shutil.copyfile(
-            f"{config['webplots']}/allpngs/{caltime}_phases.png",
-            target
-        )
+        copy_figure(f"{figure_prefix}_phase.png", f"{config['webplots']}/phase_current.png")
 
 
+def get_configuration():
+    """Get the default configuration for calibration."""
+    dsaconf = dsc.Conf()
+    corr_params = dsaconf.get("corr")
+    cal_params = dsaconf.get("cal")
+    fringe_params = dsaconf.get("fringe")
 
-def generate_averaged_beamformer_solns(start_time, caltime):
+    snap_start_time = Time(
+       ETCD.get_dict("/mon/snap/1/armed_mjd")["armed_mjd"], format="mjd")
 
-    # Only use calibrators within the last 24 hours or since the snaps
-    # were restarted
+    config = {
+        "msdir": cal_params["msdir"],
+        "refcorr": f"{corr_list[0]:02d}",
+        "caltime": cal_params["caltime_minutes"]*u.min,
+        "filelength": mfs_params["filelength_minutes"]*u.min,
+        "hdf5dir":  cal_params["hdf5_dir"],
+        "snap_start_time": snap_start_time,
+        "antennas": list(corr_params["antenna_order"].values()),
+        "antennas_not_in_bf": cal_params["antennas_not_in_bf"],
+        "corr_list": [int(cl.strip("corr")) for cl in corr_params["ch0"].keys()],
+        "webplots": "/mnt/data/dsa110/webPLOTS/calibration/",
+        "refant": (
+            cal_params["refants"][0] if isinstance(cal_params["refants"], list)
+            else cal_params["refants"]),
+        "pols": corr_params["pols_voltage"],
+        "beamformer_dir" : cal_params["beamformer_dir"],
+    }
+    return config
+
+
+def generate_averaged_beamformer_solns(start_time, caltime, beamformer_dir):
+    """Generate an averaged beamformer solution.
+
+    Uses only calibrator passes within the last 24 hours or since the snaps
+    were restarted.
+    """
+
     if caltime-config["snap_start_time"] > 24*u.h:
         start_time = caltime - 24*u.h
     else:
@@ -272,12 +272,11 @@ def generate_averaged_beamformer_solns(start_time, caltime):
     beamformer_names, latest_solns = filter_beamformer_solutions(
         beamformer_names, start_time.mjd)
 
-    # Average beamformer solutions
     if len(beamformer_names) == 0:
         return None, None
 
     try:
-        add_reference_bfname(beamformer_names, latest_solns, start_time)
+        add_reference_bfname(beamformer_names, latest_solns, start_time, beamformer_dir)
     except:
         print("could not get reference bname. continuing...")
 
@@ -287,43 +286,7 @@ def generate_averaged_beamformer_solns(start_time, caltime):
         corridxs=config["corr_list"]
     )
 
-    # Make the final yaml file
-    latest_solns["cal_solutions"]["weight_files"] = averaged_files
-    latest_solns["cal_solutions"]["source"] = [
-        bf.split("_")[0] for bf in beamformer_names
-    ]
-    latest_solns["cal_solutions"]["caltime"] = [
-        float(Time(bf.split("_")[1]).mjd) for bf in beamformer_names
-    ]
-
-    # Remove the old bad cal solutions
-    for key, value in \
-        latest_solns["cal_solutions"]["flagged_antennas"].items():
-        if "casa solutions flagged" in value:
-            value = value.remove("casa solutions flagged")
-
-    # Flag new bad solutions
-    idxant, idxpol = np.nonzero(avg_flags)
-    for i, ant in enumerate(idxant):
-        key = f"{config['antennas'][ant]} {config['pols'][idxpol[i]]}"
-        if key not in \
-            latest_solns["cal_solutions"]["flagged_antennas"].keys():
-            latest_solns["cal_solutions"]["flagged_antennas"][key] = []
-        latest_solns["cal_solutions"]["flagged_antennas"][key] += \
-            ["casa solutions flagged"]
-    latest_solns["cal_solutions"]["flagged_antennas"] = {
-        key: value for key, value in
-        latest_solns["cal_solutions"]["flagged_antennas"].items()
-        if len(value) > 0
-    }
-
-    with open(
-            f"{config['beamformer_dir']}/beamformer_weights_{caltime.isot}.yaml",
-            "w",
-            encoding="utf-8"
-    ) as file:
-        print("writing bf weights")
-        _ = yaml.dump(latest_solns, file)
+    update_solution_dictionary(latest_solns, beamformer_names, averaged_files, avg_flags)
     latest_solns["cal_solutions"]["time"] = caltime.mjd
     latest_solns["cal_solutions"]["bfname"] = caltime.isot
 
@@ -332,12 +295,45 @@ def generate_averaged_beamformer_solns(start_time, caltime):
     return latest_solns, beamformer_names
 
 
+def update_solution_dictionary(latest_solns, beamformer_names, averaged_files, avg_flags):
+    """Update latest_solns to reflect the averaged beamformer weight parameters."""
+
+    latest_solns["cal_solutions"]["weight_files"] = averaged_files
+    latest_solns["cal_solutions"]["source"] = [
+        bf.split("_")[0] for bf in beamformer_names
+    ]
+    latest_solns["cal_solutions"]["caltime"] = [
+        float(Time(bf.split("_")[1]).mjd) for bf in beamformer_names
+    ]
+
+    # Remove the old bad casas solutions from flagged_antennas
+    for key, value in latest_solns["cal_solutions"]["flagged_antennas"].items():
+        if "casa solutions flagged" in value:
+            value = value.remove("casa solutions flagged")
+
+    # Flag new bad solutions
+    idxant, idxpol = np.nonzero(avg_flags)
+    for i, ant in enumerate(idxant):
+        key = f"{config['antennas'][ant]} {config['pols'][idxpol[i]]}"
+
+        latest_solns["cal_solutions"]["flagged_antennas"][key] = (
+            latest_solns["cal_solutions"]["flagged_antennas"].get(key, []) + 
+            ["casa solutions flagged"])
+
+    # Remove any empty keys in the flagged_antennas dictionary
+    to_remove = []
+    for key, value in latest_solns["cal_solutions"]["flagged_antennas"].items()
+        if not value:
+            to_remove += [key]
+    for key in to_remove:
+        del latest_solns["cal_solutions"]["flagged_antennas"][key]
+
+
 def generate_summary_plot(date, msname, calname, antennas, webplots)
     """Generate a summary plot and put it in webplots."""
 
-    figure_path = f"{webplots}/allpngs/{date}_{calname}"
-
-    with PdfPages(f"{figure_path}.pdf") as pdf:
+    figure_path = f"{webplots}/allpngs/{date}_{calname}.pdf"
+    with PdfPages(figure_path) as pdf:
         for j in range(len(ANTENNAS)//10+1):
             fig = summary_plot(
                 msname,
@@ -349,16 +345,11 @@ def generate_summary_plot(date, msname, calname, antennas, webplots)
             pdf.savefig(fig)
             plt.close(fig)
 
-    target = f"{webplots}/summary_current.pdf"
-    if os.path.exists(target):
-        os.unlink(target)
-    shutil.copyfile(
-        f"{figure_path}.pdf",
-        target
-    )
+    current_name = f"{webplots}/summary_current.pdf"
+    copy_figure(figure_path, current_name)
 
 
-def add_reference_bfname(beamformer_names, latest_solns, start_time):
+def add_reference_bfname(beamformer_names, latest_solns, start_time, beamformer_dir):
     """
     If the setup of the current beamformer weights matches that of the latest file,
     add the current weights to the beamformer_names list
@@ -373,7 +364,7 @@ def add_reference_bfname(beamformer_names, latest_solns, start_time):
     print(f"Got reference bfname of {ref_bfname}. Checking solutions...")
 
     with open(
-            f"{BEAMFORMER_DIR}/beamformer_weights_{ref_bfname}.yaml",
+            f"{beamformer_dir}/beamformer_weights_{ref_bfname}.yaml",
             encoding="utf-8"
     ) as f:
         ref_solns = yaml.load(f, Loader=yaml.FullLoader)
@@ -418,6 +409,13 @@ def populate_queue(etcd_dict, outqueue=CALIB_Q):
     """
     if etcd_dict["cmd"] == "calibrate":
         outqueue.put(etcd_dict["val"])
+
+
+def copy_figure(source, target):
+    """Copy figure to new path."""
+    if os.path.exists(target):
+        os.unlink(target)
+    shutil.copyfile(source, target)
 
 
 def watch_for_calibration():
