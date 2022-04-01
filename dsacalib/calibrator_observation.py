@@ -24,7 +24,7 @@ class CalibratorObservation:
 
     def set_calibration_parameters(self, **kwargs):
         """Update default settings for calibration."""
-        for key, arg in kwargs:
+        for key, arg in kwargs.items():
             if key not in self.config:
                 raise RuntimeError(
                     f"{key} not in calibration_settings\n"
@@ -114,7 +114,7 @@ def get_configuration():
     cal_params = dsaconf.get("cal")
 
     config = {
-        "refants": cal_params["refants"],
+        "refants": cal_params["refant"],
 
         "bad_antennas" : [],
         "bad_uvrange" : "2~50m",

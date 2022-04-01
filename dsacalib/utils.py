@@ -24,7 +24,7 @@ from dsacalib import constants as ct
 
 
 CalibratorSource = namedtuple(
-    "Calibrator Source", "name ra dec flux epoch direction pa maj_axis min_axis")
+    "CalibratorSource", "name ra dec flux epoch direction pa maj_axis min_axis")
 
 
 def generate_calibrator_source(
