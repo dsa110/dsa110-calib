@@ -158,7 +158,7 @@ def calibrate_file(calname, flist):
     try:
         applied_delays = extract_applied_delays(first_true(flist), config["antennas"])
         # Write beamformer solutions for one source
-        _ = write_beamformer_solutions(
+        write_beamformer_solutions(
             msname,
             calname,
             caltime,

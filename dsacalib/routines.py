@@ -11,6 +11,8 @@ import pandas
 import astropy.units as u
 from astropy.coordinates import Angle
 from astropy.utils import iers
+import astropy.units as u
+from casacore.tables import table
 
 import dsacalib.constants as ct
 import dsacalib.utils as du
@@ -22,11 +24,8 @@ from astropy.time import Time  # pylint: disable=wrong-import-order,ungrouped-im
 
 
 def calibrate_measurement_set(
-        msname: str,
-        cal: "CalibratorSource",
-        logger: "DsaSyslogger"=None,
-        throw_exceptions: bool=True,
-        **kwargs
+        msname: str, cal: "CalibratorSource", logger: "DsaSyslogger" = None,
+        throw_exceptions: bool = True, **kwargs
 ) -> int:
     r"""Calibrates the measurement set.
 
@@ -164,6 +163,85 @@ def calibrate_measurement_set(
     return status
 
 
+def quick_bfweightcal(msname: str, cal: "CalibratorSource" = None, **kwargs) -> int:
+    """Calibrate delays and gains, and generate bfweights."""
+    if not cal:
+        cal = get_cal_from_msname(msname)
+
+    dsaconf = dsc.Conf()
+    corr_params = dsaconf.get("corr")
+    cal_params = dsaconf.get("cal")
+    config = {
+        "antennas": list(corr_params["antenna_order"].values()),
+        "antennas_not_in_bf": cal_params["antennas_not_in_bf"],
+        "corr_list": [int(cl.strip("corr")) for cl in corr_params["ch0"].keys()],
+    }
+    
+    for key in ["forsystemhealth", "reuse_flags"]:
+        if key in kwargs:
+            raise RuntimeError(
+                f"Input arg {key} not compatible with quick_bfweightcal")
+    kwargs["forsystemhealth"] = False
+    kwargs["reuse_flags"] = True
+
+    calobs = CalibratorObservation(msname, cal)
+    calobs.set_calibration_parameters(**kwargs)
+    calobs.reset_calibration()
+    error = 0
+    error += calobs.quick_delay_calibration()
+    error += calobs.bandpass_and_gain_cal()
+    
+    with table(f"{msname}.ms") as tb:
+        caltime = Time((tb.TIME_CENTROID[tb.nrows()//2]*u.s).to(u.d), format='mjd')
+    
+    write_beamformer_solutions(
+        msname,
+        calname,
+        caltime,
+        config["antennas"],
+        delays=None,
+        flagged_antennas=config["antennas_not_in_bf"],
+        corr_list=np.array(config["corr_list"]))
+
+    return int
+
+
+def quick_calibration(msname: str, cal: "CalibratorSource" = None, **kwargs) -> int:
+    if not cal:
+        cal = get_cal_from_msname(msname)
+
+    calobs = CalibratorObservation(msname, cal)
+    
+    for key in ["forsystemhealth", "reuse_flags"]:
+        if key in kwargs and not kwargs[key]:
+            raise RuntimeError(
+                f"Input arg {key}: {kwargs[key]} not compatible with quick_calibration")
+    kwargs["forsystemhealth"] = True
+    kwargs["reuse_flags"] = True
+    calobs.set_calibration_parameters(**kwargs)
+    calobs.reset_calibration()
+    error = 0
+    error += calobs.quick_delay_calibration()
+    error += calobs.bandpass_and_gain_cal()
+
+    return error
+
+
+def get_cal_from_msname(msname: str) -> "CalibratorSource":
+    """Construct a CalibratorSource objct based on the msname.
+    
+    Assumes that the msname includes the calibrator source, and does
+    not include the suffix, for e.g., `/path/to/directory/{date}_{calname}`
+    """
+    calname = msname.split('/')[-1] if '/' in msname else msname
+    if '_' in calname:
+        calname = calname.split('_')[-1]
+    else:
+        calname = 'cal'
+    cal = generate_calibrator_source(calname, ra=None, dec=None)
+    return cal
+
+
 def cal_in_datetime(
         dt: str, transit_time: "Time", duration: "Quantity" = 5*u.min,
         filelength: "Quantity" = 15*u.min
@@ -209,11 +287,8 @@ def cal_in_datetime(
 
 
 def get_files_for_cal(
-        caltable: str,
-        refcorr: str = "01",
-        duration: "Quantity" = 5*u.min,
-        filelength: "Quantity" = 15*u.min,
-        hdf5dir: str = "/mnt/data/dsa110/correlator/",
+        caltable: str, refcorr: str = "03", duration: "Quantity" = 5*u.min,
+        filelength: "Quantity" = 15*u.min, hdf5dir: str = "/mnt/data/dsa110/correlator/",
         date_specifier: str = "*"
 ) -> dict:
     """Returns a dictionary containing the filenames for each calibrator pass.

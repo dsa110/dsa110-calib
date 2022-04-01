@@ -7,6 +7,7 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 
 """
 import os
+from typing import List
 
 # Always import scipy before casatools
 from scipy.fftpack import fft, fftfreq, fftshift
@@ -19,7 +20,9 @@ from casacore.tables import table
 from dsacalib.ms_io import read_caltable
 
 
-def delay_calibration_worker(msname, sourcename, refant, t, combine_spw, name):
+def delay_calibration_worker(
+        msname: str, sourcename: str, refant: str, t: str, combine_spw: bool, name: str
+) -> int:
     r"""Calibrates delays using CASA.
 
     Uses CASA to calibrate delays and write the calibrated visibilities to the
@@ -72,8 +75,9 @@ def delay_calibration_worker(msname, sourcename, refant, t, combine_spw, name):
 
 
 def delay_calibration(
-        msname, sourcename, refants, t1="inf", t2=None, combine_spw=False
-):
+        msname: str, sourcename: str, refants: List[str], t1: str = "inf", t2: str = None,
+        combine_spw: bool = False
+) -> int:
     r"""Calibrates delays using CASA.
 
     Uses CASA to calibrate delays and write the calibrated visibilities to the
@@ -157,7 +161,7 @@ def delay_calibration(
 
         # write out to a table
         with table(
-                f"{msname}_{sourcename}_ref{sourcename}_{'' if t == t1 else 2}kcal",
+                f"{msname}_{sourcename}_ref{refant}_{'' if t == t1 else 2}kcal",
                 readonly=False,
         ) as tb:
             tb.putcol("FPARAM", kcorr)
@@ -171,16 +175,10 @@ def delay_calibration(
 
 
 def gain_calibration(
-        msname,
-        sourcename,
-        refant,
-        blbased=False,
-        forsystemhealth=False,
-        keepdelays=False,
-        tbeam="30s",
-        interp_thresh=1.5,
-        interp_polyorder=7,
-):
+        msname: str, sourcename: str, refant: str, blbased: bool = False,
+        forsystemhealth: bool = False, keepdelays: bool = False, tbeam: str = "30s",
+        interp_thresh: float = 1.5, interp_polyorder: int = 7
+) -> int:
     r"""Use CASA to calculate bandpass and complex gain solutions.
 
     Saves solutions to calibration tables and calibrates the measurement set by
@@ -466,7 +464,7 @@ def gain_calibration(
     return error
 
 
-def calc_delays(vis, df, nfavg=5, tavg=True):
+def calc_delays(vis: np.ndarray, df: float, nfavg: int = 5, tavg: bool = True) -> tuple:
     """Calculates power as a function of delay from the visibilities.
 
     This uses scipy fftpack to fourier transform the visibilities along the
@@ -526,8 +524,9 @@ def calc_delays(vis, df, nfavg=5, tavg=True):
 
 
 def apply_calibration(
-        msname, calname, msnamecal=None, combine_spw=False, nspw=1, blbased=False
-):
+        msname: str, calname: str, msnamecal: str = None, combine_spw: str = False, nspw: int = 1,
+        blbased: bool = False
+) -> int:
     r"""Applies the calibration solution.
 
     Applies delay, bandpass and complex gain tables to a measurement set.
@@ -591,8 +590,9 @@ def apply_calibration(
 
 
 def apply_delay_bp_cal(
-        msname, calname, blbased=False, msnamecal=None, combine_spw=False, nspw=1
-):
+        msname: str, calname: str, blbased: bool = False, msnamecal: str = None,
+        combine_spw: bool = False, nspw: int = 1
+) -> int:
     r"""Applies delay and bandpass calibration.
 
     Parameters
@@ -646,8 +646,9 @@ def apply_delay_bp_cal(
 
 
 def calibrate_gain(
-        msname, calname, caltable_prefix, refant, tga, tgp, blbased=False, combined=False
-):
+        msname: str, calname: str, caltable_prefix: str, refant: str, tga: str, tgp: str,
+        blbased: bool = False, combined: bool = False
+) -> int:
     """Calculates gain calibration only.
 
     Uses existing solutions for the delay and bandpass.
@@ -745,7 +746,7 @@ def calibrate_gain(
     return error
 
 
-def apply_and_correct_calibrations(msname, calibration_tables):
+def apply_and_correct_calibrations(msname: str, calibration_tables: List[dict]) -> int:
     """Applies and corrects calibration tables in an ms.
 
     Parameters
@@ -771,7 +772,7 @@ def apply_and_correct_calibrations(msname, calibration_tables):
     return error
 
 
-def apply_calibration_tables(cb, calibration_tables):
+def apply_calibration_tables(cb: "cc.calibrater", calibration_tables: List[dict]) -> int:
     """Applies calibration tables to an open calibrater object.
 
     Parameters
@@ -796,7 +797,9 @@ def apply_calibration_tables(cb, calibration_tables):
     return error
 
 
-def interpolate_bandpass_solutions(msname, calname, thresh=1.5, polyorder=7, mode="ap"):
+def interpolate_bandpass_solutions(
+        msname: str, calname: str, thresh: float = 1.5, polyorder: int = 7, mode: str = "ap"
+) -> None:
     r"""Interpolates bandpass solutions.
 
     Parameters
@@ -882,7 +885,9 @@ def interpolate_bandpass_solutions(msname, calname, thresh=1.5, polyorder=7, mod
         tb.putcol("FLAG", np.zeros(tbflag.shape, tbflag.dtype))
 
 
-def calibrate_phases(filenames, refant, msdir="/mnt/data/dsa110/calibration/"):
+def calibrate_phases(
+        filenames: dict, refant: str, msdir: str = "/mnt/data/dsa110/calibration/"
+) -> None:
     """Calibrate phases only for a group of calibrator passes.
 
     Parameters
@@ -915,8 +920,18 @@ def calibrate_phases(filenames, refant, msdir="/mnt/data/dsa110/calibration/"):
                 cb.close()
 
 
-def calibrate_phase_single_ms(msname, refant, calname):
-    """Generate a bandpass gain calibraiton table for a single ms."""
+def calibrate_phase_single_ms(msname: str, refant: str, calname: str) -> None:
+    """Generate a bandpass gain calibration table for a single ms.
+    
+    Parameters
+    ----------
+    msname : str
+        Will open `msname`.ms
+    refant : str
+        The reference antenna name.
+    calname : str
+        The calibrator name.
+    """
     cb = cc.calibrater()
     cb.open(f"{msname}.ms")
     cb.setsolve(
@@ -931,7 +946,7 @@ def calibrate_phase_single_ms(msname, refant, calname):
     cb.close()
 
 
-def combine_bandpass_and_delay(table_prefix: str, forsystemhealth: bool):
+def combine_bandpass_and_delay(table_prefix: str, forsystemhealth: bool) -> None:
     """Combine bandpass and delay tables into a single bandpass table."""
     with table(f"{table_prefix}_bacal") as tb:
         bpass = np.array(tb.CPARAM[:])
