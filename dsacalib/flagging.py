@@ -4,6 +4,7 @@ import numpy as np
 from casatasks import flagdata
 import casatools as cc
 
+
 def flag_antenna(msname, antenna, datacolumn="data", pol=None):
     """Flags an antenna in a measurement set using CASA.
 
@@ -170,9 +171,9 @@ def reset_flags(msname, datacolumn=None):
 
 def reset_all_flags(msname):
     """Reset all flags in a measurement set."""
-    dc.reset_flags(msname, datacolumn="data")
-    dc.reset_flags(msname, datacolumn="model")
-    dc.reset_flags(msname, datacolumn="corrected")
+    reset_flags(msname, datacolumn="data")
+    reset_flags(msname, datacolumn="model")
+    reset_flags(msname, datacolumn="corrected")
 
 
 def flag_zeros(msname, datacolumn="data"):

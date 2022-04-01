@@ -22,14 +22,14 @@ for i, calpass in enumerate(calpasses):
     name = calpass['name']
     calsources = resource_filename(
         'dsacalib',
-        'data/calibrator_sources_dec{0}.csv'.format(dec)
+        f'data/calibrator_sources_dec{dec}.csv'
     )
     filenames = get_files_for_cal(
         calsources,
         '03',
         duration,
         5*u.min,
-        date_specifier='{0}*'.format(date)
+        date_specifier=f'{date}*'
     )
     cal = filenames[date][name]['cal']
     files = filenames[date][name]['files']
@@ -37,7 +37,6 @@ for i, calpass in enumerate(calpasses):
         cal,
         date,
         files,
-#        duration, # Note - I got rid of this, since it's not being used
         msdir=msdir,
         hdf5dir=hdf5dir
     )

@@ -154,7 +154,7 @@ def delay_calibration(
                 kcorr[antflags, ...] = kcorrtmp[antflags, ...] - kcorr[refantidx, ...]
                 ant2[antflags, ...] = ant2tmp[antflags, ...]
                 flags[antflags, ...] = flagstmp[antflags, ...]
-        
+
         # write out to a table
         with table(
                 f"{msname}_{sourcename}_ref{sourcename}_{'' if t == t1 else 2}kcal",
@@ -937,13 +937,13 @@ def combine_bandpass_and_delay(table_prefix: str, forsystemhealth: bool):
         bpass = np.array(tb.CPARAM[:])
     with table(f"{table_prefix}_bpcal") as tb:
         bpass *= np.array(tb.CPARAM[:])
-    
+
     if not forsystemhealth:
         with table(f"{table_prefix}_bkcal") as tb:
             bpass = np.array(tb.CPARAM[:])
-    
-    with table(f"{msname}_{cal.name}_bcal", readonly=False) as tb:
+
+    with table(f"{table_prefix}_bcal", readonly=False) as tb:
         tb.putcol("CPARAM", bpass)
         if not forsystemhealth:
             tbflag = np.array(tb.FLAG[:])
-                tb.putcol("FLAG", np.zeros(tbflag.shape, tbflag.dtype))
+            tb.putcol("FLAG", np.zeros(tbflag.shape, tbflag.dtype))

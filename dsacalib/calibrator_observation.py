@@ -2,13 +2,11 @@
 import os
 import shutil
 
-import astropy.units as u
-
 import dsautils.cnf as dsc
 
 import dsacalib.calib as dc
-import dsacalib.utils as du
 import dsacalib.flagging as df
+import dsacalib.plotting as dp
 
 
 class CalibratorObservation:
@@ -24,7 +22,7 @@ class CalibratorObservation:
         self.table_prefix = f"{self.msname}_{self.cal.name}"
         self.config = get_configuration()
 
-    def set_calibration_parameters(**kwargs):
+    def set_calibration_parameters(self, **kwargs):
         """Update default settings for calibration."""
         for key, arg in kwargs:
             if key not in self.config:
@@ -39,10 +37,10 @@ class CalibratorObservation:
     def reset_calibration(self):
         """Remove existing calibration tables."""
         tables_to_remove = [
-            f"{table_prefix}_{ext}" for ext in [
+            f"{self.table_prefix}_{ext}" for ext in [
                 "2kcal", "kcal", "bkcal", "gacal", "gpcal", "bcal",]]
-        if self.forsystemhealth:
-            tables_to_remove += [f"{table_prefix}_2gcal"]
+        if self.config["forsystemhealth"]:
+            tables_to_remove += [f"{self.table_prefix}_2gcal"]
 
         for path in tables_to_remove:
             if os.path.exists(path):
@@ -57,11 +55,11 @@ class CalibratorObservation:
 
         for ant in self.config["bad_antennas"]:
             error += df.flag_antenna(self.msname, ant)
-                
+
         for entry in self.config["manual_flags"]:
             error += df.flag_manual(self.msname, entry[0], entry[1])
 
-        df.flag_rfi(msname)
+        df.flag_rfi(self.msname)
 
         return error
 
@@ -82,7 +80,7 @@ class CalibratorObservation:
             _check_path(f"{self.table_prefix}_2kcal")
         except AssertionError:
             error += 1
-        
+
         # Delay calibration again on one or two timescales
         shutil.rmtree(f"{self.table_prefix}_kcal")
         error += dc.delay_calibration(
@@ -104,8 +102,8 @@ class CalibratorObservation:
             interp_thresh=1.5,
             interp_polyorder=7,
             tbeam=tbeam)
-        
-        combine_bandpass_and_delay(self.table_prefix, self.config["forsystemhealth"])
+
+        dc.combine_bandpass_and_delay(self.table_prefix, self.config["forsystemhealth"])
 
         return error
 
@@ -139,4 +137,3 @@ def _check_path(fname: str) -> None:
         The file to check existence of.
     """
     assert os.path.exists(fname), f"File {fname} does not exist"
-
