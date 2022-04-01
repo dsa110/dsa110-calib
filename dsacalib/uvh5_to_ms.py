@@ -3,25 +3,29 @@ Create a measurement set from a uvh5 file.
 """
 import shutil
 import os
+
 import numpy as np
 import scipy # pylint: disable=unused-import
 import astropy.units as u
 import astropy.constants as c
+from astropy.utils import iers
 from casatasks import importuvfits
 from casacore.tables import addImagingColumns, table
 from pyuvdata import UVData
+
+from antpos.utils import get_itrf
 from dsautils import dsa_store
 import dsautils.cnf as dsc
 from dsamfs.fringestopping import calc_uvw_blt
+
 from dsacalib.fringestopping import calc_uvw_interpolate
 from dsacalib import constants as ct
-import dsacalib.utils as du
+from dsacalib.utils import Direction, CalibratorSource
 from dsacalib.fringestopping import amplitude_sky_model
-from antpos.utils import get_itrf # pylint: disable=wrong-import-order
-from astropy.utils import iers # pylint: disable=wrong-import-order
+
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=wrong-import-position wrong-import-order
+from astropy.time import Time # pylint: disable=wrong-import-position wrong-import-order ungrouped-imports
 
 de = dsa_store.DsaStore()
 
@@ -172,7 +176,7 @@ def load_uvh5_file(
     if phase_ra is None:
         if phase_time is None:
             phase_time = Time(np.mean(uvdata.time_array), format='jd')
-        pointing = du.direction(
+        pointing = Direction(
             'HADEC',
             0.,
             pt_dec.to_value(u.rad),
@@ -350,7 +354,7 @@ def set_ms_model_column(msname: str, uvdata: "UVData", pt_dec: "Quantity", ra: "
     if flux_Jy is not None:
         fobs = uvdata.freq_array.squeeze()/1e9
         lst = uvdata.lst_array
-        model = amplitude_sky_model(du.src('cal', ra, dec, flux_Jy),
+        model = amplitude_sky_model(CalibratorSource('cal', ra, dec, flux_Jy),
                                     lst, pt_dec, fobs)
         model = np.tile(model[:, :, np.newaxis], (1, 1, uvdata.Npols))
     else:
@@ -443,7 +447,7 @@ def generate_phase_model_antbased(uvw, uvw_m, nbls, nts, lamb, ant1, ant2):
 
 def get_meridian_coords(pt_dec, time_mjd):
     """Get coordinates for the meridian in J2000."""
-    pointing = du.direction(
+    pointing = Direction(
         'HADEC', 0., pt_dec.to_value(u.rad), time_mjd)
     meridian_ra, meridian_dec = pointing.J2000()
     meridian_ra = meridian_ra*u.rad

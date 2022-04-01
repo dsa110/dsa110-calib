@@ -3,8 +3,6 @@
 Author: Dana Simard, dana.simard@astro.caltech.edu, 2020/06
 """
 import glob
-import os
-import shutil
 
 import scipy # pylint: disable=unused-import
 import dsautils.calstatus as cs
@@ -13,11 +11,8 @@ import pandas
 import astropy.units as u
 from astropy.coordinates import Angle
 from astropy.utils import iers
-from casacore.tables import table
 
-import dsacalib.calib as dc
 import dsacalib.constants as ct
-import dsacalib.plotting as dp
 import dsacalib.utils as du
 from dsacalib.calibrator_observation import CalibratorObservation
 
@@ -94,7 +89,7 @@ def calibrate_measurement_set(
         A status code. Decode with dsautils.calstatus
     """
     calobs = CalibratorObservation(msname, cal)
-    calobs.set_calibration_parameters(kwargs)
+    calobs.set_calibration_parameters(**kwargs)
 
     print("entered calibration")
     status = 0

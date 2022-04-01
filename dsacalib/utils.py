@@ -426,4 +426,3 @@ def daz_dha(dec, daz=None, dha=None, lat=ct.OVRO_LAT):
     else:
         raise RuntimeError("One of daz or dha must be defined")
     return ans
-

@@ -54,7 +54,7 @@ def calibrate_file(calname, flist):
 
     date = first_true(flist).split("/")[-1][:-14]
 
-    msname = f"{config["msdir"]}/{date}_{calname}"
+    msname = f"{config['msdir']}/{date}_{calname}"
     date_specifier = f"{date}*"
 
     # Get the pointing declination from the file
@@ -93,7 +93,7 @@ def calibrate_file(calname, flist):
             date=date,
             files=filenames[date][calname]["files"],
             logger=LOGGER,
-            msdir=MSDIR
+            msdir=config["msdir"]
         )
         print("done writing ms")
         LOGGER.info(f"{msname}.ms created.")
@@ -108,7 +108,6 @@ def calibrate_file(calname, flist):
         throw_exceptions=True,
         forsystemhealth=True,
     )
-    print("done calibration")
 
     # Write solutions to etcd
     caltable_to_etcd(
@@ -133,8 +132,7 @@ def calibrate_file(calname, flist):
         f"Calibrated {msname}.ms for system health with status {status}"
     )
 
-     print("creating figures")
-     try:
+    try:
         generate_summary_plot(date, msname, calname, config["antennas"], config["webplots"])
     except Exception as exc:
         exception_logger(
@@ -144,7 +142,6 @@ def calibrate_file(calname, flist):
             throw=False
         )
 
-    print("calibration for bf")
     status = calibrate_measurement_set(
         msname,
         filenames[date][calname]["cal"],
@@ -158,7 +155,6 @@ def calibrate_file(calname, flist):
         f"Calibrated {msname}.ms for beamformer weights with status {status}"
     )
 
-    print("calculating beamformer weights")
     try:
         applied_delays = extract_applied_delays(first_true(flist), config["antennas"])
         # Write beamformer solutions for one source
@@ -183,22 +179,22 @@ def calibrate_file(calname, flist):
     calibrate_phase_single_ms(msname, config["refant"], calname)
 
     beamformer_solns, beamformer_names = generate_averaged_beamformer_solns(
-        config["snap_start_time"], caltime, beamformer_dir)
+        config["snap_start_time"], caltime, config["beamformer_dir"], config["corr_list"],
+        config["antennas"], config["pols"])
 
     if beamformer_solns:
-
         with open(
-                f"{beamformer_dir}/beamformer_weights_{caltime.isot}.yaml",
+                f"{config['beamformer_dir']}/beamformer_weights_{caltime.isot}.yaml",
                 "w",
                 encoding="utf-8"
         ) as file:
-            yaml.dump(beamformer_solns_solns, file)
+            yaml.dump(beamformer_solns, file)
 
         ETCD.put_dict(
             "/mon/cal/bfweights",
             {
                 "cmd": "update_weights",
-                "val": latest_solns["cal_solutions"]
+                "val": beamformer_solns["cal_solutions"]
             }
         )
 
@@ -236,9 +232,8 @@ def get_configuration():
 
     config = {
         "msdir": cal_params["msdir"],
-        "refcorr": f"{corr_list[0]:02d}",
         "caltime": cal_params["caltime_minutes"]*u.min,
-        "filelength": mfs_params["filelength_minutes"]*u.min,
+        "filelength": fringe_params["filelength_minutes"]*u.min,
         "hdf5dir":  cal_params["hdf5_dir"],
         "snap_start_time": snap_start_time,
         "antennas": list(corr_params["antenna_order"].values()),
@@ -251,20 +246,22 @@ def get_configuration():
         "pols": corr_params["pols_voltage"],
         "beamformer_dir" : cal_params["beamformer_dir"],
     }
+    config["refcorr"] = f"{config['corr_list'][0]:02d}"
+
     return config
 
 
-def generate_averaged_beamformer_solns(start_time, caltime, beamformer_dir):
+def generate_averaged_beamformer_solns(
+        start_time, caltime, beamformer_dir, corr_list, antennas, pols
+):
     """Generate an averaged beamformer solution.
 
     Uses only calibrator passes within the last 24 hours or since the snaps
     were restarted.
     """
 
-    if caltime-config["snap_start_time"] > 24*u.h:
+    if caltime-start_time > 24*u.h:
         start_time = caltime - 24*u.h
-    else:
-        start_time = config["snap_start_time"]
 
     # Now we want to find all sources in the last 24 hours
     # start by updating our list with calibrators from the day before
@@ -283,10 +280,11 @@ def generate_averaged_beamformer_solns(start_time, caltime, beamformer_dir):
     averaged_files, avg_flags = average_beamformer_solutions(
         beamformer_names,
         caltime,
-        corridxs=config["corr_list"]
+        corridxs=corr_list
     )
 
-    update_solution_dictionary(latest_solns, beamformer_names, averaged_files, avg_flags)
+    update_solution_dictionary(
+        latest_solns, beamformer_names, averaged_files, avg_flags, antennas, pols)
     latest_solns["cal_solutions"]["time"] = caltime.mjd
     latest_solns["cal_solutions"]["bfname"] = caltime.isot
 
@@ -295,7 +293,9 @@ def generate_averaged_beamformer_solns(start_time, caltime, beamformer_dir):
     return latest_solns, beamformer_names
 
 
-def update_solution_dictionary(latest_solns, beamformer_names, averaged_files, avg_flags):
+def update_solution_dictionary(
+        latest_solns, beamformer_names, averaged_files, avg_flags, antennas, pols
+):
     """Update latest_solns to reflect the averaged beamformer weight parameters."""
 
     latest_solns["cal_solutions"]["weight_files"] = averaged_files
@@ -314,33 +314,33 @@ def update_solution_dictionary(latest_solns, beamformer_names, averaged_files, a
     # Flag new bad solutions
     idxant, idxpol = np.nonzero(avg_flags)
     for i, ant in enumerate(idxant):
-        key = f"{config['antennas'][ant]} {config['pols'][idxpol[i]]}"
+        key = f"{antennas[ant]} {pols[idxpol[i]]}"
 
         latest_solns["cal_solutions"]["flagged_antennas"][key] = (
-            latest_solns["cal_solutions"]["flagged_antennas"].get(key, []) + 
+            latest_solns["cal_solutions"]["flagged_antennas"].get(key, []) +
             ["casa solutions flagged"])
 
     # Remove any empty keys in the flagged_antennas dictionary
     to_remove = []
-    for key, value in latest_solns["cal_solutions"]["flagged_antennas"].items()
+    for key, value in latest_solns["cal_solutions"]["flagged_antennas"].items():
         if not value:
             to_remove += [key]
     for key in to_remove:
         del latest_solns["cal_solutions"]["flagged_antennas"][key]
 
 
-def generate_summary_plot(date, msname, calname, antennas, webplots)
+def generate_summary_plot(date, msname, calname, antennas, webplots):
     """Generate a summary plot and put it in webplots."""
 
     figure_path = f"{webplots}/allpngs/{date}_{calname}.pdf"
     with PdfPages(figure_path) as pdf:
-        for j in range(len(ANTENNAS)//10+1):
+        for j in range(len(antennas)//10+1):
             fig = summary_plot(
                 msname,
                 calname,
                 2,
                 ["B", "A"],
-                ANTENNAS[j*10:(j+1)*10]
+                antennas[j*10:(j+1)*10]
             )
             pdf.savefig(fig)
             plt.close(fig)
