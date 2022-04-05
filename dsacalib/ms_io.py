@@ -738,33 +738,8 @@ def reshape_calibration_data(
     ntime = len(time) // nbl // nspw
     nfreq = vals.shape[-2] if vals is not None else 1
     npol = vals.shape[-1] if vals is not None else 1
-    if np.all(baseline[: ntime * nspw] == baseline[0]):
-        if np.all(time[:nspw] == time[0]):
-            orig_shape = ["baseline", "time", "spw"]
-            # baseline, time, spw
-            time = time.reshape(nbl, ntime, nspw)[0, :, 0]
-            if vals is not None:
-                vals = vals.reshape(nbl, ntime, nspw, nfreq, npol)
-                flags = flags.reshape(nbl, ntime, nspw, nfreq, npol)
-            ant1 = ant1.reshape(nbl, ntime, nspw)[:, 0, 0]
-            ant2 = ant2.reshape(nbl, ntime, nspw)[:, 0, 0]
-            spw = spw.reshape(nbl, ntime, nspw)[0, 0, :]
-        else:
-            # baseline, spw, time
-            orig_shape = ["baseline", "spw", "time"]
-            assert np.all(spw[:ntime] == spw[0])
-            time = time.reshape(nbl, nspw, ntime)[0, 0, :]
-            if vals is not None:
-                vals = vals.reshape(nbl, nspw, ntime, nfreq, npol)
-                flags = flags.reshape(nbl, nspw, ntime, nfreq, npol)
-            if swapaxes:
-                if vals is not None:
-                    vals = vals.swapaxes(1, 2)
-                    flags = flags.swapaxes(1, 2)
-            ant1 = ant1.reshape(nbl, nspw, ntime)[:, 0, 0]
-            ant2 = ant2.reshape(nbl, nspw, ntime)[:, 0, 0]
-            spw = spw.reshape(nbl, nspw, ntime)[0, :, 0]
-    elif np.all(time[: nspw * nbl] == time[0]):
+
+    if np.all(time[: nspw * nbl] == time[0]):
         if np.all(baseline[:nspw] == baseline[0]):
             # time, baseline, spw
             orig_shape = ["time", "baseline", "spw"]
@@ -792,7 +767,36 @@ def reshape_calibration_data(
                     flags = flags.swapaxes(1, 2).swapaxes(0, 1)
             ant1 = ant1.reshape(ntime, nspw, nbl)[0, 0, :]
             ant2 = ant2.reshape(ntime, nspw, nbl)[0, 0, :]
+
+    elif np.all(baseline[: ntime * nspw] == baseline[0]):
+        if np.all(time[:nspw] == time[0]):
+            orig_shape = ["baseline", "time", "spw"]
+            # baseline, time, spw
+            time = time.reshape(nbl, ntime, nspw)[0, :, 0]
+            if vals is not None:
+                vals = vals.reshape(nbl, ntime, nspw, nfreq, npol)
+                flags = flags.reshape(nbl, ntime, nspw, nfreq, npol)
+            ant1 = ant1.reshape(nbl, ntime, nspw)[:, 0, 0]
+            ant2 = ant2.reshape(nbl, ntime, nspw)[:, 0, 0]
+            spw = spw.reshape(nbl, ntime, nspw)[0, 0, :]
+        else:
+            # baseline, spw, time
+            orig_shape = ["baseline", "spw", "time"]
+            assert np.all(spw[:ntime] == spw[0])
+            time = time.reshape(nbl, nspw, ntime)[0, 0, :]
+            if vals is not None:
+                vals = vals.reshape(nbl, nspw, ntime, nfreq, npol)
+                flags = flags.reshape(nbl, nspw, ntime, nfreq, npol)
+            if swapaxes:
+                if vals is not None:
+                    vals = vals.swapaxes(1, 2)
+                    flags = flags.swapaxes(1, 2)
+            ant1 = ant1.reshape(nbl, nspw, ntime)[:, 0, 0]
+            ant2 = ant2.reshape(nbl, nspw, ntime)[:, 0, 0]
+            spw = spw.reshape(nbl, nspw, ntime)[0, :, 0]
+    
             spw = spw.reshape(ntime, nspw, nbl)[0, :, 0]
+
     else:
         assert np.all(spw[: nbl * ntime] == spw[0])
         if np.all(baseline[:ntime] == baseline[0]):
@@ -824,6 +828,7 @@ def reshape_calibration_data(
             ant1 = ant1.reshape(nspw, ntime, nbl)[0, 0, :]
             ant2 = ant2.reshape(nspw, ntime, nbl)[0, 0, :]
             spw = spw.reshape(nspw, ntime, nbl)[:, 0, 0]
+
     return time, vals, flags, ant1, ant2, spw, orig_shape
 
 def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
