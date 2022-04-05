@@ -7,7 +7,9 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 
 """
 import os
+import shutil
 from typing import List
+from copy import deepcopy
 
 # Always import scipy before casatools
 from scipy.fftpack import fft, fftfreq, fftshift
@@ -15,7 +17,7 @@ from scipy.signal import medfilt
 
 import numpy as np
 import casatools as cc
-from casacore.tables import table
+from casacore.tables import table, tablecopy
 
 from dsacalib.ms_io import read_caltable
 
@@ -167,9 +169,12 @@ def delay_calibration(
             tb.putcol("FPARAM", kcorr)
             tb.putcol("FLAG", flags)
             tb.putcol("ANTENNA2", ant2)
+        newpath = f"{msname}_{sourcename}_{'' if t==t1 else '2'}kcal"
+        if os.path.exists(newpath):
+            shutil.rmtree(newpath)
         os.rename(
             f"{msname}_{sourcename}_ref{refant}_{'' if t == t1 else '2'}kcal",
-            f"{msname}_{sourcename}_{'' if t==t1 else '2'}kcal"
+            newpath
         )
     return error
 
@@ -279,7 +284,39 @@ def gain_calibration(
             }
         ]
 
+    error += solve_gain_calibration(
+        msname, sourcename, refant, caltables, forsystemhealth, combine, spwmap, 
+        blbased, tbeam)
+
+    if not forsystemhealth and keepdelays:
+        with table(f"{msname}_{sourcename}_kcal", readonly=False) as tb:
+            fparam = np.array(tb.FPARAM[:])
+            newparam = np.round(kcorr[:, np.newaxis, :] / 2) * 2
+            print("kcal", fparam.shape, newparam.shape)
+            tb.putcol("FPARAM", newparam)
+        with table(f"{msname}_{sourcename}_bkcal", readonly=False) as tb:
+            bpass = np.array(tb.CPARAM[:])
+            print(newparam.shape, bpass.shape, fobs.shape)
+            bpass *= np.exp(-2j * np.pi * (fobs[:, np.newaxis] - fref_snaps) * newparam)
+            print(bpass.shape)
+            tb.putcol("CPARAM", bpass)
+        
+    return error
+
+def solve_gain_calibration(
+        msname: str, sourcename: str, refant: str, caltables: List[dict],
+        forsystemhealth: bool, combine: str = "field,scan,obs", spwmap: List = None,
+        blbased: bool = False, tbeam: str = "60s"
+) -> int:
+    
+    if not spwmap:
+        spwmap = [-1]
+    
+    error = 0
+    
     # Rough bandpass calibration
+    caltables_orig = deepcopy(caltables)
+    
     cb = cc.calibrater()
     error += not cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
@@ -341,7 +378,7 @@ def gain_calibration(
     error += cb.close()
 
     # Final bandpass calibration
-    caltables = [
+    caltables = caltables_orig + [
         {
             "table": f"{msname}_{sourcename}_gacal",
             "type": "G",
@@ -352,22 +389,6 @@ def gain_calibration(
             "type": "G",
             "spwmap": spwmap,
         },
-    ]
-
-    if not forsystemhealth:
-        caltables += [
-            {
-                "table": f"{msname}_{sourcename}_bkcal",
-                "type": "B",
-                "spwmap": spwmap,
-            }
-        ]
-    caltables += [
-        {
-            "table": f"{msname}_{sourcename}_kcal",
-            "type": "K",
-            "spwmap": spwmap,
-        }
     ]
 
     cb = cc.calibrater()
@@ -417,7 +438,7 @@ def gain_calibration(
     error += cb.solve()
     error += cb.close()
 
-    if not forsystemhealth:  # and not keepdelays:
+    if not forsystemhealth:
         interpolate_bandpass_solutions(
             msname,
             sourcename,
@@ -425,19 +446,6 @@ def gain_calibration(
             polyorder=interp_polyorder,
             mode="p",
         )
-
-    if not forsystemhealth and keepdelays:
-        with table(f"{msname}_{sourcename}_kcal", readonly=False) as tb:
-            fparam = np.array(tb.FPARAM[:])
-            newparam = np.round(kcorr[:, np.newaxis, :] / 2) * 2
-            print("kcal", fparam.shape, newparam.shape)
-            tb.putcol("FPARAM", newparam)
-        with table(f"{msname}_{sourcename}_bkcal", readonly=False) as tb:
-            bpass = np.array(tb.CPARAM[:])
-            print(newparam.shape, bpass.shape, fobs.shape)
-            bpass *= np.exp(-2j * np.pi * (fobs[:, np.newaxis] - fref_snaps) * newparam)
-            print(bpass.shape)
-            tb.putcol("CPARAM", bpass)
 
     if forsystemhealth:
         caltables += [
@@ -956,6 +964,9 @@ def combine_bandpass_and_delay(table_prefix: str, forsystemhealth: bool) -> None
     if not forsystemhealth:
         with table(f"{table_prefix}_bkcal") as tb:
             bpass = np.array(tb.CPARAM[:])
+    
+    if not os.path.exists(f"{table_prefix}_bcal"):
+        tablecopy(f"{table_prefix}_bpcal", f"{table_prefix}_bcal")
 
     with table(f"{table_prefix}_bcal", readonly=False) as tb:
         tb.putcol("CPARAM", bpass)

@@ -103,7 +103,7 @@ class CalibratorObservation:
             interp_thresh=1.5,
             interp_polyorder=7,
             tbeam=tbeam)
-
+        print(error)
         dc.combine_bandpass_and_delay(self.table_prefix, self.config["forsystemhealth"])
 
         return error

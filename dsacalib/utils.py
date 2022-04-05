@@ -60,7 +60,10 @@ def generate_calibrator_source(
         ra = to_deg(ra)
     if isinstance(dec, str):
         dec = to_deg(dec)
-    direction = Direction("J2000", ra.to_value(u.rad), dec.to_value(u.rad))
+    if ra:
+        direction = Direction("J2000", ra.to_value(u.rad), dec.to_value(u.rad))
+    else:
+        direction = None
 
     if maj_axis:
         maj_axis = maj_axis * u.arcsecond

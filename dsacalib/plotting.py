@@ -985,6 +985,8 @@ def summary_plot(msname, calname, npol, plabels, antennas):
             ax[i, 0, 1].axhline(1.5)
             ax[i, 0, 1].axhline(-1.5)
         ax[0, 0, 1].legend(ncol=3, loc="upper left", bbox_to_anchor=(-1, 1))
+    else:
+        tplot = None
 
     if os.path.exists(f"{msname}_{calname}_bcal"):
         bpass, _tbpass, _flags, ant1, ant2 = read_caltable(
@@ -1056,8 +1058,9 @@ def summary_plot(msname, calname, npol, plabels, antennas):
                     ls=lcyc[pidx],
                 )
         for i in range(ny):
-            ax[i, 1, 1].set_xlim(tplot[0], tplot[-1])
-            ax[i, 2, 1].set_xlim(tplot[0], tplot[-1])
+            if tplot:
+                ax[i, 1, 1].set_xlim(tplot[0], tplot[-1])
+                ax[i, 2, 1].set_xlim(tplot[0], tplot[-1])
             ax[i, 2, 1].set_ylim(-np.pi / 10, np.pi / 10)
     else:
         t0 = None
