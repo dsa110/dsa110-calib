@@ -238,7 +238,7 @@ def get_cal_from_msname(msname: str) -> "CalibratorSource":
         calname = calname.split('_')[-1]
     else:
         calname = 'cal'
-    cal = generate_calibrator_source(calname, ra=None, dec=None)
+    cal = du.generate_calibrator_source(calname, ra=None, dec=None)
     return cal
 
 
