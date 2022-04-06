@@ -239,7 +239,7 @@ def get_configuration():
         "antennas": list(corr_params["antenna_order"].values()),
         "antennas_not_in_bf": cal_params["antennas_not_in_bf"],
         "corr_list": [int(cl.strip("corr")) for cl in corr_params["ch0"].keys()],
-        "webplots": "/mnt/data/dsa110/webPLOTS/calibration/",
+        "webplots": "/home/ubuntu/caldata/webPLOTS/calibration/",
         "refant": (
             cal_params["refants"][0] if isinstance(cal_params["refants"], list)
             else cal_params["refants"]),
