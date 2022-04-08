@@ -168,7 +168,7 @@ def quick_bfweightcal(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
     if not cal:
         cal = get_cal_from_msname(msname)
 
-    dsaconf = dsc.Conf()
+    dsaconf = dsc.Conf(use_etcd=True)
     corr_params = dsaconf.get("corr")
     cal_params = dsaconf.get("cal")
     config = {
