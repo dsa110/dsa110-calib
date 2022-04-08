@@ -21,7 +21,7 @@ LOGGER = dsl.DsaSyslogger()
 LOGGER.subsystem("software")
 LOGGER.app("dsamfs")
 
-CONF = cnf.Conf()
+CONF = cnf.Conf(use_etcd=True)
 MFS_CONF = CONF.get("fringe")
 # parameters for freq scrunching
 NFREQ = MFS_CONF["nfreq_scrunch"]
@@ -64,9 +64,9 @@ def rsync_file(rsync_string, remove_source_files=True):
     """
     fname, fdir = rsync_string.split(" ")
     if remove_source_files:
-        command = f". ~/.keychain/dsa-storage-sh; rsync -avv --remove-source-files {fname} {fdir}"
+        command = f". ~/.keychain/calibration-sh; rsync -avv --remove-source-files {fname} {fdir}"
     else:
-        command = f". ~/.keychain/dsa-storage-sh; rsync -avv {fname} {fdir}"
+        command = f". ~/.keychain/calibration-sh; rsync -avv {fname} {fdir}"
     with subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True
     ) as process:

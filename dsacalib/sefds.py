@@ -16,7 +16,7 @@ from dsacalib.calib import apply_calibration_tables, apply_delay_bp_cal
 from dsacalib.fringestopping import amplitude_sky_model
 from dsacalib.ms_io import extract_vis_from_ms, get_antenna_gains, read_caltable
 
-MYCONF = cnf.Conf()
+MYCONF = cnf.Conf(use_etcd=True)
 CALPARAMS = MYCONF.get("cal")
 CORRPARAMS = MYCONF.get("corr")
 REFANT = CALPARAMS["refant"][0]
