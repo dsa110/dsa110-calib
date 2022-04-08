@@ -117,7 +117,7 @@ class CalibratorObservation:
 
 def get_configuration() -> dict:
     """Get the default configuration for calibration."""
-    dsaconf = dsc.Conf()
+    dsaconf = dsc.Conf(use_etcd=True)
     cal_params = dsaconf.get("cal")
 
     config = {

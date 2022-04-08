@@ -16,7 +16,7 @@ import dsacalib.constants as ct
 from dsacalib.fringestopping import calc_uvw
 from dsacalib.ms_io import get_antenna_gains, get_delays, read_caltable
 
-CONF = cnf.Conf()
+CONF = cnf.Conf(use_etcd=True)
 
 CORR_PARAMS = CONF.get("corr")
 CAL_PARAMS = CONF.get("cal")

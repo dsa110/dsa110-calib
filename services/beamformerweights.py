@@ -22,7 +22,7 @@ LOGGER.app("dsacalib")
 # ETCD interface
 ETCD = ds.DsaStore()
 
-CONF = dsc.Conf()
+CONF = dsc.Conf(use_etcd=True)
 CORR_PARAMS = CONF.get('corr')
 CAL_PARAMS = CONF.get('cal')
 CORR_LIST = list(CORR_PARAMS['ch0'].keys())
