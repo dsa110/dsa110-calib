@@ -136,7 +136,7 @@ def phase_visibilities(
     uvdata.phase_center_ra = phase_ra.to_value(u.rad)
     uvdata.phase_center_epoch = 2000.
     uvdata.phase_center_frame = 'icrs'
-    #uvdata._set_app_coords_helper()
+    uvdata._set_app_coords_helper()
 
 
 def load_uvh5_file(
