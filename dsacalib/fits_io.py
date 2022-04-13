@@ -12,27 +12,38 @@ Routines to interact w/ fits visibilities recorded by DSA-10.
 # TODO: Replace to_deg w/ astropy versions
 
 import warnings
-import numpy as np
-from dsacalib import constants as ct
-from dsacalib.utils import get_autobl_indices
-# pylint will complain about this, but iers.conf.iers_auto_url_mirror must be
-# set before astropy.time.Time is imported.
+
 import astropy.io.fits as pf
 import astropy.units as u
+import numpy as np
 from astropy.utils import iers
+
+from dsacalib import constants as ct
+from dsacalib.utils import get_autobl_indices
+
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=wrong-import-position
+from astropy.time import Time  # pylint: disable=wrong-import-position,ungrouped-imports,wrong-import-order
 
 warnings.warn(
     "the fits_io module is deprecated and will be removed in v2.0.0",
     DeprecationWarning,
-    stacklevel=2
+    stacklevel=2,
 )
 
-def read_psrfits_file(fl, source, dur=50*u.min, antenna_order=None,
-                      antpos=None, utc_start=None, autocorrs=False,
-                      badants=None, quiet=True, dsa10=True):
+
+def read_psrfits_file(
+    fl,
+    source,
+    dur=50 * u.min,
+    antenna_order=None,
+    antpos=None,
+    utc_start=None,
+    autocorrs=False,
+    badants=None,
+    quiet=True,
+    dsa10=True,
+):
     r"""Reads in the psrfits header and data.
 
     Parameters
@@ -95,38 +106,66 @@ def read_psrfits_file(fl, source, dur=50*u.min, antenna_order=None,
         The antenna indices, in the order that they are in in the visibilities.
     """
     if antpos is None:
-        antpos = '{0}/antpos_ITRF.txt'.format(ct.PKG_DATA_PATH)
+        antpos = f"{ct.PKG_DATA_PATH}/antpos_ITRF.txt"
     fo = pf.open(fl, ignore_missing_end=True)
     f = fo[1]
     if dsa10:
-        _nchan, fobs, _nt, blen, bname, tstart, tstop, tsamp, antenna_order = \
-            get_header_info(f, verbose=True, antpos=antpos)
+        (
+            _nchan,
+            fobs,
+            _nt,
+            blen,
+            bname,
+            tstart,
+            tstop,
+            tsamp,
+            antenna_order,
+        ) = get_header_info(f, verbose=True, antpos=antpos)
         vis, lst, mjd, transit_idx = extract_vis_from_psrfits(
-            f, source.ra.to_value(u.rad),
-            (dur/2*(15*u.deg/u.h)).to_value(u.rad), antenna_order, tstart,
-            tstop, quiet)
+            f,
+            source.ra.to_value(u.rad),
+            (dur / 2 * (15 * u.deg / u.h)).to_value(u.rad),
+            antenna_order,
+            tstart,
+            tstop,
+            quiet,
+        )
     else:
-        assert antenna_order is not None, 'Antenna order must be provided'
-        assert utc_start is not None, 'Start time must be provided'
-        _nchan, fobs, _nt, blen, bname, tstart_offset, tstop_offset, tsamp, \
-            antenna_order = get_header_info(f, verbose=True, antpos=antpos,
-                                            antenna_order=antenna_order,
-                                            dsa10=False)
-        tstart = (utc_start+tstart_offset*u.s).mjd
-        tstop = (utc_start+tstop_offset*u.s).mjd
+        assert antenna_order is not None, "Antenna order must be provided"
+        assert utc_start is not None, "Start time must be provided"
+        (
+            _nchan,
+            fobs,
+            _nt,
+            blen,
+            bname,
+            tstart_offset,
+            tstop_offset,
+            tsamp,
+            antenna_order,
+        ) = get_header_info(
+            f, verbose=True, antpos=antpos, antenna_order=antenna_order, dsa10=False
+        )
+        tstart = (utc_start + tstart_offset * u.s).mjd
+        tstop = (utc_start + tstop_offset * u.s).mjd
         vis, lst, mjd, transit_idx = extract_vis_from_psrfits(
-            f, source.ra.to_value(u.rad),
-            (dur/2*(15*u.deg/u.h)).to_value(u.rad), antenna_order, tstart,
-            tstop, quiet)
+            f,
+            source.ra.to_value(u.rad),
+            (dur / 2 * (15 * u.deg / u.h)).to_value(u.rad),
+            antenna_order,
+            tstart,
+            tstop,
+            quiet,
+        )
     fo.close()
 
     # Now we have to extract the correct baselines
     nant = len(antenna_order)
     if not autocorrs:
-        basels = list(range((nant*(nant+1))//2))
+        basels = list(range((nant * (nant + 1)) // 2))
         auto_bls = get_autobl_indices(nant)
         if not dsa10:
-            auto_bls = [(len(basels)-1)-auto_bl for auto_bl in auto_bls]
+            auto_bls = [(len(basels) - 1) - auto_bl for auto_bl in auto_bls]
         for i in auto_bls:
             basels.remove(i)
         vis = vis[basels, ...]
@@ -156,19 +195,30 @@ def read_psrfits_file(fl, source, dur=50*u.min, antenna_order=None,
 
     dt = np.median(np.diff(mjd))
     if len(mjd) > 0:
-        tstart = mjd[0]-dt/2
-        tstop = mjd[-1]+dt/2
+        tstart = mjd[0] - dt / 2
+        tstop = mjd[-1] + dt / 2
     else:
         tstart = None
         tstop = None
 
     if not isinstance(bname, list):
         bname = bname.tolist()
-    return fobs, blen, bname, tstart, tstop, tsamp, vis, mjd, lst, \
-        transit_idx, antenna_order
+    return (
+        fobs,
+        blen,
+        bname,
+        tstart,
+        tstop,
+        tsamp,
+        vis,
+        mjd,
+        lst,
+        transit_idx,
+        antenna_order,
+    )
 
-def get_header_info(f, antpos=None, verbose=False, antenna_order=None,
-                    dsa10=True):
+
+def get_header_info(f, antpos=None, verbose=False, antenna_order=None, dsa10=True):
     """Extracts important header info from a visibility fits file.
 
     Parameters
@@ -214,65 +264,72 @@ def get_header_info(f, antpos=None, verbose=False, antenna_order=None,
         The antenna names, in the order they are in in the visibilities.
     """
     if antpos is None:
-        antpos = '{0}/antpos_ITRF.txt'.format(ct.PKG_DATA_PATH)
+        antpos = f"{ct.PKG_DATA_PATH}/antpos_ITRF.txt"
     if dsa10:
-        aname = f.header['ANTENNAS'].split('-')
+        aname = f.header["ANTENNAS"].split("-")
         aname = [int(an) for an in aname]
     else:
-        assert antenna_order is not None, 'Antenna order must be provided'
+        assert antenna_order is not None, "Antenna order must be provided"
         aname = antenna_order
     nant = len(aname)
 
-    nchan = f.header['NCHAN']
+    nchan = f.header["NCHAN"]
     if dsa10:
-        fobs = ((f.header['FCH1']*1e6-(np.arange(nchan)+0.5)*2.*2.5e8/nchan)*
-                u.Hz).to_value(u.GHz)
+        fobs = (
+            (f.header["FCH1"] * 1e6 - (np.arange(nchan) + 0.5) * 2.0 * 2.5e8 / nchan)
+            * u.Hz
+        ).to_value(u.GHz)
     else:
-        fobs = ((f.header['FCH1']*1e6-(np.arange(nchan)+0.5)*2.5e8/8192)*
-                u.Hz).to_value(u.GHz)
-    nt = f.header['NAXIS2']
-    tsamp = f.header['TSAMP']
+        fobs = (
+            (f.header["FCH1"] * 1e6 - (np.arange(nchan) + 0.5) * 2.5e8 / 8192) * u.Hz
+        ).to_value(u.GHz)
+    nt = f.header["NAXIS2"]
+    tsamp = f.header["TSAMP"]
 
     tel_pos = np.loadtxt(antpos)
     blen = []
     bname = []
-#     for i in np.arange(len(aname)-1)+1:
-#         for j in np.arange(i+1):
+    #     for i in np.arange(len(aname)-1)+1:
+    #         for j in np.arange(i+1):
     if dsa10:
         # currently doesn't include autocorrelations
         for i in np.arange(10):
-            for j in np.arange(i+1):
-                a1 = int(aname[i])-1
-                a2 = int(aname[j])-1
-                bname.append([a1+1, a2+1])
-                blen.append(tel_pos[a1, 1:]-tel_pos[a2, 1:])
+            for j in np.arange(i + 1):
+                a1 = int(aname[i]) - 1
+                a2 = int(aname[j]) - 1
+                bname.append([a1 + 1, a2 + 1])
+                blen.append(tel_pos[a1, 1:] - tel_pos[a2, 1:])
     else:
         for j in range(nant):
             for i in range(j, nant):
-                a1 = int(aname[i])-1
-                a2 = int(aname[j])-1
-                bname.append([a2+1, a1+1])
-                blen.append(tel_pos[a2, 1:]-tel_pos[a1, 1:])
+                a1 = int(aname[i]) - 1
+                a2 = int(aname[j]) - 1
+                bname.append([a2 + 1, a1 + 1])
+                blen.append(tel_pos[a2, 1:] - tel_pos[a1, 1:])
     blen = np.array(blen)
 
     if dsa10:
-        tstart = f.header['MJD']+ct.TIME_OFFSET/ct.SECONDS_PER_DAY
-        tstop = tstart+nt*tsamp/ct.SECONDS_PER_DAY
+        tstart = f.header["MJD"] + ct.TIME_OFFSET / ct.SECONDS_PER_DAY
+        tstop = tstart + nt * tsamp / ct.SECONDS_PER_DAY
     else:
-        tstart = tsamp*f.header['NBLOCKS']
-        tstop = tstart+nt*tsamp
+        tstart = tsamp * f.header["NBLOCKS"]
+        tstop = tstart + nt * tsamp
 
     if verbose:
         if dsa10:
-            print('File covers {0:.2f} hours from MJD {1} to {2}'.format(
-                ((tstop-tstart)*u.d).to(u.h), tstart, tstop))
+            print(
+                f"File covers {((tstop - tstart) * u.d).to(u.h):.2f} hours "
+                f"from MJD {tstart} to {tstop}"
+            )
         else:
-            print('File covers {0:.2f} h from {1} s to {2} s'.format(
-                ((tstop-tstart)*u.s).to(u.h), tstart, tstop))
+            print(
+                f"File covers {((tstop - tstart) * u.s).to(u.h):.2f} hours "
+                f"from {tstart} s to {tstop} s"
+            )
     return nchan, fobs, nt, blen, bname, tstart, tstop, tsamp, aname
 
-def extract_vis_from_psrfits(f, lstmid, seg_len, antenna_order, mjd0, mjd1,
-                             quiet=True):
+
+def extract_vis_from_psrfits(f, lstmid, seg_len, antenna_order, mjd0, mjd1, quiet=True):
     """Extracts visibilities from a fits file.
 
     Based on clip.extract_segment from DSA-10 routines.
@@ -307,51 +364,67 @@ def extract_vis_from_psrfits(f, lstmid, seg_len, antenna_order, mjd0, mjd1,
         The index along the time axis corresponding to the `lstmid`. (i.e the
         index corresponding to the meridian transit of the source.)
     """
-    vis = f.data['VIS']
-    nt = f.header['NAXIS2']
-    nchan = f.header['NCHAN']
-    tsamp = f.header['TSAMP']
+    vis = f.data["VIS"]
+    nt = f.header["NAXIS2"]
+    nchan = f.header["NCHAN"]
+    tsamp = f.header["TSAMP"]
     nant = len(antenna_order)
 
-    if (mjd1-mjd0) >= 1:
-        print("Data covers > 1 sidereal day. Only the first segment will be "+
-              "extracted")
+    if (mjd1 - mjd0) >= 1:
+        print(
+            "Data covers > 1 sidereal day. Only the first segment will be "
+            + "extracted"
+        )
 
-    lst0 = Time(mjd0, format='mjd').sidereal_time(
-        'apparent', longitude=ct.OVRO_LON*u.rad).to_value(u.rad)
-    mjd = mjd0+(np.arange(nt)+0.5)*tsamp/ct.SECONDS_PER_DAY
-    lst = np.angle(np.exp(1j*(lst0+2*np.pi/ct.SECONDS_PER_SIDEREAL_DAY*
-                              np.arange(nt+0.5)*tsamp)))
+    lst0 = (
+        Time(mjd0, format="mjd")
+        .sidereal_time("apparent", longitude=ct.OVRO_LON * u.rad)
+        .to_value(u.rad)
+    )
+    mjd = mjd0 + (np.arange(nt) + 0.5) * tsamp / ct.SECONDS_PER_DAY
+    lst = np.angle(
+        np.exp(
+            1j
+            * (
+                lst0
+                + 2 * np.pi / ct.SECONDS_PER_SIDEREAL_DAY * np.arange(nt + 0.5) * tsamp
+            )
+        )
+    )
 
     if not quiet:
         print("\n-------------EXTRACT DATA--------------------")
-        print("Extracting data around {0}".format(lstmid*180/np.pi))
-        print("{0} Time samples in data".format(nt))
-        print("LST range: {0:.1f} --- ({1:.1f}-{2:.1f}) --- {3:.1f}deg".format(
-            lst[0]*180./np.pi, (lstmid-seg_len)*180./np.pi,
-            (lstmid+seg_len)*180./np.pi, lst[-1]*180./np.pi))
+        print(f"Extracting data around {lstmid * 180 / np.pi}")
+        print(f"{nt} Time samples in data")
+        print(
+            f"LST range: {lst[0] * 180.0 / np.pi:.1f} --- "
+            f"({(lstmid - seg_len) * 180.0 / np.pi:.1f}-{(lstmid + seg_len) * 180.0 / np.pi:.1f}) "
+            f"--- {lst[-1] * 180.0 / np.pi:.1f}deg"
+        )
 
-    idxl = np.argmax(np.absolute(np.exp(1j*lst)+np.exp(1j*lstmid)*
-                                 np.exp(-1j*seg_len)))
-    idxr = np.argmax(np.absolute(np.exp(1j*lst)+np.exp(1j*lstmid)*
-                                 np.exp(1j*seg_len)))
-    idx0 = np.argmax(np.absolute(np.exp(1j*lst)+np.exp(1j*(lstmid))))
-    idxmid = idxl-idx0
+    idxl = np.argmax(
+        np.absolute(np.exp(1j * lst) + np.exp(1j * lstmid) * np.exp(-1j * seg_len))
+    )
+    idxr = np.argmax(
+        np.absolute(np.exp(1j * lst) + np.exp(1j * lstmid) * np.exp(1j * seg_len))
+    )
+    idx0 = np.argmax(np.absolute(np.exp(1j * lst) + np.exp(1j * (lstmid))))
+    idxmid = idxl - idx0
 
     mjd = mjd[idxl:idxr]
     lst = lst[idxl:idxr]
-    vis = vis.reshape((nt, (nant*(nant+1))//2, nchan, 2, 2)) \
-        [idxl:idxr, :, :, :, :]
+    vis = vis.reshape((nt, (nant * (nant + 1)) // 2, nchan, 2, 2))[
+        idxl:idxr, :, :, :, :
+    ]
 
     if not quiet:
-        print("Extract: {0} ----> {1} sample; transit at {2}".format(
-            idxl, idxr, idx0))
+        print(f"Extract: {idxl} ----> {idxr} sample; transit at {idx0}")
         print("----------------------------------------------")
 
     # Fancy indexing can have downfalls and may change in future numpy versions
     # See issue here https://github.com/numpy/numpy/issues/9450
     # odata = dat[:,basels,:,:,0]+ 1j*dat[:,basels,:,:,1]
-    vis = vis[..., 0]+1j*vis[..., 1]
+    vis = vis[..., 0] + 1j * vis[..., 1]
     vis = vis.swapaxes(0, 1)
 
     return vis, lst, mjd, idxmid

@@ -18,7 +18,7 @@ def test_data():
     assert os.path.exists('{0}/template_gcal_ant'.format(ct.PKG_DATA_PATH))
 
 def test_cnf():
-    conf = dsc.Conf()
+    conf = dsc.Conf(use_etcd=True)
     params = conf.get('corr')
     assert 'ch0' in params.keys()
     assert 'antenna_order' in params.keys()

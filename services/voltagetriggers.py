@@ -27,7 +27,7 @@ CORR_LIST = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 RSYNC_Q = Queue()
 TSLEEP = 10
 
-CONF = dsc.Conf()
+CONF = dsc.Conf(use_etcd=True)
 PARAMS = CONF.get('corr')
 
 def rsync_handler(inqueue):
@@ -53,7 +53,7 @@ def rsync_handler(inqueue):
             except Exception as exc:
                 exception_logger(
                     LOGGER,
-                    'copying of voltage trigger {0}'.format(fname),
+                    f"copying of voltage trigger {fname}",
                     exc,
                     throw=False
                 )
@@ -67,29 +67,14 @@ def populate_queue(etcd_dict):
     for specnum in etcd_dict.keys():
         specnum = (int(specnum)-477)*16
         for corr in PARAMS['ch0'].keys():
-            fname = "{0}.sas.pvt:/home/ubuntu/data/fl*.out.{1}".format(
-                corr,
-                specnum
-            )
-            fnameout = "/mnt/data/dsa110/T3/{0}/{1}/".format(corr, DATE_STR)
-            print("{0} {1}".format(fname, fnameout))
-            RSYNC_Q.put(
-                "{0} {1}".format(fname, fnameout)
-            )
-            fname = "{0}.sas.pvt:/home/ubuntu/data/fl*.out.{1}.json".format(
-                corr,
-                specnum
-            )
-            print("{0} {1}".format(fname, fnameout))
-            RSYNC_Q.put(
-                "{0} {1}".format(fname, fnameout)
-            )
-            LOGGER.info(
-                'Copied voltage trigger {0} from {1}'.format(
-                    specnum,
-                    corr
-                )
-            )
+            fname = f"{corr}.sas.pvt:/home/ubuntu/data/fl*.out.{specnum}"
+            fnameout = f"/mnt/data/dsa110/T3/{corr}/{DATE_STR}/"
+            print(f"{fname} {fnameout}")
+            RSYNC_Q.put(f"{fname} {fnameout}")
+            fname = f"{corr}.sas.pvt:/home/ubuntu/data/fl*.out.{specnum}.json"
+            print(f"{fname} {fnameout}")
+            RSYNC_Q.put(f"{fname} {fnameout}")
+            LOGGER.info(f"Copied voltage trigger {specnum} from {corr}")
 
 if __name__ == "__main__":
     processes = {
@@ -102,16 +87,16 @@ if __name__ == "__main__":
     # Start etcd watch
     ETCD.add_watch('/mon/corr/1/trigger', populate_queue)
     # Start all threads
-    for name in processes.keys():
-        for i in range(processes[name]['nthreads']):
-            processes[name]['processes'] += [Process(
+    for name, process in processes.items():
+        for i in range(process['nthreads']):
+            process['processes'] += [Process(
                 target=rsync_handler,
                 args=(
-                    processes[name]['queue'],
+                    process['queue'],
                 ),
                 daemon=True
             )]
-        for pinst in processes[name]['processes']:
+        for pinst in process['processes']:
             pinst.start()
 
     while True:
