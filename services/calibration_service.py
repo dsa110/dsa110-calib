@@ -134,14 +134,14 @@ def calibrate_file(calname, flist):
     )
 
     try:
-        generate_summary_plot(date, msname, calname, config["antennas"], config["webplots"])
+        generate_summary_plot(
+            date, msname, calname, config["antennas"], config["tempdir"], config["webplots"])
     except Exception as exc:
         exception_logger(
             LOGGER,
             f"plotting of calibration solutions for {msname}.ms",
             exc,
-            throw=False
-        )
+            throw=False)
 
     status = calibrate_measurement_set(
         msname,
@@ -150,11 +150,9 @@ def calibrate_file(calname, flist):
         throw_exceptions=False,
         keepdelays=False,
         forsystemhealth=False,
-        reuse_flags=True
-    )
+        reuse_flags=True)
     LOGGER.info(
-        f"Calibrated {msname}.ms for beamformer weights with status {status}"
-    )
+        f"Calibrated {msname}.ms for beamformer weights with status {status}")
 
     try:
         applied_delays = extract_applied_delays(first_true(flist), config["antennas"])
@@ -166,15 +164,13 @@ def calibrate_file(calname, flist):
             config["antennas"],
             applied_delays,
             flagged_antennas=config["antennas_not_in_bf"],
-            corr_list=np.array(config["corr_list"])
-        )
+            corr_list=np.array(config["corr_list"]))
     except Exception as exc:
         exception_logger(
             LOGGER,
             f"calculation of beamformer weights for {msname}.ms",
             exc,
-            throw=False
-        )
+            throw=False)
 
     # Create the bandpass phase table for plotting later
     calibrate_phase_single_ms(msname, config["refant"], calname)
@@ -195,20 +191,25 @@ def calibrate_file(calname, flist):
             "/mon/cal/bfweights",
             {
                 "cmd": "update_weights",
-                "val": beamformer_solns["cal_solutions"]
-            }
-        )
+                "val": beamformer_solns["cal_solutions"]})
 
         # Plot the beamformer solutions
-        figure_prefix = f"{config['webplots']}/allpngs/{caltime}"
+        figure_prefix = f"{config['tempdir']}/{caltime}"
         plot_beamformer_weights(
             beamformer_names,
             antennas_to_plot=np.array(config["antennas"]),
             outname=figure_prefix,
             corrlist=np.array(config["corr_list"]),
-            show=False
-        )
-        copy_figure(f"{figure_prefix}_averagedweights.png", f"{config['webplots']}/bfw_current.png")
+            show=False)
+        store_file(
+            f"{figure_prefix}_averagedweights.png",
+            f"{config['webplots']}/bfw_current.png",
+            remove_source_files=False)
+        store_file(
+            f"{figure_prefix}_averagedweights.png",
+            f"{config['webplots']}/allpngs/{caltime}_averagedweights.png",
+            remove_source_files=True)
+
 
         # Plot evolution of the phase over the day
         plot_bandpass_phases(
@@ -218,7 +219,14 @@ def calibrate_file(calname, flist):
             show=False
         )
         plt.close("all")
-        copy_figure(f"{figure_prefix}_phase.png", f"{config['webplots']}/phase_current.png")
+        store_file(
+            f"{figure_prefix}_phase.png",
+            f"{config['webplots']}/phase_current.png",
+            remove_source_files=False)
+        store_file(
+            f"{figure_prefix}_phase.png",
+            f"{config['webplots']}/allpngs/{caltime}_phase.png",
+            remove_source_files=True)
 
 
 def get_configuration():
@@ -240,7 +248,8 @@ def get_configuration():
         "antennas": list(corr_params["antenna_order"].values()),
         "antennas_not_in_bf": cal_params["antennas_not_in_bf"],
         "corr_list": [int(cl.strip("corr")) for cl in corr_params["ch0"].keys()],
-        "webplots": "/home/ubuntu/caldata/webPLOTS/calibration/",
+        "webplots": "user@dsa-storage.ovro.pvt:/mnt/data/dsa110/webPLOTS/calibration/",
+        "tempdir": "/home/ubuntu/caldata/temp/",
         "refant": (
             cal_params["refant"][0] if isinstance(cal_params["refant"], list)
             else cal_params["refant"]),
@@ -330,10 +339,10 @@ def update_solution_dictionary(
         del latest_solns["cal_solutions"]["flagged_antennas"][key]
 
 
-def generate_summary_plot(date, msname, calname, antennas, webplots):
+def generate_summary_plot(date, msname, calname, antennas, tempdir, webplots):
     """Generate a summary plot and put it in webplots."""
 
-    figure_path = f"{webplots}/allpngs/{date}_{calname}.pdf"
+    figure_path = f"{tempdir}/{date}_{calname}.pdf"
     with PdfPages(figure_path) as pdf:
         for j in range(len(antennas)//10+1):
             fig = summary_plot(
@@ -346,8 +355,8 @@ def generate_summary_plot(date, msname, calname, antennas, webplots):
             pdf.savefig(fig)
             plt.close(fig)
 
-    current_name = f"{webplots}/summary_current.pdf"
-    copy_figure(figure_path, current_name)
+    store_file(figure_path, f"{webplots}/allpngs/{date}_{calname}.pdf", remove_source_files=False)
+    store_file(figure_path, f"{webplots}/summary_current.pdf", remove_source_files=True)
 
 
 def add_reference_bfname(beamformer_names, latest_solns, start_time, beamformer_dir):
@@ -388,18 +397,13 @@ def calibrate_file_manager(inqueue=CALIB_Q):
                     LOGGER,
                     "attempt to retrieve calibration task from queue",
                     exc,
-                    throw=False
-                )
+                    throw=False)
             else:
                 # start a subprocess
                 calib_process = Process(
                     target=calibrate_file,
-                    args=(
-                        calname,
-                        flist
-                    ),
-                    daemon=True
-                )
+                    args=(calname, flist),
+                    daemon=True)
                 calib_process.start()
                 calib_process.join()
             time.sleep(TSLEEP)
@@ -412,11 +416,21 @@ def populate_queue(etcd_dict, outqueue=CALIB_Q):
         outqueue.put(etcd_dict["val"])
 
 
-def copy_figure(source, target):
-    """Copy figure to new path."""
-    if os.path.exists(target):
-        os.unlink(target)
-    shutil.copyfile(source, target)
+def store_file(source: str, target: str, remove_source_files: bool = False) -> None:
+    """Sends an etcd command for a file to be stored on dsa-storage."""
+    ETCD.put_dict("/cmd/store", {
+        'cmd': 'rsync', 
+        'val': {
+            'source': source,
+            'dest': target,
+            'remove_source_files': remove_source_files}})
+
+
+# def copy_figure(source, target):
+#     """Copy figure to new path."""
+#     if os.path.exists(target):
+#         os.unlink(target)
+#     shutil.copyfile(source, target)
 
 
 def watch_for_calibration():
