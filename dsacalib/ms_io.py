@@ -40,10 +40,7 @@ CORR_PARAMS = CONF.get('corr')
 REFMJD = CONF.get('fringe')['refmjd']
 
 def convert_calibrator_pass_to_ms(
-        cal, date, files, msdir='/mnt/data/dsa110/calibration/',
-        hdf5dir='/mnt/data/dsa110/correlator/', antenna_list=None,
-        logger=None, overwrite=True
-):
+        cal, date, files, msdir, hdf5dir, antenna_list=None, logger=None, overwrite=True):
     r"""Converts hdf5 files near a calibrator pass to a CASA ms.
 
     Parameters
@@ -89,8 +86,7 @@ def convert_calibrator_pass_to_ms(
                 msname,
                 ra=cal.ra,
                 dec=cal.dec,
-                flux=cal.I,
-                # dt=duration,
+                flux=cal.flux,
                 antenna_list=antenna_list,
                 logger=logger
             )
@@ -124,7 +120,7 @@ def convert_calibrator_pass_to_ms(
                         f"{msdir}/{filename}",
                         ra=cal.ra,
                         dec=cal.dec,
-                        flux=cal.I,
+                        flux=cal.flux,
                         antenna_list=antenna_list,
                         logger=logger
                     )
