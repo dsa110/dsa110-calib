@@ -20,7 +20,7 @@ from dsamfs.fringestopping import calc_uvw_blt
 
 from dsacalib.fringestopping import calc_uvw_interpolate
 from dsacalib import constants as ct
-from dsacalib.utils import Direction, CalibratorSource
+from dsacalib.utils import Direction, generate_calibrator_source
 from dsacalib.fringestopping import amplitude_sky_model
 
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
@@ -354,8 +354,8 @@ def set_ms_model_column(msname: str, uvdata: "UVData", pt_dec: "Quantity", ra: "
     if flux_Jy is not None:
         fobs = uvdata.freq_array.squeeze()/1e9
         lst = uvdata.lst_array
-        model = amplitude_sky_model(CalibratorSource('cal', ra, dec, flux_Jy),
-                                    lst, pt_dec, fobs)
+        source = generate_calibrator_source('cal', ra, dec, flux_Jy)
+        model = amplitude_sky_model(source, lst, pt_dec, fobs)
         model = np.tile(model[:, :, np.newaxis], (1, 1, uvdata.Npols))
     else:
         model = np.ones((uvdata.Nblts, uvdata.Nfreqs, uvdata.Npols), dtype=np.complex64)
