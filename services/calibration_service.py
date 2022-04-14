@@ -59,7 +59,7 @@ def calibrate_file(calname, flist):
 
     # Get the pointing declination from the file
     with h5py.File(first_true(flist), mode="r") as h5file:
-        pt_dec = h5file["Header"]["extra_keywords"]["phase_center_dec"].value*u.rad
+        pt_dec = h5file["Header"]["extra_keywords"]["phase_center_dec"][()]*u.rad
 
     # Get the list of sources at the current pointing dec
     caltable = update_caltable(pt_dec)
@@ -92,8 +92,9 @@ def calibrate_file(calname, flist):
             cal=filenames[date][calname]["cal"],
             date=date,
             files=filenames[date][calname]["files"],
+            msdir=config["msdir"],
+            hdf5dir=config["hdf5dir"],
             logger=LOGGER,
-            msdir=config["msdir"]
         )
         print("done writing ms")
         LOGGER.info(f"{msname}.ms created.")
@@ -241,8 +242,8 @@ def get_configuration():
         "corr_list": [int(cl.strip("corr")) for cl in corr_params["ch0"].keys()],
         "webplots": "/home/ubuntu/caldata/webPLOTS/calibration/",
         "refant": (
-            cal_params["refants"][0] if isinstance(cal_params["refants"], list)
-            else cal_params["refants"]),
+            cal_params["refant"][0] if isinstance(cal_params["refant"], list)
+            else cal_params["refant"]),
         "pols": corr_params["pols_voltage"],
         "beamformer_dir" : cal_params["beamformer_dir"],
     }

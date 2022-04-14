@@ -196,13 +196,7 @@ def read_nvss_catalog():
     return df
 
 
-def generate_caltable(
-    pt_dec,
-    csv_string,
-    radius=2.5 * u.deg,
-    min_weighted_flux=1 * u.Jy,
-    min_percent_flux=0.15,
-):
+def generate_caltable(pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*u.Jy, min_percent_flux=0.15):
     """Generate a table of calibrators at a given declination.
 
     Parameters
@@ -229,17 +223,13 @@ def generate_caltable(
     calibrators = calibrators.assign(field_flux=np.zeros(len(calibrators)))
     calibrators = calibrators.assign(weighted_flux=np.zeros(len(calibrators)))
     for name, row in calibrators.iterrows():
-        calibrators["weighted_flux"].loc[name] = (
-            row["flux_20_cm"]
-            / 1e3
-            * pb_resp(
+        calibrators.loc[name, "weighted_flux"] = (
+            row["flux_20_cm"] / 1e3 * pb_resp(
                 row["ra"] * (1 * u.deg).to_value(u.rad),
                 pt_dec.to_value(u.rad),
                 row["ra"] * (1 * u.deg).to_value(u.rad),
                 row["dec"] * (1 * u.deg).to_value(u.rad),
-                1.4,
-            )
-        )
+                1.4))
         field = df[
             (df["dec"] < (pt_dec + radius).to_value(u.deg))
             & (df["dec"] > (pt_dec - radius).to_value(u.deg))
@@ -248,7 +238,7 @@ def generate_caltable(
         ]
         field = field.assign(weighted_flux=np.zeros(len(field)))
         for fname, frow in field.iterrows():
-            field["weighted_flux"].loc[fname] = (
+            field.loc[fname, "weighted_flux"] = (
                 frow["flux_20_cm"]
                 / 1e3
                 * pb_resp(
@@ -259,7 +249,8 @@ def generate_caltable(
                     1.4,
                 )
             )
-        calibrators["field_flux"].loc[name] = sum(field["weighted_flux"])
+        calibrators.loc[name, "field_flux"] = sum(field["weighted_flux"])
+    print(calibrators.head)
     # Calculate percent of the field flux that is contained in the
     # main calibrator
     calibrators = calibrators.assign(
@@ -270,6 +261,7 @@ def generate_caltable(
         (calibrators["weighted_flux"] > min_weighted_flux.to_value(u.Jy))
         & (calibrators["percent_flux"] > min_percent_flux)
     ]
+    print(calibrators.head)
     # Create the caltable needed by the calibrator service
     caltable = calibrators[["ra", "dec", "flux_20_cm", "weighted_flux", "percent_flux"]]
     caltable.reset_index(inplace=True)
@@ -278,14 +270,13 @@ def generate_caltable(
             "index": "source",
             "flux_20_cm": "flux (Jy)",
             "weighted_flux": "weighted flux (Jy)",
-            "percent_flux": "percent flux",
-        },
-        inplace=True,
-    )
-    caltable["flux (Jy)"] = caltable["flux (Jy)"] / 1e3
-    caltable["source"] = [sname.strip("NVSS ") for sname in caltable["source"]]
-    caltable["ra"] = caltable["ra"] * u.deg
-    caltable["dec"] = caltable["dec"] * u.deg
+            "percent_flux": "percent flux"},
+        inplace=True)
+    caltable.loc[:, "flux (Jy)"] = caltable["flux (Jy)"] / 1e3
+    caltable.loc[:, "source"] = [sname.strip("NVSS ") for sname in caltable["source"]]
+    caltable.loc[:, "ra"] = caltable["ra"] * u.deg
+    caltable.loc[:, "dec"] = caltable["dec"] * u.deg
+    print(caltable.head)
     caltable.to_csv(resource_filename("dsacalib", csv_string))
 
 
