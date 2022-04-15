@@ -139,7 +139,7 @@ def phase_visibilities(
     try:
         uvdata._set_app_coords_helper()
     except AttributeError:
-        continue
+        pass
 
 
 def load_uvh5_file(
