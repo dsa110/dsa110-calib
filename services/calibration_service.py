@@ -85,7 +85,9 @@ def calibrate_file(calname, flist):
     )
 
     # Generate the measurement set
-    LOGGER.info(f"Creating {msname}.ms at dec {pt_dec}")
+    message = f"Creating {msname}.ms at dec {pt_dec}"
+    LOGGER.info(message)
+    print(message)
     if not os.path.exists(f"{msname}.ms"):
         print("writing ms")
         convert_calibrator_pass_to_ms(
@@ -97,9 +99,13 @@ def calibrate_file(calname, flist):
             logger=LOGGER,
         )
         print("done writing ms")
-        LOGGER.info(f"{msname}.ms created.")
+        message = f"{msname}.ms created."
+        LOGGER.info(message)
+        print(message)
     else:
-        LOGGER.info(f"{msname}.ms already exists.  Not recreating.")
+        message = f"{msname}.ms already exists.  Not recreating."
+        LOGGER.info(message)
+        print(message)
 
     # Calibrate for system health & flagging
     status = calibrate_measurement_set(
