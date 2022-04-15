@@ -18,10 +18,6 @@ import dsacalib.constants as ct
 import dsacalib.utils as du
 from dsacalib.calibrator_observation import CalibratorObservation
 
-iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
-iers.conf.auto_max_age = None
-from astropy.time import Time  # pylint: disable=wrong-import-order,ungrouped-imports,wrong-import-position
-
 
 def calibrate_measurement_set(
         msname: str, cal: "CalibratorSource", logger: "DsaSyslogger" = None,
