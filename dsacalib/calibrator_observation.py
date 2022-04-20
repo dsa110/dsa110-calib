@@ -50,7 +50,8 @@ class CalibratorObservation:
         """Reset flags and set new flags."""
         df.reset_all_flags(self.msname)
         error = 0
-        error += df.flag_baselines(self.msname, uvrange=self.config["bad_uvrange"])
+        if self.config["bad_uvrange"]:
+            error += df.flag_baselines(self.msname, uvrange=self.config["bad_uvrange"])
         error += df.flag_zeros(self.msname)
 
         for ant in self.config["bad_antennas"]:
