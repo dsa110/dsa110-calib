@@ -18,7 +18,7 @@ from dsautils import cnf
 import dsacalib.constants as ct
 from dsacalib.ms_io import extract_vis_from_ms, read_caltable
 
-CONF = cnf.Conf(use_etcd=True)
+CONF = cnf.Conf()
 
 
 def plot_dyn_spec(

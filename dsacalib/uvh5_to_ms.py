@@ -29,7 +29,7 @@ from astropy.time import Time # pylint: disable=wrong-import-position wrong-impo
 
 de = dsa_store.DsaStore()
 
-CONF = dsc.Conf(use_etcd=True)
+CONF = dsc.Conf()
 CORR_PARAMS = CONF.get('corr')
 REFMJD = CONF.get('fringe')['refmjd']
 

@@ -26,7 +26,7 @@ from dsacalib.utils import exception_logger
 warnings.filterwarnings("ignore")
 
 # TODO: Get these parameters from a function, rather tahn as defaults
-CONF = cnf.Conf(use_etcd=True)
+CONF = cnf.Conf()
 CORR_CONF = CONF.get('corr')
 CAL_CONF = CONF.get('cal')
 MFS_CONF = CONF.get('fringe')

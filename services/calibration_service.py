@@ -237,7 +237,7 @@ def calibrate_file(calname, flist):
 
 def get_configuration():
     """Get the default configuration for calibration."""
-    dsaconf = dsc.Conf(use_etcd=True)
+    dsaconf = dsc.Conf()
     corr_params = dsaconf.get("corr")
     cal_params = dsaconf.get("cal")
     fringe_params = dsaconf.get("fringe")
