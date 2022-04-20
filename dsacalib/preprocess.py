@@ -21,7 +21,7 @@ LOGGER = dsl.DsaSyslogger()
 LOGGER.subsystem("software")
 LOGGER.app("dsamfs")
 
-CONF = cnf.Conf(use_etcd=True)
+CONF = cnf.Conf()
 MFS_CONF = CONF.get("fringe")
 # parameters for freq scrunching
 NFREQ = MFS_CONF["nfreq_scrunch"]

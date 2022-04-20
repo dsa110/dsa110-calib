@@ -10,6 +10,7 @@ import numpy as np
 import pandas
 import astropy.units as u
 from astropy.coordinates import Angle
+from astropy.time import Time
 from astropy.utils import iers
 import astropy.units as u
 from casacore.tables import table
@@ -164,7 +165,7 @@ def quick_bfweightcal(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
     if not cal:
         cal = get_cal_from_msname(msname)
 
-    dsaconf = dsc.Conf(use_etcd=True)
+    dsaconf = dsc.Conf()
     corr_params = dsaconf.get("corr")
     cal_params = dsaconf.get("cal")
     config = {

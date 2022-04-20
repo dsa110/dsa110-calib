@@ -27,7 +27,7 @@ CORR_LIST = [0, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
 RSYNC_Q = Queue()
 TSLEEP = 10
 
-CONF = dsc.Conf(use_etcd=True)
+CONF = dsc.Conf()
 PARAMS = CONF.get('corr')
 
 def rsync_handler(inqueue):
