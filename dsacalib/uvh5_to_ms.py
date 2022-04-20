@@ -430,9 +430,11 @@ def generate_phase_model_antbased(uvw, uvw_m, nbls, nts, lamb, ant1, ant2):
     """
     # Need ant1 and ant2 to be passed here
     # Need to check that this gets the correct refidxs
-    refant = ant1[0]
+    refant = 23 # ant1[0]
     refidxs = np.where(ant1 == refant)[0]
+
     antenna_order = list(ant2[refidxs])
+
     antenna_w_m = uvw_m[refidxs, -1]
     uvw_delays = uvw.reshape((nts, nbls, 3))
     antenna_w = uvw_delays[:, refidxs, -1]
