@@ -574,6 +574,7 @@ def write_beamformer_weights(
         fname = f"{fname}_{msname}_{calname}_{caltime.isot}"
         if os.path.exists(f"{BEAMFORMER_DIR}/{fname}.dat"):
             os.unlink(f"{BEAMFORMER_DIR}/{fname}.dat")
+        print(f"{BEAMFORMER_DIR}/{fname}.dat")
         with open(f"{BEAMFORMER_DIR}/{fname}.dat", "wb") as f:
             f.write(bytes(wcorr))
         filenames += [f"{fname}.dat".format(fname)]
