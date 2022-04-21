@@ -3,6 +3,7 @@
 import os
 import sys
 import shutil
+import socket
 import warnings
 from multiprocessing import Process, Queue
 import datetime
@@ -254,8 +255,8 @@ def get_configuration():
         "antennas": list(corr_params["antenna_order"].values()),
         "antennas_not_in_bf": cal_params["antennas_not_in_bf"],
         "corr_list": [int(cl.strip("corr")) for cl in corr_params["ch0"].keys()],
-        "webplots": "user@dsa-storage.ovro.pvt:/mnt/data/dsa110/webPLOTS/calibration/",
-        "tempdir": "/home/ubuntu/caldata/temp/",
+        "webplots": "/mnt/data/dsa110/webPLOTS/calibration/",
+        "tempdir": "/home/user/temp/" if socket.gethostname() == "dsa-storage" else "/home/ubuntu/caldata/temp/",
         "refant": (
             cal_params["refant"][0] if isinstance(cal_params["refant"], list)
             else cal_params["refant"]),
@@ -424,12 +425,15 @@ def populate_queue(etcd_dict, outqueue=CALIB_Q):
 
 def store_file(source: str, target: str, remove_source_files: bool = False) -> None:
     """Sends an etcd command for a file to be stored on dsa-storage."""
-    ETCD.put_dict("/cmd/store", {
-        'cmd': 'rsync', 
-        'val': {
-            'source': source,
-            'dest': target,
-            'remove_source_files': remove_source_files}})
+    if socket.gethostname() == "dsa-storage":
+        os.copy(source.split(':')[-1], target)
+    else:
+        ETCD.put_dict("/cmd/store", {
+            'cmd': 'rsync', 
+            'val': {
+                'source': source,
+                'dest': target,
+                'remove_source_files': remove_source_files}})
 
 
 # def copy_figure(source, target):
