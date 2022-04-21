@@ -571,7 +571,7 @@ def write_beamformer_weights(
         wcorr = weights[i, ...].view(np.float32).flatten()
         wcorr = np.concatenate([bu, wcorr], axis=0)
         fname = f"beamformer_weights_corr{corr_idx:02d}"
-        fname = f"{fname}_{msname}_{calname}_{caltime.isot}"
+        fname = f"{fname}_{calname}_{caltime.isot}"
         if os.path.exists(f"{BEAMFORMER_DIR}/{fname}.dat"):
             os.unlink(f"{BEAMFORMER_DIR}/{fname}.dat")
         print(f"{BEAMFORMER_DIR}/{fname}.dat")
