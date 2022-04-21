@@ -23,6 +23,7 @@ CAL_PARAMS = CONF.get("cal")
 MFS_PARAMS = CONF.get("fringe")
 REFANTS = CAL_PARAMS["refant"]
 BEAMFORMER_DIR = CAL_PARAMS["beamformer_dir"]
+print(f"BEAMFORMER_DIR: {BEAMFORMER_DIR}")
 ANTENNAS = np.array(list(CORR_PARAMS["antenna_order"].values()))
 ANTENNAS_CORE = [ant for ant in ANTENNAS if ant < 100]  # core only
 POLS = CORR_PARAMS["pols_voltage"]
@@ -570,7 +571,7 @@ def write_beamformer_weights(
         wcorr = weights[i, ...].view(np.float32).flatten()
         wcorr = np.concatenate([bu, wcorr], axis=0)
         fname = f"beamformer_weights_corr{corr_idx:02d}"
-        fname = f"{msname}_{calname}_{caltime.isot}"
+        fname = f"{fname}_{msname}_{calname}_{caltime.isot}"
         if os.path.exists(f"{BEAMFORMER_DIR}/{fname}.dat"):
             os.unlink(f"{BEAMFORMER_DIR}/{fname}.dat")
         with open(f"{BEAMFORMER_DIR}/{fname}.dat", "wb") as f:

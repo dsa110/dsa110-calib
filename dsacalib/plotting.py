@@ -1058,7 +1058,7 @@ def summary_plot(msname, calname, npol, plabels, antennas):
                     ls=lcyc[pidx],
                 )
         for i in range(ny):
-            if tplot:
+            if tplot is not None:
                 ax[i, 1, 1].set_xlim(tplot[0], tplot[-1])
                 ax[i, 2, 1].set_xlim(tplot[0], tplot[-1])
             ax[i, 2, 1].set_ylim(-np.pi / 10, np.pi / 10)

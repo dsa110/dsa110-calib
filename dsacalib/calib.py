@@ -181,9 +181,7 @@ def delay_calibration(
 
 def gain_calibration(
         msname: str, sourcename: str, refant: str, blbased: bool = False,
-        forsystemhealth: bool = False, keepdelays: bool = False, tbeam: str = "30s",
-        interp_thresh: float = 1.5, interp_polyorder: int = 7
-) -> int:
+        forsystemhealth: bool = False, keepdelays: bool = False, tbeam: str = "30s") -> int:
     r"""Use CASA to calculate bandpass and complex gain solutions.
 
     Saves solutions to calibration tables and calibrates the measurement set by
@@ -285,7 +283,7 @@ def gain_calibration(
         ]
 
     error += solve_gain_calibration(
-        msname, sourcename, refant, caltables, forsystemhealth, combine, spwmap, 
+        msname, sourcename, refant, caltables, forsystemhealth, combine, spwmap,
         blbased, tbeam)
 
     if not forsystemhealth and keepdelays:
@@ -300,7 +298,7 @@ def gain_calibration(
             bpass *= np.exp(-2j * np.pi * (fobs[:, np.newaxis] - fref_snaps) * newparam)
             print(bpass.shape)
             tb.putcol("CPARAM", bpass)
-        
+
     return error
 
 def solve_gain_calibration(
@@ -308,15 +306,15 @@ def solve_gain_calibration(
         forsystemhealth: bool, combine: str = "field,scan,obs", spwmap: List = None,
         blbased: bool = False, tbeam: str = "60s"
 ) -> int:
-    
+
     if not spwmap:
         spwmap = [-1]
-    
+
     error = 0
-    
+
     # Rough bandpass calibration
     caltables_orig = deepcopy(caltables)
-    
+
     cb = cc.calibrater()
     error += not cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
@@ -410,8 +408,6 @@ def solve_gain_calibration(
         interpolate_bandpass_solutions(
             msname,
             sourcename,
-            thresh=interp_thresh,
-            polyorder=interp_polyorder,
             mode="a",
         )
 
@@ -442,8 +438,6 @@ def solve_gain_calibration(
         interpolate_bandpass_solutions(
             msname,
             sourcename,
-            thresh=interp_thresh,
-            polyorder=interp_polyorder,
             mode="p",
         )
 
@@ -930,7 +924,7 @@ def calibrate_phases(
 
 def calibrate_phase_single_ms(msname: str, refant: str, calname: str) -> None:
     """Generate a bandpass gain calibration table for a single ms.
-    
+
     Parameters
     ----------
     msname : str
@@ -964,7 +958,7 @@ def combine_bandpass_and_delay(table_prefix: str, forsystemhealth: bool) -> None
     if not forsystemhealth:
         with table(f"{table_prefix}_bkcal") as tb:
             bpass = np.array(tb.CPARAM[:])
-    
+
     if not os.path.exists(f"{table_prefix}_bcal"):
         tablecopy(f"{table_prefix}_bpcal", f"{table_prefix}_bcal")
 
