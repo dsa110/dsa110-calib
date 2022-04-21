@@ -6,18 +6,18 @@ import glob
 
 import scipy # pylint: disable=unused-import
 import dsautils.calstatus as cs
+import dsautils.cnf as dsc
 import numpy as np
 import pandas
 import astropy.units as u
 from astropy.coordinates import Angle
 from astropy.time import Time
-from astropy.utils import iers
-import astropy.units as u
 from casacore.tables import table
 
 import dsacalib.constants as ct
 import dsacalib.utils as du
 from dsacalib.calibrator_observation import CalibratorObservation
+from dsacalib.weights import write_beamformer_solutions
 
 
 def calibrate_measurement_set(
@@ -173,7 +173,7 @@ def quick_bfweightcal(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
         "antennas_not_in_bf": cal_params["antennas_not_in_bf"],
         "corr_list": [int(cl.strip("corr")) for cl in corr_params["ch0"].keys()],
     }
-    
+
     for key in ["forsystemhealth", "reuse_flags"]:
         if key in kwargs:
             raise RuntimeError(
@@ -187,16 +187,16 @@ def quick_bfweightcal(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
     error = 0
     error += calobs.quick_delay_calibration()
     error += calobs.bandpass_and_gain_cal()
-    
+
     with table(f"{msname}.ms") as tb:
         caltime = Time((tb.TIME_CENTROID[tb.nrows()//2]*u.s).to(u.d), format='mjd')
-    
+
     write_beamformer_solutions(
         msname,
-        calname,
+        cal.name,
         caltime,
         config["antennas"],
-        delays=None,
+        applied_delays=None,
         flagged_antennas=config["antennas_not_in_bf"],
         corr_list=np.array(config["corr_list"]))
 
@@ -208,7 +208,7 @@ def quick_calibration(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
         cal = get_cal_from_msname(msname)
 
     calobs = CalibratorObservation(msname, cal)
-    
+
     for key in ["forsystemhealth", "reuse_flags"]:
         if key in kwargs and not kwargs[key]:
             raise RuntimeError(
@@ -226,7 +226,7 @@ def quick_calibration(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
 
 def get_cal_from_msname(msname: str) -> "CalibratorSource":
     """Construct a CalibratorSource objct based on the msname.
-    
+
     Assumes that the msname includes the calibrator source, and does
     not include the suffix, for e.g., `/path/to/directory/{date}_{calname}`
     """

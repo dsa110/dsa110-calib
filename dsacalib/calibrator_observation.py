@@ -101,14 +101,14 @@ class CalibratorObservation:
             blbased=False,
             forsystemhealth=self.config["forsystemhealth"],
             keepdelays=self.config["keepdelays"],
-            interp_thresh=1.5,
-            interp_polyorder=7,
+            #interp_thresh=1.5,
+            #interp_polyorder=7,
             tbeam=tbeam)
         print(error)
         dc.combine_bandpass_and_delay(self.table_prefix, self.config["forsystemhealth"])
 
         return error
-    
+
     def quick_delay_calibration(self) -> int:
         error = 0
         error += dc.delay_calibration(

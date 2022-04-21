@@ -1,6 +1,7 @@
 """A service to create measurement sets and calibrate data.
 """
 import os
+import shutil
 import sys
 import shutil
 import socket
@@ -426,7 +427,7 @@ def populate_queue(etcd_dict, outqueue=CALIB_Q):
 def store_file(source: str, target: str, remove_source_files: bool = False) -> None:
     """Sends an etcd command for a file to be stored on dsa-storage."""
     if socket.gethostname() == "dsa-storage":
-        os.copy(source.split(':')[-1], target)
+        shutil.copyfile(source, target)
     else:
         ETCD.put_dict("/cmd/store", {
             'cmd': 'rsync', 

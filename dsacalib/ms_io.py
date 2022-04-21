@@ -790,8 +790,6 @@ def reshape_calibration_data(
             ant1 = ant1.reshape(nbl, nspw, ntime)[:, 0, 0]
             ant2 = ant2.reshape(nbl, nspw, ntime)[:, 0, 0]
             spw = spw.reshape(nbl, nspw, ntime)[0, :, 0]
-    
-            spw = spw.reshape(ntime, nspw, nbl)[0, :, 0]
 
     else:
         assert np.all(spw[: nbl * ntime] == spw[0])
