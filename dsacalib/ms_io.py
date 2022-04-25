@@ -74,7 +74,8 @@ def convert_calibrator_pass_to_ms(
         try:
             reftime = Time(files[0])
             hdf5files = []
-            for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{files[0][:-4]}*.hdf5")):
+            # TODO: improve this search so there are no edge cases
+            for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{files[0][:-5]}*.hdf5")):
                 filetime = Time(hdf5f[:-5].split("/")[-1])
                 if abs(filetime-reftime) < 1*u.min:
                     hdf5files += [hdf5f]
