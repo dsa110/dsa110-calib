@@ -114,7 +114,7 @@ def calibrate_file(calname, flist):
         msname,
         filenames[date][calname]["cal"],
         logger=LOGGER,
-        throw_exceptions=True,
+        throw_exceptions=False,
         forsystemhealth=True,
     )
 
