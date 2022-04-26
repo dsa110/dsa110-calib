@@ -7,8 +7,11 @@ Stick close to the centre of the primary beam (+/- 2.5 deg).
 
 import datetime
 import time
+import signal
 from functools import wraps
 from typing import Callable
+from threading import Event
+
 import astropy.units as u
 import numpy as np
 import pandas
@@ -18,6 +21,7 @@ from dsacalib.preprocess import update_caltable
 
 SECONDS_PER_SIDEREAL_DAY = 86164.0905*u.s/(360*u.deg)
 
+EXIT_EVENT = Event()
 
 def continuum_voltage_triggers():
     """Send a voltage trigger when continuum sources is in primary beam.
@@ -49,8 +53,7 @@ def continuum_voltage_triggers():
     etcd.add_watch('/mon/array/dec', update_caltable_callback)
 
     check_sources_and_trigger_loop = run_and_wait(check_sources_and_trigger, 5*60)
-    while True:
-        check_sources_and_trigger_loop(calsources, etcd)
+    check_sources_and_trigger_loop(calsources, etcd)
 
 
 def check_sources_and_trigger(calsources: pandas.DataFrame, etcd: "etcd object") -> None:
@@ -71,17 +74,27 @@ def run_and_wait(target: Callable, frequency_s: int) -> Callable:
 
     @wraps(target)
     def inner(*args, **kwargs):
-        start = datetime.datetime.utcnow()
-        output = target(*args, **kwargs)
-        elapsed = (datetime.datetime.utcnow() - start).total_seconds()
-        tosleep = frequency_s - elapsed
-        if tosleep > 0:
-            time.sleep(tosleep)
+        while not EXIT_EVENT.is_set():
+            start = datetime.datetime.utcnow()
 
-        return output
+            target(*args, **kwargs)
+    
+            elapsed = (datetime.datetime.utcnow() - start).total_seconds()
+            tosleep = frequency_s - elapsed
+            if tosleep > 0:
+                EXIT_EVENT.wait(tosleep)
 
     return inner
 
 
+def quit(signo):
+    print(f"Interrupted by {signo}, shutting down")
+    EXIT_EVENT.set()
+
+
 if __name__ == '__main__':
+
+    for sig in ('TERM', 'HUP', 'INT'):
+        signal.signal( getattr(signal, 'SIG'+sig), quit)
+
     continuum_voltage_triggers()
