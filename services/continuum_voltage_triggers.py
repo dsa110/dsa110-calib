@@ -87,7 +87,7 @@ def run_and_wait(target: Callable, frequency_s: int) -> Callable:
     return inner
 
 
-def quit(signo):
+def quit(signo, _frame):
     print(f"Interrupted by {signo}, shutting down")
     EXIT_EVENT.set()
 
@@ -95,6 +95,6 @@ def quit(signo):
 if __name__ == '__main__':
 
     for sig in ('TERM', 'HUP', 'INT'):
-        signal.signal( getattr(signal, 'SIG'+sig), quit)
+        signal.signal(getattr(signal, 'SIG'+sig), quit)
 
     continuum_voltage_triggers()
