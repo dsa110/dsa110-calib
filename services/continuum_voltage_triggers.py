@@ -77,6 +77,7 @@ def run_and_wait(target: Callable, frequency_s: int) -> Callable:
         while not EXIT_EVENT.is_set():
             start = datetime.datetime.utcnow()
 
+            print(f"Running {target.__name__}")
             target(*args, **kwargs)
     
             elapsed = (datetime.datetime.utcnow() - start).total_seconds()
