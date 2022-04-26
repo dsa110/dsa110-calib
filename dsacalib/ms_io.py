@@ -75,9 +75,9 @@ def convert_calibrator_pass_to_ms(
             reftime = Time(files[0])
             hdf5files = []
             # TODO: improve this search so there are no edge cases
-            for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{files[0][:-5]}*.hdf5")):
+            for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{files[0][:-6]}*.hdf5")):
                 filetime = Time(hdf5f[:-5].split("/")[-1])
-                if abs(filetime-reftime) < 1*u.min:
+                if abs(filetime-reftime) < 2.5*u.min:
                     hdf5files += [hdf5f]
             assert len(hdf5files) < 17
             assert len(hdf5files) > 1
@@ -111,9 +111,9 @@ def convert_calibrator_pass_to_ms(
                 try:
                     reftime = Time(filename)
                     hdf5files = []
-                    for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{filename[:-4]}*.hdf5")):
+                    for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{filename[:-6]}*.hdf5")):
                         filetime = Time(hdf5f[:-5].split('/')[-1])
-                        if abs(filetime-reftime) < 1*u.min:
+                        if abs(filetime-reftime) < 2.5*u.min:
                             hdf5files += [hdf5f]
                     print(f"found {len(hdf5files)} hdf5files for {filename}")
                     uvh5_to_ms(
