@@ -36,11 +36,14 @@ def continuum_voltage_triggers():
         watch /mon/array/dec
         """
         nonlocal calsources
-        caltable = update_caltable(etcd_dict['pt_dec_deg']*u.deg)
+        caltable = update_caltable(etcd_dict['dec_deg']*u.deg)
         calsources = pandas.read_csv(caltable, header=0)
-        calsources = calsources.sort_values("percent flux", inplace=True)
+        calsources.sort_values("percent flux", inplace=True)
+        assert len(calsources) > 0, "No continuum sources at current dec"
         calsources = calsources.head(3)
         calsources.reset_index(inplace=True, drop=True)
+
+        print(f"Updated calsources to\n {calsources}")
 
     update_caltable_callback(etcd.get_dict('/mon/array/dec'))
     etcd.add_watch('/mon/array/dec', update_caltable_callback)
@@ -70,7 +73,7 @@ def run_and_wait(target: Callable, frequency_s: int) -> Callable:
     def inner(*args, **kwargs):
         start = datetime.datetime.utcnow()
         output = target(*args, **kwargs)
-        elapsed = (datetime.datetime.utcnow() - start()).total_seconds()
+        elapsed = (datetime.datetime.utcnow() - start).total_seconds()
         tosleep = frequency_s - elapsed
         if tosleep > 0:
             time.sleep(tosleep)
