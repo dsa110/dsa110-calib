@@ -22,8 +22,8 @@ SECONDS_PER_SIDEREAL_DAY = 86164.0905*u.s/(360*u.deg)
 def continuum_voltage_triggers():
     """Send a voltage trigger when continuum sources is in primary beam.
 
-    Triggers on sources that contain more than 20 percent of the total flux in
-    the field (after weighting for primary beam shape).
+    Triggers on 3 sources with the most weighted flux (as percent of the field)
+    at each pointing declination.
     """
     etcd = ds.DsaStore()
 
@@ -38,7 +38,8 @@ def continuum_voltage_triggers():
         nonlocal calsources
         caltable = update_caltable(etcd_dict['pt_dec_deg']*u.deg)
         calsources = pandas.read_csv(caltable, header=0)
-        calsources = calsources[calsources["percent flux"] > 0.2]
+        calsources = calsources.sort_values("percent flux", inplace=True)
+        calsources = calsources.head(3)
         calsources.reset_index(inplace=True, drop=True)
 
     update_caltable_callback(etcd.get_dict('/mon/array/dec'))
