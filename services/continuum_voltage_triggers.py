@@ -1,17 +1,22 @@
-import astropy.units as u
-import numpy as np
+"""Monitor the primary beam pointing and send voltage triggers on continuum sources.
+
+Aim for ~3 calibrator sources a day (weighted flux > 0.2 of the total field).
+One trigger on each source.
+Stick close to the centre of the primary beam (+/- 2.5 deg).
+"""
+
 import datetime
 import time
-import pandas
 from functools import wraps
+from typing import Callable
+import astropy.units as u
+import numpy as np
+import pandas
 
 import dsautils.dsa_store as ds
 from dsacalib.preprocess import update_caltable
 
-
-# Aim for ~3 calibrator sources a day
-# One trigger on each source 
-# Stick close to the centre of the primary beam
+SECONDS_PER_SIDEREAL_DAY = 86164.0905*u.s/(360*u.deg)
 
 
 def continuum_voltage_triggers():
@@ -20,7 +25,6 @@ def continuum_voltage_triggers():
     Triggers on sources that contain more than 20 percent of the total flux in
     the field (after weighting for primary beam shape).
     """
-    seconds_per_sidereal_day = 86164.0905*u.s/(360*u.deg)
     etcd = ds.DsaStore()
 
     # Initialize calsources
@@ -43,12 +47,15 @@ def continuum_voltage_triggers():
     check_sources_and_trigger_loop = run_and_wait(check_sources_and_trigger, 5*60)
     while True:
         check_sources_and_trigger_loop(calsources, etcd)
-        
+
 
 def check_sources_and_trigger(calsources: pandas.DataFrame, etcd: "etcd object") -> None:
     """Determines if any sources are in the primary beam, and sends voltage triggers if any are."""
     current_pointing = etcd.get_dict('/mon/array/pointing_J2000')
-    time_to_transit = (calsources['ra'].to_numpy()*u.deg - current_pointing['ra_deg']*u.deg)*seconds_per_sidereal_day
+    time_to_transit = (
+        calsources['ra'].to_numpy()*u.deg - current_pointing['ra_deg']*u.deg
+    )*SECONDS_PER_SIDEREAL_DAY
+
     to_trigger = np.where((time_to_transit > -2.5*u.min) & (time_to_transit < 2.5*u.min))[0]
 
     for idx in to_trigger:
@@ -70,7 +77,7 @@ def run_and_wait(target: Callable, frequency_s: int) -> Callable:
         return output
 
     return inner
-        
+
 
 if __name__ == '__main__':
     continuum_voltage_triggers()
