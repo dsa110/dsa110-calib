@@ -42,7 +42,7 @@ def continuum_voltage_triggers():
         nonlocal calsources
         caltable = update_caltable(etcd_dict['dec_deg']*u.deg)
         calsources = pandas.read_csv(caltable, header=0)
-        calsources.sort_values("percent flux", inplace=True)
+        calsources.sort_values("percent flux", inplace=True, ascending=False)
         assert len(calsources) > 0, "No continuum sources at current dec"
         calsources = calsources.head(3)
         calsources.reset_index(inplace=True, drop=True)
@@ -66,7 +66,12 @@ def check_sources_and_trigger(calsources: pandas.DataFrame, etcd: "etcd object")
     to_trigger = np.where((time_to_transit > -2.5*u.min) & (time_to_transit < 2.5*u.min))[0]
 
     for idx in to_trigger:
-        etcd.put_dict('/cmd/corr/0', {'cmd': 'ctrltrigger', 'val': calsources.loc(idx, 'source')})
+        etcd.put_dict(
+            '/cmd/corr/0',
+            {
+                'cmd': 'ctrltrigger',
+                'val': Time.now().strftime('%y%m%d') + calsources.loc[idx, 'source']
+            })
 
 
 def run_and_wait(target: Callable, frequency_s: int) -> Callable:
