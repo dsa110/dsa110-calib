@@ -66,6 +66,7 @@ def check_sources_and_trigger(calsources: pandas.DataFrame, etcd: "etcd object")
     to_trigger = np.where((time_to_transit > -2.5*u.min) & (time_to_transit < 2.5*u.min))[0]
 
     for idx in to_trigger:
+        print(f"Triggering on {calsources.loc[idx, 'source']}")
         etcd.put_dict(
             '/cmd/corr/0',
             {
