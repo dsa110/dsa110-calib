@@ -8,12 +8,13 @@ import numpy as np
 import scipy # pylint: disable=unused-import
 import astropy.units as u
 import astropy.constants as c
-from astropy.utils import iers
+from astropy.time import Time
 from casatasks import importuvfits
 from casacore.tables import addImagingColumns, table
 from pyuvdata import UVData
 
 from antpos.utils import get_itrf
+
 from dsautils import dsa_store
 import dsautils.cnf as dsc
 from dsamfs.fringestopping import calc_uvw_blt
@@ -23,20 +24,15 @@ from dsacalib import constants as ct
 from dsacalib.utils import Direction, generate_calibrator_source
 from dsacalib.fringestopping import amplitude_sky_model
 
-iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
-iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=wrong-import-position wrong-import-order ungrouped-imports
 
-de = dsa_store.DsaStore()
-
-CONF = dsc.Conf()
-CORR_PARAMS = CONF.get('corr')
-REFMJD = CONF.get('fringe')['refmjd']
+def get_refmjd() -> float:
+    conf = dsc.Conf()
+    return conf.get('fringe')['refmjd']
 
 
 def uvh5_to_ms(
         fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
-        flux=None, fringestop=True, logger=None, refmjd=REFMJD
+        flux=None, fringestop=True, logger=None, refmjd=None
 ):
     """
     Converts a uvh5 data to a uvfits file.
@@ -69,6 +65,9 @@ def uvh5_to_ms(
         The mjd used in the fringestopper.
     """
 
+    if refmjd is None:
+        refmjd = get_refmjd()
+
     uvdata, pt_dec, ra, dec = load_uvh5_file(fname, antenna_list, dt, ra, dec)
 
     antenna_positions = set_antenna_positions(uvdata, logger)
@@ -94,8 +93,10 @@ def phase_visibilities(
     blen = get_blen(uvdata)
     lamb = c.c/(uvdata.freq_array*u.Hz)
     time = Time(uvdata.time_array, format='jd')
+
     if refmjd is None:
         refmjd = np.mean(time.mjd)
+
     pt_dec = uvdata.extra_keywords['phase_center_dec']*u.rad
     uvw_m = calc_uvw_blt(
         blen, np.tile(refmjd, (uvdata.Nbls)), 'HADEC',
