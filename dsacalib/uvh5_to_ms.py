@@ -14,8 +14,6 @@ from casacore.tables import addImagingColumns, table
 from pyuvdata import UVData
 
 from antpos.utils import get_itrf
-
-from dsautils import dsa_store
 import dsautils.cnf as dsc
 from dsamfs.fringestopping import calc_uvw_blt
 
