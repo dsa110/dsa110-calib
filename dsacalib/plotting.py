@@ -18,8 +18,6 @@ from dsautils import cnf
 import dsacalib.constants as ct
 from dsacalib.ms_io import extract_vis_from_ms, read_caltable
 
-CONF = cnf.Conf()
-
 
 def plot_dyn_spec(
     vis, fobs, mjd, bname, normalize=False, outname=None, show=True, nx=None
@@ -1175,8 +1173,9 @@ def plot_current_beamformer_solutions(
         The full path to the directory in which the correlated hdf5 files are
         stored. Files were be searched for in `hdf5dir`/corr??/
     """
+    conf = cnf.Conf()
     if antennas is None:
-        antennas = np.array(list(CONF.get("corr")["antenna_order"].values))
+        antennas = np.array(list(conf.get("corr")["antenna_order"].values))
     assert len(antennas) == 64
     if antennas_to_plot is None:
         antennas_to_plot = antennas
@@ -1383,10 +1382,11 @@ def plot_beamformer_weights(
     ndarray
         The beamformer weights.
     """
+    conf = cnf.Conf()
     if pols is None:
         pols = ["B", "A"]
     if antennas is None:
-        antennas = np.array(list(CONF.get("corr")["antenna_order"].values()))
+        antennas = np.array(list(conf.get("corr")["antenna_order"].values()))
     assert len(antennas) == 64
     if antennas_to_plot is None:
         antennas_to_plot = antennas
