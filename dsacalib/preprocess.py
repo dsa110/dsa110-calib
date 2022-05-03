@@ -210,7 +210,8 @@ def read_nvss_catalog():
     return df
 
 
-def generate_caltable(pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*u.Jy, min_percent_flux=0.15):
+def generate_caltable(
+        pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*u.Jy, min_percent_flux=0.15):
     """Generate a table of calibrators at a given declination.
 
     Parameters
@@ -315,7 +316,7 @@ def update_caltable(pt_dec):
 
 def read_vla_catalog():
     """Read the VLA calibrator list into a dataframe.
-    
+
     Kept source, ra, dec, flux_20_cm keys in the NVSS catalog
     so we can easily switch the two of them out.
     """
@@ -323,7 +324,7 @@ def read_vla_catalog():
     filename = resource_filename("dsacalib", "data/vlacalibrators.txt")
     calsources = []
     with open(filename) as file:
-        for i in range(3):
+        for _ in range(3):
             file.readline()
         while True:
             line = file.readline()
@@ -335,7 +336,7 @@ def read_vla_catalog():
             dec = Angle(dec).to_value(u.deg)
             flux_20_cm = None
             code_20_cm = None
-            for i in range(4):
+            for _ in range(4):
                 file.readline()
 
             while True:
