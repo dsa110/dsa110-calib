@@ -8,35 +8,31 @@ import numpy as np
 import scipy # pylint: disable=unused-import
 import astropy.units as u
 import astropy.constants as c
-from astropy.utils import iers
+from astropy.time import Time
 from casatasks import importuvfits
 from casacore.tables import addImagingColumns, table
 from pyuvdata import UVData
 
 from antpos.utils import get_itrf
+
 from dsautils import dsa_store
 import dsautils.cnf as dsc
 from dsamfs.fringestopping import calc_uvw_blt
 
 from dsacalib.fringestopping import calc_uvw_interpolate
 from dsacalib import constants as ct
-from dsacalib.utils import Direction, CalibratorSource
+from dsacalib.utils import Direction, generate_calibrator_source
 from dsacalib.fringestopping import amplitude_sky_model
 
-iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
-iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=wrong-import-position wrong-import-order ungrouped-imports
 
-de = dsa_store.DsaStore()
-
-CONF = dsc.Conf(use_etcd=True)
-CORR_PARAMS = CONF.get('corr')
-REFMJD = CONF.get('fringe')['refmjd']
+def get_refmjd() -> float:
+    conf = dsc.Conf()
+    return conf.get('fringe')['refmjd']
 
 
 def uvh5_to_ms(
         fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
-        flux=None, fringestop=True, logger=None, refmjd=REFMJD
+        flux=None, fringestop=True, logger=None, refmjd=None
 ):
     """
     Converts a uvh5 data to a uvfits file.
@@ -69,6 +65,9 @@ def uvh5_to_ms(
         The mjd used in the fringestopper.
     """
 
+    if refmjd is None:
+        refmjd = get_refmjd()
+
     uvdata, pt_dec, ra, dec = load_uvh5_file(fname, antenna_list, dt, ra, dec)
 
     antenna_positions = set_antenna_positions(uvdata, logger)
@@ -94,8 +93,10 @@ def phase_visibilities(
     blen = get_blen(uvdata)
     lamb = c.c/(uvdata.freq_array*u.Hz)
     time = Time(uvdata.time_array, format='jd')
+
     if refmjd is None:
         refmjd = np.mean(time.mjd)
+
     pt_dec = uvdata.extra_keywords['phase_center_dec']*u.rad
     uvw_m = calc_uvw_blt(
         blen, np.tile(refmjd, (uvdata.Nbls)), 'HADEC',
@@ -136,7 +137,10 @@ def phase_visibilities(
     uvdata.phase_center_ra = phase_ra.to_value(u.rad)
     uvdata.phase_center_epoch = 2000.
     uvdata.phase_center_frame = 'icrs'
-    uvdata._set_app_coords_helper()
+    try:
+        uvdata._set_app_coords_helper()
+    except AttributeError:
+        pass
 
 
 def load_uvh5_file(
@@ -354,8 +358,8 @@ def set_ms_model_column(msname: str, uvdata: "UVData", pt_dec: "Quantity", ra: "
     if flux_Jy is not None:
         fobs = uvdata.freq_array.squeeze()/1e9
         lst = uvdata.lst_array
-        model = amplitude_sky_model(CalibratorSource('cal', ra, dec, flux_Jy),
-                                    lst, pt_dec, fobs)
+        source = generate_calibrator_source('cal', ra, dec, flux_Jy)
+        model = amplitude_sky_model(source, lst, pt_dec, fobs)
         model = np.tile(model[:, :, np.newaxis], (1, 1, uvdata.Npols))
     else:
         model = np.ones((uvdata.Nblts, uvdata.Nfreqs, uvdata.Npols), dtype=np.complex64)
@@ -427,9 +431,11 @@ def generate_phase_model_antbased(uvw, uvw_m, nbls, nts, lamb, ant1, ant2):
     """
     # Need ant1 and ant2 to be passed here
     # Need to check that this gets the correct refidxs
-    refant = ant1[0]
+    refant = 23 # ant1[0]
     refidxs = np.where(ant1 == refant)[0]
+
     antenna_order = list(ant2[refidxs])
+
     antenna_w_m = uvw_m[refidxs, -1]
     uvw_delays = uvw.reshape((nts, nbls, 3))
     antenna_w = uvw_delays[:, refidxs, -1]
