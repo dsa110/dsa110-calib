@@ -26,7 +26,7 @@ def get_refmjd() -> float:
 def get_config() -> "Config":
     """Retrieve antenna parameters from cnf."""
     ConfParams = namedtuple(
-        "Config antennas antennas_core antennas_not_in_bf refants pols corr_list refcorr "
+        "Config", "antennas antennas_core antennas_not_in_bf refants pols corr_list refcorr "
         "beamformer_dir")
 
     conf = cnf.Conf()
@@ -142,7 +142,7 @@ def read_gains(bfnames, selectants=None, path=None):
         path = config.beamformer_dir
 
     for i, beamformer_name in enumerate(bfnames):
-        for corridx, corr in enumerate(CORR_LIST):
+        for corridx, corr in enumerate(config.corr_list):
             with open(
                     f"{path}/beamformer_weights_corr{corr:02d}_{beamformer_name}.dat",
                     "rb",
