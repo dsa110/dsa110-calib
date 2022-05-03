@@ -14,9 +14,11 @@ from astropy.utils import iers
 import astropy.units as u
 from casacore.tables import table
 
+import dsautils.cnf as dsc
 import dsacalib.constants as ct
 import dsacalib.utils as du
 from dsacalib.calibrator_observation import CalibratorObservation
+from dsacalib.weights import write_beamformer_solutions
 
 iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
 iers.conf.auto_max_age = None
