@@ -15,11 +15,10 @@ import shutil
 import traceback
 
 import astropy.units as u
+from astropy.time import Time
 import scipy # pylint: disable=unused-import
 import casatools as cc
-import dsautils.cnf as dsc
 import numpy as np
-from astropy.utils import iers
 from casacore.tables import table
 from casatasks import virtualconcat
 from dsautils import calstatus as cs
@@ -29,21 +28,9 @@ import dsacalib.utils as du
 from dsacalib.uvh5_to_ms import uvh5_to_ms
 from dsacalib import constants as ct
 
-iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
-iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=ungrouped-imports,wrong-import-order,wrong-import-position
-
-de = dsa_store.DsaStore()
-
-CONF = dsc.Conf(use_etcd=True)
-CORR_PARAMS = CONF.get('corr')
-REFMJD = CONF.get('fringe')['refmjd']
 
 def convert_calibrator_pass_to_ms(
-        cal, date, files, msdir='/mnt/data/dsa110/calibration/',
-        hdf5dir='/mnt/data/dsa110/correlator/', antenna_list=None,
-        logger=None, overwrite=True
-):
+        cal, date, files, msdir, hdf5dir, antenna_list=None, logger=None, overwrite=True):
     r"""Converts hdf5 files near a calibrator pass to a CASA ms.
 
     Parameters
@@ -77,9 +64,10 @@ def convert_calibrator_pass_to_ms(
         try:
             reftime = Time(files[0])
             hdf5files = []
-            for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{files[0][:-4]}*.hdf5")):
+            # TODO: improve this search so there are no edge cases
+            for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{files[0][:-6]}*.hdf5")):
                 filetime = Time(hdf5f[:-5].split("/")[-1])
-                if abs(filetime-reftime) < 1*u.min:
+                if abs(filetime-reftime) < 2.5*u.min:
                     hdf5files += [hdf5f]
             assert len(hdf5files) < 17
             assert len(hdf5files) > 1
@@ -89,8 +77,7 @@ def convert_calibrator_pass_to_ms(
                 msname,
                 ra=cal.ra,
                 dec=cal.dec,
-                flux=cal.I,
-                # dt=duration,
+                flux=cal.flux,
                 antenna_list=antenna_list,
                 logger=logger
             )
@@ -114,9 +101,9 @@ def convert_calibrator_pass_to_ms(
                 try:
                     reftime = Time(filename)
                     hdf5files = []
-                    for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{filename[:-4]}*.hdf5")):
+                    for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{filename[:-6]}*.hdf5")):
                         filetime = Time(hdf5f[:-5].split('/')[-1])
-                        if abs(filetime-reftime) < 1*u.min:
+                        if abs(filetime-reftime) < 2.5*u.min:
                             hdf5files += [hdf5f]
                     print(f"found {len(hdf5files)} hdf5files for {filename}")
                     uvh5_to_ms(
@@ -124,7 +111,7 @@ def convert_calibrator_pass_to_ms(
                         f"{msdir}/{filename}",
                         ra=cal.ra,
                         dec=cal.dec,
-                        flux=cal.I,
+                        flux=cal.flux,
                         antenna_list=antenna_list,
                         logger=logger
                     )
@@ -794,8 +781,6 @@ def reshape_calibration_data(
             ant1 = ant1.reshape(nbl, nspw, ntime)[:, 0, 0]
             ant2 = ant2.reshape(nbl, nspw, ntime)[:, 0, 0]
             spw = spw.reshape(nbl, nspw, ntime)[0, :, 0]
-    
-            spw = spw.reshape(ntime, nspw, nbl)[0, :, 0]
 
     else:
         assert np.all(spw[: nbl * ntime] == spw[0])
@@ -859,6 +844,8 @@ def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
     logger : dsautils.dsa_syslog.DsaSyslogger() instance
         Logger to write messages too. If None, messages are printed.
     """
+    de = dsa_store.DsaStore()
+
     if pols is None:
         pols = ["B", "A"]
 

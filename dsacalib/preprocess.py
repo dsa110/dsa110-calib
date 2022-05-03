@@ -23,13 +23,22 @@ LOGGER = dsl.DsaSyslogger()
 LOGGER.subsystem("software")
 LOGGER.app("dsamfs")
 
-CONF = cnf.Conf(use_etcd=True)
-MFS_CONF = CONF.get("fringe")
-# parameters for freq scrunching
-NFREQ = MFS_CONF["nfreq_scrunch"]
-# Outrigger delays are those estimated by Morgan Catha based on the cable
-# length.
-OUTRIGGER_DELAYS = MFS_CONF["outrigger_delays"]
+
+def get_nfreq() -> int:
+    """Retrieve the number of frequency channels to scrunch by stored in cnf."""
+    conf = cnf.Conf()
+    mfs_conf = conf.get("fringe")
+    # parameters for freq scrunching
+    nfreq = mfs_conf["nfreq_scrunch"]
+    return nfreq
+
+
+def get_outrigger_delays() -> dict:
+    """Retrieve the outrigger delays from cnf."""
+    conf = cnf.Conf()
+    mfs_conf = conf.get("fringe")
+    outrigger_delays = mfs_conf["outrigger_delays"]
+    return outrigger_delays
 
 
 def first_true(iterable, default=False, pred=None):
@@ -82,8 +91,11 @@ def rsync_file(rsync_string, remove_source_files=True):
     return f"{fdir}{fname}"
 
 
-def remove_outrigger_delays(UVhandler, outrigger_delays=OUTRIGGER_DELAYS):
+def remove_outrigger_delays(UVhandler, outrigger_delays=None):
     """Remove outrigger delays from open UV object."""
+    if outrigger_delays is None:
+        outrigger_delays = get_outrigger_delays()
+
     if "applied_delays_ns" in UVhandler.extra_keywords.keys():
         applied_delays = (
             np.array(UVhandler.extra_keywords["applied_delays_ns"].split(" "))
@@ -119,7 +131,7 @@ def fscrunch_file(fname):
     """Removes outrigger delays before averaging in frequency.
 
     Leaves file untouched if the number of frequency bins is not divisible
-    by the desired number of frequency bins (NFREQ), or is equal to the desired
+    by the desired number of frequency bins (nfreq), or is equal to the desired
     number of frequency bins.
 
     Parameters
@@ -131,7 +143,7 @@ def fscrunch_file(fname):
     # print(fname)
     UV = UVData()
     UV.read_uvh5(fname, run_check_acceptability=False)
-    nint = UV.Nfreqs // NFREQ
+    nint = UV.Nfreqs // get_nfreq()
     if nint > 1 and UV.Nfreqs % nint == 0:
         remove_outrigger_delays(UV)
         # Scrunch in frequency by factor of nint
@@ -198,13 +210,7 @@ def read_nvss_catalog():
     return df
 
 
-def generate_caltable(
-    pt_dec,
-    csv_string,
-    radius=2.5 * u.deg,
-    min_weighted_flux=1 * u.Jy,
-    min_percent_flux=0.15,
-):
+def generate_caltable(pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*u.Jy, min_percent_flux=0.15):
     """Generate a table of calibrators at a given declination.
 
     Parameters
@@ -231,17 +237,13 @@ def generate_caltable(
     calibrators = calibrators.assign(field_flux=np.zeros(len(calibrators)))
     calibrators = calibrators.assign(weighted_flux=np.zeros(len(calibrators)))
     for name, row in calibrators.iterrows():
-        calibrators["weighted_flux"].loc[name] = (
-            row["flux_20_cm"]
-            / 1e3
-            * pb_resp(
+        calibrators.loc[name, "weighted_flux"] = (
+            row["flux_20_cm"] / 1e3 * pb_resp(
                 row["ra"] * (1 * u.deg).to_value(u.rad),
                 pt_dec.to_value(u.rad),
                 row["ra"] * (1 * u.deg).to_value(u.rad),
                 row["dec"] * (1 * u.deg).to_value(u.rad),
-                1.4,
-            )
-        )
+                1.4))
         field = df[
             (df["dec"] < (pt_dec + radius).to_value(u.deg))
             & (df["dec"] > (pt_dec - radius).to_value(u.deg))
@@ -250,7 +252,7 @@ def generate_caltable(
         ]
         field = field.assign(weighted_flux=np.zeros(len(field)))
         for fname, frow in field.iterrows():
-            field["weighted_flux"].loc[fname] = (
+            field.loc[fname, "weighted_flux"] = (
                 frow["flux_20_cm"]
                 / 1e3
                 * pb_resp(
@@ -261,7 +263,8 @@ def generate_caltable(
                     1.4,
                 )
             )
-        calibrators["field_flux"].loc[name] = sum(field["weighted_flux"])
+        calibrators.loc[name, "field_flux"] = sum(field["weighted_flux"])
+    print(calibrators.head)
     # Calculate percent of the field flux that is contained in the
     # main calibrator
     calibrators = calibrators.assign(
@@ -272,6 +275,7 @@ def generate_caltable(
         (calibrators["weighted_flux"] > min_weighted_flux.to_value(u.Jy))
         & (calibrators["percent_flux"] > min_percent_flux)
     ]
+    print(calibrators.head)
     # Create the caltable needed by the calibrator service
     caltable = calibrators[["ra", "dec", "flux_20_cm", "weighted_flux", "percent_flux"]]
     caltable.reset_index(inplace=True)
@@ -280,14 +284,13 @@ def generate_caltable(
             "index": "source",
             "flux_20_cm": "flux (Jy)",
             "weighted_flux": "weighted flux (Jy)",
-            "percent_flux": "percent flux",
-        },
-        inplace=True,
-    )
-    caltable["flux (Jy)"] = caltable["flux (Jy)"] / 1e3
-    caltable["source"] = [sname.strip("NVSS ") for sname in caltable["source"]]
-    caltable["ra"] = caltable["ra"] * u.deg
-    caltable["dec"] = caltable["dec"] * u.deg
+            "percent_flux": "percent flux"},
+        inplace=True)
+    caltable.loc[:, "flux (Jy)"] = caltable["flux (Jy)"] / 1e3
+    caltable.loc[:, "source"] = [sname.strip("NVSS ") for sname in caltable["source"]]
+    caltable.loc[:, "ra"] = caltable["ra"] * u.deg
+    caltable.loc[:, "dec"] = caltable["dec"] * u.deg
+    print(caltable.head)
     caltable.to_csv(resource_filename("dsacalib", csv_string))
 
 

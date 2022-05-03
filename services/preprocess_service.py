@@ -26,7 +26,7 @@ from dsacalib.utils import exception_logger
 warnings.filterwarnings("ignore")
 
 # TODO: Get these parameters from a function, rather tahn as defaults
-CONF = cnf.Conf(use_etcd=True)
+CONF = cnf.Conf()
 CORR_CONF = CONF.get('corr')
 CAL_CONF = CONF.get('cal')
 MFS_CONF = CONF.get('fringe')
@@ -264,16 +264,9 @@ if __name__=="__main__":
             'nthreads': 1,
             'task_fn': rsync_file,
             'queue': RSYNC_Q,
-            'outqueue': GATHER_Q, #FSCRUNCH_Q,
+            'outqueue': GATHER_Q,
             'processes': []
         },
-        # 'fscrunch': {
-        #     'nthreads': 4,
-        #     'task_fn': fscrunch_file,
-        #     'queue': FSCRUNCH_Q,
-        #     'outqueue': GATHER_Q,
-        #     'processes': []
-        # },
     }
     # Start etcd watch
     ETCD.add_watch('/cmd/cal', populate_queue)

@@ -50,7 +50,8 @@ class CalibratorObservation:
         """Reset flags and set new flags."""
         df.reset_all_flags(self.msname)
         error = 0
-        error += df.flag_baselines(self.msname, uvrange=self.config["bad_uvrange"])
+        if self.config["bad_uvrange"]:
+            error += df.flag_baselines(self.msname, uvrange=self.config["bad_uvrange"])
         error += df.flag_zeros(self.msname)
 
         for ant in self.config["bad_antennas"]:
@@ -100,14 +101,14 @@ class CalibratorObservation:
             blbased=False,
             forsystemhealth=self.config["forsystemhealth"],
             keepdelays=self.config["keepdelays"],
-            interp_thresh=1.5,
-            interp_polyorder=7,
+            #interp_thresh=1.5,
+            #interp_polyorder=7,
             tbeam=tbeam)
         print(error)
         dc.combine_bandpass_and_delay(self.table_prefix, self.config["forsystemhealth"])
 
         return error
-    
+
     def quick_delay_calibration(self) -> int:
         error = 0
         error += dc.delay_calibration(
@@ -117,7 +118,7 @@ class CalibratorObservation:
 
 def get_configuration() -> dict:
     """Get the default configuration for calibration."""
-    dsaconf = dsc.Conf(use_etcd=True)
+    dsaconf = dsc.Conf()
     cal_params = dsaconf.get("cal")
 
     config = {
