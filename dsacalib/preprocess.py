@@ -21,13 +21,22 @@ LOGGER = dsl.DsaSyslogger()
 LOGGER.subsystem("software")
 LOGGER.app("dsamfs")
 
-CONF = cnf.Conf()
-MFS_CONF = CONF.get("fringe")
-# parameters for freq scrunching
-NFREQ = MFS_CONF["nfreq_scrunch"]
-# Outrigger delays are those estimated by Morgan Catha based on the cable
-# length.
-OUTRIGGER_DELAYS = MFS_CONF["outrigger_delays"]
+
+def get_nfreq() -> int:
+    """Retrieve the number of frequency channels to scrunch by stored in cnf."""
+    conf = cnf.Conf()
+    mfs_conf = conf.get("fringe")
+    # parameters for freq scrunching
+    nfreq = mfs_conf["nfreq_scrunch"]
+    return nfreq
+
+
+def get_outrigger_delays() -> dict:
+    """Retrieve the outrigger delays from cnf."""
+    conf = cnf.Conf()
+    mfs_conf = conf.get("fringe")
+    outrigger_delays = mfs_conf["outrigger_delays"]
+    return outrigger_delays
 
 
 def first_true(iterable, default=False, pred=None):
@@ -80,8 +89,11 @@ def rsync_file(rsync_string, remove_source_files=True):
     return f"{fdir}{fname}"
 
 
-def remove_outrigger_delays(UVhandler, outrigger_delays=OUTRIGGER_DELAYS):
+def remove_outrigger_delays(UVhandler, outrigger_delays=None):
     """Remove outrigger delays from open UV object."""
+    if outrigger_delays is None:
+        outrigger_delays = get_outrigger_delays()
+
     if "applied_delays_ns" in UVhandler.extra_keywords.keys():
         applied_delays = (
             np.array(UVhandler.extra_keywords["applied_delays_ns"].split(" "))
@@ -117,7 +129,7 @@ def fscrunch_file(fname):
     """Removes outrigger delays before averaging in frequency.
 
     Leaves file untouched if the number of frequency bins is not divisible
-    by the desired number of frequency bins (NFREQ), or is equal to the desired
+    by the desired number of frequency bins (nfreq), or is equal to the desired
     number of frequency bins.
 
     Parameters
@@ -129,7 +141,7 @@ def fscrunch_file(fname):
     # print(fname)
     UV = UVData()
     UV.read_uvh5(fname, run_check_acceptability=False)
-    nint = UV.Nfreqs // NFREQ
+    nint = UV.Nfreqs // get_nfreq()
     if nint > 1 and UV.Nfreqs % nint == 0:
         remove_outrigger_delays(UV)
         # Scrunch in frequency by factor of nint
