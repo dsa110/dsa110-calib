@@ -15,11 +15,10 @@ import shutil
 import traceback
 
 import astropy.units as u
+from astropy.time import Time
 import scipy # pylint: disable=unused-import
 import casatools as cc
-import dsautils.cnf as dsc
 import numpy as np
-from astropy.utils import iers
 from casacore.tables import table
 from casatasks import virtualconcat
 from dsautils import calstatus as cs
@@ -29,15 +28,6 @@ import dsacalib.utils as du
 from dsacalib.uvh5_to_ms import uvh5_to_ms
 from dsacalib import constants as ct
 
-iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
-iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=ungrouped-imports,wrong-import-order,wrong-import-position
-
-de = dsa_store.DsaStore()
-
-CONF = dsc.Conf()
-CORR_PARAMS = CONF.get('corr')
-REFMJD = CONF.get('fringe')['refmjd']
 
 def convert_calibrator_pass_to_ms(
         cal, date, files, msdir, hdf5dir, antenna_list=None, logger=None, overwrite=True):
@@ -854,6 +844,8 @@ def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
     logger : dsautils.dsa_syslog.DsaSyslogger() instance
         Logger to write messages too. If None, messages are printed.
     """
+    de = dsa_store.DsaStore()
+
     if pols is None:
         pols = ["B", "A"]
 
