@@ -3,7 +3,6 @@
 
 import glob
 import os
-from typing import List
 
 from scipy.optimize import curve_fit
 import astropy.units as u

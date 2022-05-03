@@ -5,8 +5,6 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 2020/06
 import glob
 
 import scipy # pylint: disable=unused-import
-import dsautils.calstatus as cs
-import dsautils.cnf as dsc
 import numpy as np
 import pandas
 import astropy.units as u
@@ -15,6 +13,7 @@ from astropy.time import Time
 from casacore.tables import table
 
 import dsautils.cnf as dsc
+import dsautils.calstatus as cs
 import dsacalib.constants as ct
 import dsacalib.utils as du
 from dsacalib.calibrator_observation import CalibratorObservation
