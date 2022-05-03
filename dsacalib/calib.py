@@ -957,8 +957,8 @@ def combine_bandpass_and_delay(table_prefix: str, forsystemhealth: bool) -> None
 
     if not forsystemhealth:
         with table(f"{table_prefix}_bkcal") as tb:
-            bpass = np.array(tb.CPARAM[:])
-
+            bpass *= np.array(tb.CPARAM[:])
+    
     if not os.path.exists(f"{table_prefix}_bcal"):
         tablecopy(f"{table_prefix}_bpcal", f"{table_prefix}_bcal")
 
