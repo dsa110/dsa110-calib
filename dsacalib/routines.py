@@ -14,6 +14,7 @@ from astropy.coordinates import Angle
 from astropy.time import Time
 from casacore.tables import table
 
+import dsautils.cnf as dsc
 import dsacalib.constants as ct
 import dsacalib.utils as du
 from dsacalib.calibrator_observation import CalibratorObservation
