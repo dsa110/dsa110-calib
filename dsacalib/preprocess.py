@@ -360,3 +360,42 @@ def update_caltable(pt_dec):
     if not resource_exists("dsacalib", csv_string):
         generate_caltable(pt_dec, csv_string)
     return resource_filename("dsacalib", csv_string)
+
+def read_vla_catalog():
+    """Read the VLA calibrator list into a dataframe.
+    
+    Kept source, ra, dec, flux_20_cm keys in the NVSS catalog
+    so we can easily switch the two of them out.
+    """
+    Calibrator = namedtuple("Calibrator", "source ra dec flux_20_cm code_20_cm")
+    filename = resource_filename("dsacalib", "data/vlacalibrators.txt")
+    calsources = []
+    with open(filename) as file:
+        for i in range(3):
+            file.readline()
+        while True:
+            line = file.readline()
+            if not line:
+                break
+
+            source, _, _, ra, dec, *_ = line.split()
+            ra = Angle(ra).to_value(u.deg)
+            dec = Angle(dec).to_value(u.deg)
+            flux_20_cm = None
+            code_20_cm = None
+            for i in range(4):
+                file.readline()
+
+            while True:
+                line = file.readline()
+                if line.isspace() or not line:
+                    # We've reached the end of an entry
+                    calsources += [Calibrator(source, ra, dec, flux_20_cm, code_20_cm)]
+                    break
+                if "20cm " in line:
+                    _, _, code_a, code_b, code_c, code_d, flux_20_cm, *_ = line.split()
+                    code_20_cm = code_a+code_b+code_c+code_d
+    df = pandas.DataFrame.from_records(calsources, columns=Calibrator._fields)
+    df.set_index('source', inplace=True)
+
+    return df
