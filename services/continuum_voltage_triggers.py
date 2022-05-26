@@ -6,13 +6,13 @@ Stick close to the centre of the primary beam (+/- 2.5 deg).
 """
 
 import datetime
-import time
 import signal
 from functools import wraps
 from typing import Callable
 from threading import Event
 
 import astropy.units as u
+from astropy.time import Time
 import numpy as np
 import pandas
 
@@ -85,7 +85,7 @@ def run_and_wait(target: Callable, frequency_s: int) -> Callable:
 
             print(f"Running {target.__name__}")
             target(*args, **kwargs)
-    
+
             elapsed = (datetime.datetime.utcnow() - start).total_seconds()
             tosleep = frequency_s - elapsed
             if tosleep > 0:
@@ -94,7 +94,8 @@ def run_and_wait(target: Callable, frequency_s: int) -> Callable:
     return inner
 
 
-def quit(signo, _frame):
+def quit_service(signo, _frame):
+    """Quit the service."""
     print(f"Interrupted by {signo}, shutting down")
     EXIT_EVENT.set()
 
@@ -102,6 +103,6 @@ def quit(signo, _frame):
 if __name__ == '__main__':
 
     for sig in ('TERM', 'HUP', 'INT'):
-        signal.signal(getattr(signal, 'SIG'+sig), quit)
+        signal.signal(getattr(signal, 'SIG'+sig), quit_service)
 
     continuum_voltage_triggers()
