@@ -7,19 +7,24 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 
 """
 import os
+import shutil
+from typing import List
+from copy import deepcopy
 
 # Always import scipy before casatools
 from scipy.fftpack import fft, fftfreq, fftshift
 from scipy.signal import medfilt
 
-import casatools as cc
 import numpy as np
-from casacore.tables import table
+import casatools as cc
+from casacore.tables import table, tablecopy
 
 from dsacalib.ms_io import read_caltable
 
 
-def delay_calibration_worker(msname, sourcename, refant, t, combine_spw, name):
+def delay_calibration_worker(
+        msname: str, sourcename: str, refant: str, t: str, combine_spw: bool, name: str
+) -> int:
     r"""Calibrates delays using CASA.
 
     Uses CASA to calibrate delays and write the calibrated visibilities to the
@@ -58,13 +63,13 @@ def delay_calibration_worker(msname, sourcename, refant, t, combine_spw, name):
         combine = "field,scan,obs"
     error = 0
     cb = cc.calibrater()
-    error += not cb.open("{0}.ms".format(msname))
+    error += not cb.open(f"{msname}.ms")
     error += not cb.setsolve(
         type="K",
         t=t,
         refant=refant,
         combine=combine,
-        table="{0}_{1}_{2}".format(msname, sourcename, name),
+        table=f"{msname}_{sourcename}_{name}",
     )
     error += not cb.solve()
     error += not cb.close()
@@ -72,8 +77,9 @@ def delay_calibration_worker(msname, sourcename, refant, t, combine_spw, name):
 
 
 def delay_calibration(
-    msname, sourcename, refants, t1="inf", t2="60s", combine_spw=False
-):
+        msname: str, sourcename: str, refants: List[str], t1: str = "inf", t2: str = None,
+        combine_spw: bool = False
+) -> int:
     r"""Calibrates delays using CASA.
 
     Uses CASA to calibrate delays and write the calibrated visibilities to the
@@ -113,7 +119,11 @@ def delay_calibration(
     assert isinstance(refants, list)
     error = 0
     refant = None
-    for t in [t1, t2]:
+    tlist = [t1]
+    if t2:
+        tlist.append(t2)
+
+    for t in tlist:
         kcorr = None
         for refant in refants:
             if isinstance(refant, str):
@@ -126,21 +136,17 @@ def delay_calibration(
                 refant,
                 t,
                 combine_spw,
-                "ref{0}_{1}kcal".format(refant, "" if t == t1 else "2"),
+                f"ref{refant}_{'' if t == t1 else '2'}kcal",
             )
             if kcorr is None:
                 kcorr, _, flags, _, ant2 = read_caltable(
-                    "{0}_{1}_ref{2}_{3}kcal".format(
-                        msname, sourcename, refant, "" if t == t1 else "2"
-                    ),
+                    f"{msname}_{sourcename}_ref{refant}_{'' if t==t1 else '2'}kcal",
                     cparam=False,
                     reshape=False,
                 )
             else:
                 kcorrtmp, _, flagstmp, _, ant2tmp = read_caltable(
-                    "{0}_{1}_ref{2}_{3}kcal".format(
-                        msname, sourcename, refant, "" if t == t1 else "2"
-                    ),
+                    f"{msname}_{sourcename}_ref{refant}_{'' if t==t1 else '2'}kcal",
                     cparam=False,
                     reshape=False,
                 )
@@ -148,42 +154,34 @@ def delay_calibration(
                     np.abs(flags.reshape(flags.shape[0], -1).mean(axis=1) - 1) < 1e-5
                 )
                 assert antflags[refantidx] == 0, (
-                    "Refant {0} is flagged in kcorr!".format(refant)
-                    + "Choose refants that are separated in uv-space."
+                    f"Refant {refant} is flagged in kcorr! "
+                    "Choose refants that are separated in uv-space."
                 )
                 kcorr[antflags, ...] = kcorrtmp[antflags, ...] - kcorr[refantidx, ...]
                 ant2[antflags, ...] = ant2tmp[antflags, ...]
                 flags[antflags, ...] = flagstmp[antflags, ...]
+
         # write out to a table
         with table(
-            "{0}_{1}_ref{2}_{3}kcal".format(
-                msname, sourcename, refant, "" if t == t1 else "2"
-            ),
-            readonly=False,
+                f"{msname}_{sourcename}_ref{refant}_{'' if t == t1 else 2}kcal",
+                readonly=False,
         ) as tb:
             tb.putcol("FPARAM", kcorr)
             tb.putcol("FLAG", flags)
             tb.putcol("ANTENNA2", ant2)
+        newpath = f"{msname}_{sourcename}_{'' if t==t1 else '2'}kcal"
+        if os.path.exists(newpath):
+            shutil.rmtree(newpath)
         os.rename(
-            "{0}_{1}_ref{2}_{3}kcal".format(
-                msname, sourcename, refant, "" if t == t1 else "2"
-            ),
-            "{0}_{1}_{2}kcal".format(msname, sourcename, "" if t == t1 else "2"),
+            f"{msname}_{sourcename}_ref{refant}_{'' if t == t1 else '2'}kcal",
+            newpath
         )
     return error
 
 
 def gain_calibration(
-    msname,
-    sourcename,
-    refant,
-    blbased=False,
-    forsystemhealth=False,
-    keepdelays=False,
-    tbeam="30s",
-    interp_thresh=1.5,
-    interp_polyorder=7,
-):
+        msname: str, sourcename: str, refant: str, blbased: bool = False,
+        forsystemhealth: bool = False, keepdelays: bool = False, tbeam: str = "30s") -> int:
     r"""Use CASA to calculate bandpass and complex gain solutions.
 
     Saves solutions to calibration tables and calibrates the measurement set by
@@ -237,23 +235,23 @@ def gain_calibration(
     # Convert delay calibration into a bandpass representation
     caltables = [
         {
-            "table": "{0}_{1}_kcal".format(msname, sourcename),
+            "table": f"{msname}_{sourcename}_kcal",
             "type": "K",
             "spwmap": spwmap,
         }
     ]
 
     if not forsystemhealth:
-        with table("{0}.ms/SPECTRAL_WINDOW".format(msname)) as tb:
+        with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
             fobs = np.array(tb.CHAN_FREQ[:]).squeeze(0) / 1e9
             fref = np.array(tb.REF_FREQUENCY[:]) / 1e9
         cb = cc.calibrater()
-        error += not cb.open("{0}.ms".format(msname))
+        error += not cb.open(f"{msname}.ms")
         error += apply_calibration_tables(cb, caltables)
         error += not cb.setsolve(
             type="MF" if blbased else "B",
             combine=combine,
-            table="{0}_{1}_bkcal".format(msname, sourcename),
+            table=f"{msname}_{sourcename}_bkcal",
             refant=refant,
             apmode="a",
             solnorm=True,
@@ -261,11 +259,11 @@ def gain_calibration(
         error += not cb.solve()
         error += not cb.close()
 
-        with table("{0}_{1}_kcal".format(msname, sourcename), readonly=False) as tb:
+        with table(f"{msname}_{sourcename}_kcal", readonly=False) as tb:
             kcorr = np.array(tb.FPARAM[:])
             tb.putcol("FPARAM", np.zeros(kcorr.shape, kcorr.dtype))
 
-        with table("{0}_{1}_bkcal".format(msname, sourcename), readonly=False) as tb:
+        with table(f"{msname}_{sourcename}_bkcal", readonly=False) as tb:
             bpass = np.array(tb.CPARAM[:])
             bpass = np.ones(bpass.shape, bpass.dtype)
             kcorr = kcorr.squeeze()
@@ -278,20 +276,52 @@ def gain_calibration(
             tb.putcol("CPARAM", bpass)
         caltables += [
             {
-                "table": "{0}_{1}_bkcal".format(msname, sourcename),
+                "table": f"{msname}_{sourcename}_bkcal",
                 "type": "B",
                 "spwmap": spwmap,
             }
         ]
 
+    error += solve_gain_calibration(
+        msname, sourcename, refant, caltables, forsystemhealth, combine, spwmap,
+        blbased, tbeam)
+
+    if not forsystemhealth and keepdelays:
+        with table(f"{msname}_{sourcename}_kcal", readonly=False) as tb:
+            fparam = np.array(tb.FPARAM[:])
+            newparam = np.round(kcorr[:, np.newaxis, :] / 2) * 2
+            print("kcal", fparam.shape, newparam.shape)
+            tb.putcol("FPARAM", newparam)
+        with table(f"{msname}_{sourcename}_bkcal", readonly=False) as tb:
+            bpass = np.array(tb.CPARAM[:])
+            print(newparam.shape, bpass.shape, fobs.shape)
+            bpass *= np.exp(-2j * np.pi * (fobs[:, np.newaxis] - fref_snaps) * newparam)
+            print(bpass.shape)
+            tb.putcol("CPARAM", bpass)
+
+    return error
+
+def solve_gain_calibration(
+        msname: str, sourcename: str, refant: str, caltables: List[dict],
+        forsystemhealth: bool, combine: str = "field,scan,obs", spwmap: List = None,
+        blbased: bool = False, tbeam: str = "60s"
+) -> int:
+
+    if not spwmap:
+        spwmap = [-1]
+
+    error = 0
+
     # Rough bandpass calibration
+    caltables_orig = deepcopy(caltables)
+
     cb = cc.calibrater()
-    error += not cb.open("{0}.ms".format(msname))
+    error += not cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
     error += cb.setsolve(
         type="B",
         combine=combine,
-        table="{0}_{1}_bcal".format(msname, sourcename),
+        table=f"{msname}_{sourcename}_bcal",
         refant=refant,
         apmode="ap",
         t="inf",
@@ -302,7 +332,7 @@ def gain_calibration(
 
     caltables += [
         {
-            "table": "{0}_{1}_bcal".format(msname, sourcename),
+            "table": f"{msname}_{sourcename}_bcal",
             "type": "B",
             "spwmap": spwmap,
         }
@@ -310,12 +340,12 @@ def gain_calibration(
 
     # Gain calibration
     cb = cc.calibrater()
-    error += cb.open("{0}.ms".format(msname))
+    error += cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
     error += cb.setsolve(
         type="G",
         combine=combine,
-        table="{0}_{1}_gacal".format(msname, sourcename),
+        table=f"{msname}_{sourcename}_gacal",
         refant=refant,
         apmode="a",
         t="inf",
@@ -325,19 +355,19 @@ def gain_calibration(
 
     caltables += [
         {
-            "table": "{0}_{1}_gacal".format(msname, sourcename),
+            "table": f"{msname}_{sourcename}_gacal",
             "type": "G",
             "spwmap": spwmap,
         }
     ]
 
     cb = cc.calibrater()
-    error += cb.open("{0}.ms".format(msname))
+    error += cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
     error += cb.setsolve(
         type="G",
         combine=combine,
-        table="{0}_{1}_gpcal".format(msname, sourcename),
+        table=f"{msname}_{sourcename}_gpcal",
         refant=refant,
         apmode="p",
         t="inf",
@@ -346,42 +376,26 @@ def gain_calibration(
     error += cb.close()
 
     # Final bandpass calibration
-    caltables = [
+    caltables = caltables_orig + [
         {
-            "table": "{0}_{1}_gacal".format(msname, sourcename),
+            "table": f"{msname}_{sourcename}_gacal",
             "type": "G",
             "spwmap": spwmap,
         },
         {
-            "table": "{0}_{1}_gpcal".format(msname, sourcename),
+            "table": f"{msname}_{sourcename}_gpcal",
             "type": "G",
             "spwmap": spwmap,
         },
-    ]
-
-    if not forsystemhealth:
-        caltables += [
-            {
-                "table": "{0}_{1}_bkcal".format(msname, sourcename),
-                "type": "B",
-                "spwmap": spwmap,
-            }
-        ]
-    caltables += [
-        {
-            "table": "{0}_{1}_kcal".format(msname, sourcename),
-            "type": "K",
-            "spwmap": spwmap,
-        }
     ]
 
     cb = cc.calibrater()
-    error += cb.open("{0}.ms".format(msname))
+    error += cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
     error += cb.setsolve(
         type="B",
         combine=combine,
-        table="{0}_{1}_bacal".format(msname, sourcename),
+        table=f"{msname}_{sourcename}_bacal",
         refant=refant,
         apmode="a",
         t="inf",
@@ -394,26 +408,24 @@ def gain_calibration(
         interpolate_bandpass_solutions(
             msname,
             sourcename,
-            thresh=interp_thresh,
-            polyorder=interp_polyorder,
             mode="a",
         )
 
     caltables += [
         {
-            "table": "{0}_{1}_bacal".format(msname, sourcename),
+            "table": f"{msname}_{sourcename}_bacal",
             "type": "B",
             "spwmap": spwmap,
         }
     ]
 
     cb = cc.calibrater()
-    error += cb.open("{0}.ms".format(msname))
+    error += cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
     error += cb.setsolve(
         type="B",
         combine=combine,
-        table="{0}_{1}_bpcal".format(msname, sourcename),
+        table=f"{msname}_{sourcename}_bpcal",
         refant=refant,
         apmode="p",
         t="inf",
@@ -422,43 +434,28 @@ def gain_calibration(
     error += cb.solve()
     error += cb.close()
 
-    if not forsystemhealth:  # and not keepdelays:
+    if not forsystemhealth:
         interpolate_bandpass_solutions(
             msname,
             sourcename,
-            thresh=interp_thresh,
-            polyorder=interp_polyorder,
             mode="p",
         )
-
-    if not forsystemhealth and keepdelays:
-        with table("{0}_{1}_kcal".format(msname, sourcename), readonly=False) as tb:
-            fparam = np.array(tb.FPARAM[:])
-            newparam = np.round(kcorr[:, np.newaxis, :] / 2) * 2
-            print("kcal", fparam.shape, newparam.shape)
-            tb.putcol("FPARAM", newparam)
-        with table("{0}_{1}_bkcal".format(msname, sourcename), readonly=False) as tb:
-            bpass = np.array(tb.CPARAM[:])
-            print(newparam.shape, bpass.shape, fobs.shape)
-            bpass *= np.exp(-2j * np.pi * (fobs[:, np.newaxis] - fref_snaps) * newparam)
-            print(bpass.shape)
-            tb.putcol("CPARAM", bpass)
 
     if forsystemhealth:
         caltables += [
             {
-                "table": "{0}_{1}_bpcal".format(msname, sourcename),
+                "table": f"{msname}_{sourcename}_bpcal",
                 "type": "B",
                 "spwmap": spwmap,
             }
         ]
         cb = cc.calibrater()
-        error += not cb.open("{0}.ms".format(msname))
+        error += not cb.open(f"{msname}.ms")
         error += apply_calibration_tables(cb, caltables)
         error += not cb.setsolve(
             type="M" if blbased else "G",
             combine=combine,
-            table="{0}_{1}_2gcal".format(msname, sourcename),
+            table=f"{msname}_{sourcename}_2gcal",
             refant=refant,
             apmode="ap",
             t=tbeam,
@@ -469,281 +466,7 @@ def gain_calibration(
     return error
 
 
-def flag_antenna(msname, antenna, datacolumn="data", pol=None):
-    """Flags an antenna in a measurement set using CASA.
-
-    Parameters
-    ----------
-    msname : str
-        The name of the measurement set.  The MS `msname`.ms will be opened.
-    antenna : str
-        The antenna to flag. If type *str*, this is the name of the antenna. If
-        type *int*, the index of the antenna in the measurement set.
-    datacolumn : str
-        The column of the measurement set to flag. Options are ``'data'``,
-        ``'model'``, ``'corrected'`` for the uncalibrated visibilities, the
-        visibility model (used by CASA to calculate calibration solutions), the
-        calibrated visibilities.  Defaults to ``'data'``.
-    pol : str
-        The polarization to flag. Must be `'A'` (which is mapped to
-        polarization 'XX' of the CASA measurement set) or `'B'` (mapped to
-        polarization 'YY').  Can also be `None`, for which both polarizations
-        are flagged.  Defaults to `None`.
-
-    Returns
-    -------
-    int
-        The number of errors that occured during flagging.
-    """
-    if isinstance(antenna, int):
-        antenna = str(antenna)
-    error = 0
-    ag = cc.agentflagger()
-    error += not ag.open("{0}.ms".format(msname))
-    error += not ag.selectdata()
-    rec = {}
-    rec["mode"] = "manual"
-    # rec['clipoutside'] = False
-    rec["datacolumn"] = datacolumn
-    rec["antenna"] = antenna
-    if pol is not None:
-        rec["correlation"] = "XX" if pol == "A" else "YY"
-    else:
-        rec["correlation"] = "XX,YY"
-    error += not ag.parseagentparameters(rec)
-    error += not ag.init()
-    error += not ag.run()
-    error += not ag.done()
-
-    return error
-
-
-def flag_manual(msname, key, value, datacolumn="data", pol=None):
-    """Flags a measurement set in CASA using a flagging string.
-
-    Parameters
-    ----------
-    msname : str
-        The name of the measurement set.  The MS `msname`.ms will be opened.
-    key : str
-        The CASA-interpreted flagging specifier.
-    datacolumn : str
-        The column of the measurement set to flag. Options are ``'data'``,
-        ``'model'``, ``'corrected'`` for the uncalibrated visibilities, the
-        visibility model (used by CASA to calculate calibration solutions), the
-        calibrated visibilities.  Defaults to ``'data'``.
-    pol : str
-        The polarization to flag. Must be `'A'` (which is mapped to
-        polarization 'XX' of the CASA measurement set) or `'B'` (mapped to
-        polarization 'YY').  Can also be `None`, for which both polarizations
-        are flagged.  Defaults to `None`.
-
-    Returns
-    -------
-    int
-        The number of errors that occured during flagging.
-    """
-    error = 0
-    ag = cc.agentflagger()
-    error += not ag.open("{0}.ms".format(msname))
-    error += not ag.selectdata()
-    rec = {}
-    rec["mode"] = "manual"
-    rec["datacolumn"] = datacolumn
-    rec[key] = value
-    if pol is not None:
-        rec["correlation"] = "XX" if pol == "A" else "YY"
-    else:
-        rec["correlation"] = "XX,YY"
-    error += not ag.parseagentparameters(rec)
-    error += not ag.init()
-    error += not ag.run()
-    error += not ag.done()
-
-    return error
-
-
-def flag_baselines(msname, datacolumn="data", uvrange="2~15m"):
-    """Flags an antenna in a measurement set using CASA.
-
-    Parameters
-    ----------
-    msname : str
-        The name of the measurement set.  The MS `msname`.ms will be opened.
-    datacolumn : str
-        The column of the measurement set to flag. Options are ``'data'``,
-        ``'model'``, ``'corrected'`` for the uncalibrated visibilities, the
-        visibility model (used by CASA to calculate calibration solutions), the
-        calibrated visibilities.  Defaults to ``'data'``.
-    uvrange : str
-        The uvrange to flag. Should be CASA-interpretable.
-
-    Returns
-    -------
-    int
-        The number of errors that occured during flagging.
-    """
-    error = 0
-    ag = cc.agentflagger()
-    error += not ag.open("{0}.ms".format(msname))
-    error += not ag.selectdata()
-    rec = {}
-    rec["mode"] = "manual"
-    rec["datacolumn"] = datacolumn
-    rec["uvrange"] = uvrange
-    error += not ag.parseagentparameters(rec)
-    error += not ag.init()
-    error += not ag.run()
-    error += not ag.done()
-
-    return error
-
-
-def reset_flags(msname, datacolumn=None):
-    """Resets all flags in a measurement set, so that all data is unflagged.
-
-    Parameters
-    ----------
-    msname : str
-        The name of the measurement set. The MS `msname`.ms will be opened.
-    datacolumn : str
-        The column of the measurement set to flag. Options are ``'data'``,
-        ``'model'``, ``'corrected'`` for the uncalibrated visibilities, the
-        visibility model (used by CASA to calculate calibration solutions), the
-        calibrated visibilities.  Defaults to ``'data'``.
-
-    Returns
-    -------
-    int
-        The number of errors that occured during flagging.
-    """
-    error = 0
-    ag = cc.agentflagger()
-    error += not ag.open("{0}.ms".format(msname))
-    error += not ag.selectdata()
-    rec = {}
-    rec["mode"] = "unflag"
-    if datacolumn is not None:
-        rec["datacolumn"] = datacolumn
-    rec["antenna"] = ""
-    error += not ag.parseagentparameters(rec)
-    error += not ag.init()
-    error += not ag.run()
-    error += not ag.done()
-
-    return error
-
-
-def flag_zeros(msname, datacolumn="data"):
-    """Flags all zeros in a measurement set.
-
-    Parameters
-    ----------
-    msname : str
-        The name of the measurement set. The MS `msname`.ms will be opened.
-    datacolumn : str
-        The column of the measurement set to flag. Options are ``'data'``,
-        ``'model'``, ``'corrected'`` for the uncalibrated visibilities, the
-        visibility model (used by CASA to calculate calibration solutions), the
-        calibrated visibilities.  Defaults to ``'data'``.
-
-    Returns
-    -------
-    int
-        The number of errors that occured during flagging.
-    """
-    error = 0
-    ag = cc.agentflagger()
-    error += not ag.open("{0}.ms".format(msname))
-    error += not ag.selectdata()
-    rec = {}
-    rec["mode"] = "clip"
-    rec["clipzeros"] = True
-    rec["datacolumn"] = datacolumn
-    error += not ag.parseagentparameters(rec)
-    error += not ag.init()
-    error += not ag.run()
-    error += not ag.done()
-
-    return error
-
-
-# TODO: Change times to not use mjds, but mjd instead
-def flag_badtimes(msname, times, bad, nant, datacolumn="data", verbose=False):
-    """Flags bad time bins for each antenna in a measurement set using CASA.
-
-    Could use some work to select antennas to flag in a smarter way.
-
-    Parameters
-    ----------
-    msname : str
-        The name of the measurement set. The MS `msname`.ms will be opened.
-    times : ndarray
-        A 1-D array of times, type float, seconds since MJD=0. Times should be
-        equally spaced and cover the entire time range of the measurement set,
-        but can be coarser than the resolution of the measurement set.
-    bad : ndarray
-        A 1-D boolean array with dimensions (len(`times`), `nant`). Should have
-        a value of ``True`` if the corresponding timebins should be flagged.
-    nant : int
-        The number of antennas in the measurement set (includes ones not in the
-        visibilities).
-    datacolumn : str
-        The column of the measurement set to flag. Options are ``'data'``,
-        ``'model'``, ``'corrected'`` for the uncalibrated visibilities, the
-        visibility model (used by CASA to calculate calibration solutions), the
-        calibrated visibilities.  Defaults to ``'data'``.
-    verbose : boolean
-        If ``True``, will print information about the antenna/time pairs being
-        flagged.  Defaults to ``False``.
-
-    Returns
-    -------
-    int
-        The number of errors that occured during flagging.
-    """
-    error = 0
-    tdiff = np.median(np.diff(times))
-    ag = cc.agentflagger()
-    error += not ag.open("{0}.ms".format(msname))
-    error += not ag.selectdata()
-    for i in range(nant):
-        rec = {}
-        rec["mode"] = "clip"
-        rec["clipoutside"] = False
-        rec["datacolumn"] = datacolumn
-        rec["antenna"] = str(i)
-        rec["polarization_type"] = "XX"
-        tstr = ""
-        for j, timesj in enumerate(times):
-            if bad[j]:
-                if len(tstr) > 0:
-                    tstr += "; "
-                tstr += "{0}~{1}".format(timesj - tdiff / 2, timesj + tdiff / 2)
-        if verbose:
-            print("For antenna {0}, flagged: {1}".format(i, tstr))
-        error += not ag.parseagentparameters(rec)
-        error += not ag.init()
-        error += not ag.run()
-
-        rec["polarization_type"] = "YY"
-        tstr = ""
-        for j, timesj in enumerate(times):
-            if bad[j]:
-                if len(tstr) > 0:
-                    tstr += "; "
-                tstr += "{0}~{1}".format(timesj - tdiff / 2, timesj + tdiff / 2)
-        if verbose:
-            print("For antenna {0}, flagged: {1}".format(i, tstr))
-        error += not ag.parseagentparameters(rec)
-        error += not ag.init()
-        error += not ag.run()
-    error += not ag.done()
-
-    return error
-
-
-def calc_delays(vis, df, nfavg=5, tavg=True):
+def calc_delays(vis: np.ndarray, df: float, nfavg: int = 5, tavg: bool = True) -> tuple:
     """Calculates power as a function of delay from the visibilities.
 
     This uses scipy fftpack to fourier transform the visibilities along the
@@ -802,85 +525,10 @@ def calc_delays(vis, df, nfavg=5, tavg=True):
     return vis_ft, delay_arr
 
 
-# def get_bad_times(msname, sourcename, refant, tint='59s', combine_spw=False,
-#                   nspw=1):
-#     r"""Flags bad times in the calibrator data.
-
-#     Calculates delays on short time periods and compares them to the delay
-#     calibration solution. Can only be run after delay calibration.
-
-#     Parameters
-#     ----------
-#     msname : str
-#         The name of the measurement set. The MS `msname`.ms will be opened.
-#     sourcename : str
-#         The name of the calibrator source.  The calibration table will be
-#         written to `msname`\_`sourcename`\_kcal.
-#     refant : str
-#         The reference antenna to use in calibration. If type *str*, the name of
-#         the reference antenna, if type *int*, the index of the antenna in the
-#         CASA measurement set. This must be the same as the reference antenna
-#         used in the delay calibration, or unexpected errors may occur.
-#     tint : str
-#         The timescale on which to calculate the delay solutions (and evaluate
-#         the data quality). Must be a CASA-interpreted string, e.g. ``'inf'``
-#         (average all of the data) or ``'60s'`` (average data to 60-second bins
-#         before delay calibration).  Defaults to ``'59s'``.
-#     combine_spw : bool
-#         Set to True if the spws were combined before delay calibration.
-#     nspw : int
-#         The number of spws in the measurement set.
-
-#     Returns
-#     -------
-#     bad_times : array
-#         Booleans, ``True`` if the data quality is poor and the time-bin should
-#         be flagged, ``False`` otherwise.  Same dimensions as times.
-#     times : array
-#         Floats, the time (mjd) for each delay solution.
-#     error : int
-#         The number of errors that occured during calibration.
-#     """
-#     if combine_spw:
-#         combine = 'field,scan,obs,spw'
-#     else:
-#         combine = 'field,scan,obs'
-#     error = 0
-#     # Solve the calibrator data on minute timescales
-#     cb = cc.calibrater()
-#     error += not cb.open('{0}.ms'.format(msname))
-#     error += not cb.setsolve(type='K', t=tint, refant=refant, combine=combine,
-#                              table='{0}_{1}_2kcal'.format(msname, sourcename))
-#     error += not cb.solve()
-#     error += not cb.close()
-#     # Pull the solutions for the entire timerange and the 60-s data from the
-#     # measurement set tables
-#     antenna_delays, times, _flags, _ant1, _ant2 = read_caltable(
-#         '{0}_{1}_2kcal'.format(msname, sourcename), cparam=False)
-#     npol = antenna_delays.shape[-1]
-#     kcorr, _tkcorr, _flags, _ant1, _ant2 = read_caltable(
-#         '{0}_{1}_kcal'.format(msname, sourcename), cparam=False)
-#     # Shapes (baseline, time, spw, frequency, pol)
-#     # Squeeze on the freqeuncy axis
-#     antenna_delays = antenna_delays.squeeze(axis=3)
-#     kcorr = kcorr.squeeze(axis=3)
-#     nant = antenna_delays.shape[0]
-#     nspw = antenna_delays.shape[2]
-
-#     threshold = nant*nspw*npol//2
-#     bad_pixels = (np.abs(antenna_delays-kcorr) > 1.5)
-#     bad_times = (bad_pixels.reshape(bad_pixels.shape[0],
-#                                             bad_pixels.shape[1], -1)
-#                          .sum(axis=-1).sum(axis=0) > threshold)
-#     # bad_times[:, np.sum(np.sum(bad_times, axis=0), axis=1) > threshold, :] \
-#     #    = np.ones((nant, 1, npol))
-
-#     return bad_times, times, error
-
-
 def apply_calibration(
-    msname, calname, msnamecal=None, combine_spw=False, nspw=1, blbased=False
-):
+        msname: str, calname: str, msnamecal: str = None, combine_spw: str = False, nspw: int = 1,
+        blbased: bool = False
+) -> int:
     r"""Applies the calibration solution.
 
     Applies delay, bandpass and complex gain tables to a measurement set.
@@ -919,22 +567,22 @@ def apply_calibration(
         msnamecal = msname
     caltables = [
         {
-            "table": "{0}_{1}_kcal".format(msnamecal, calname),
+            "table": f"{msnamecal}_{calname}_kcal",
             "type": "K",
             "spwmap": spwmap,
         },
         {
-            "table": "{0}_{1}_bcal".format(msnamecal, calname),
+            "table": f"{msnamecal}_{calname}_bcal",
             "type": "MF" if blbased else "B",
             "spwmap": spwmap,
         },
         {
-            "table": "{0}_{1}_gacal".format(msnamecal, calname),
+            "table": f"{msname}_{calname}_gacal",
             "type": "M" if blbased else "G",
             "spwmap": spwmap,
         },
         {
-            "table": "{0}_{1}_gpcal".format(msnamecal, calname),
+            "table": f"{msnamecal}_{calname}_gpcal",
             "type": "M" if blbased else "G",
             "spwmap": spwmap,
         },
@@ -944,8 +592,9 @@ def apply_calibration(
 
 
 def apply_delay_bp_cal(
-    msname, calname, blbased=False, msnamecal=None, combine_spw=False, nspw=1
-):
+        msname: str, calname: str, blbased: bool = False, msnamecal: str = None,
+        combine_spw: bool = False, nspw: int = 1
+) -> int:
     r"""Applies delay and bandpass calibration.
 
     Parameters
@@ -984,12 +633,12 @@ def apply_delay_bp_cal(
     error = 0
     caltables = [
         {
-            "table": "{0}_{1}_kcal".format(msnamecal, calname),
+            "table": f"{msname}_{calname}_kcal",
             "type": "K",
             "spwmap": spwmap,
         },
         {
-            "table": "{0}_{1}_bcal".format(msnamecal, calname),
+            "table": f"{msnamecal}_{calname}_bcal",
             "type": "MF" if blbased else "B",
             "spwmap": spwmap,
         },
@@ -998,67 +647,10 @@ def apply_delay_bp_cal(
     return error
 
 
-def fill_antenna_gains(gains, flags=None):
-    """Fills in the antenna gains for triple-antenna calibration.
-
-    Takes the gains from baseline-based calibration for a trio of antennas and
-    calculates the corresponding antenna gains using products of the baseline
-    gains. Also propagates flag information for the input baseline gains to
-    the antenna gains.
-
-    Parameters
-    ----------
-    gains : narray
-        The complex gains matrix, first dimension is baseline. Indices 1, 2 and
-        4 contain the gains for the cross-correlations. Information in indices
-        0, 3 and 5 is ignored and overwritten.
-    flags : ndarray
-        A boolean array, containing flag information for the `gains` array. 1
-        if the data is flagged, 0 otherwise. If ``None``, assumes no flag
-        information available.  The first dimension is baseline.  Indices 1, 2
-        and 4 contain the flags for the cross-correlations.  Information in
-        indices 0, 3 and 5 is ignored and overwritten.
-
-    Returns
-    -------
-    gains : ndarray
-        The complex gains matrix, first dimension is baseline. Indices 1, 2 and
-        4 contain the gains for the cross-correlations. Indices 0, 3 and 5
-        contain the calculated values for the antennas.
-    flags : ndarray
-        A boolean array, containing flag information for the `gains` array. 1
-        if the data is flagged, 0 otherwise. If None, assumes no flag
-        information available. The first dimension is baseline.  Indices 1, 2
-        and 4 contain the flags for the cross-correlations.  Indices 0,3 and 5
-        contain the calculated values for the antennas.
-    """
-    assert gains.shape[0] == 6, "Will only calculate antenna gains for trio"
-    #   use ant1 and ant2 to do this?
-    #     for i in range(6):
-    #         if ant1[i] != ant2[i]:
-    #             idxp = np.where((ant1 == ant1[i]) & (ant2 == ant1[i]))[0][0]
-    #             idxn = np.where((ant1 == ant2[i]) & (ant2 == ant2[i]))[0][0]
-    #             idxd = np.where((ant1 == ant2) & (ant1 != ant1[i]) &
-    #                             (ant1 != ant2[i]))[0][0]
-    #             gains[i] = np.conjugate(gains[idxn])*gains[idxp]/gains[idxd]
-    gains[0] = np.conjugate(gains[1]) * gains[2] / gains[4]
-    gains[3] = gains[1] * gains[4] / gains[2]
-    gains[5] = gains[2] * np.conjugate(gains[4]) / gains[1]
-
-    if flags is not None:
-        flags[[0, 3, 5], ...] = np.min(
-            np.array(
-                [flags[1] + flags[2] + flags[4], np.ones(flags[0].shape, dtype=int)]
-            ),
-            axis=0,
-        )
-        return gains, flags
-    return gains
-
-
 def calibrate_gain(
-    msname, calname, caltable_prefix, refant, tga, tgp, blbased=False, combined=False
-):
+        msname: str, calname: str, caltable_prefix: str, refant: str, tga: str, tgp: str,
+        blbased: bool = False, combined: bool = False
+) -> int:
     """Calculates gain calibration only.
 
     Uses existing solutions for the delay and bandpass.
@@ -1100,31 +692,31 @@ def calibrate_gain(
         bptype = "B"
     combine = "scan,field,obs"
     caltables = [
-        {"table": "{0}_kcal".format(caltable_prefix), "type": "K", "spwmap": spwmap}
+        {"table": f"{caltable_prefix}_kcal", "type": "K", "spwmap": spwmap}
     ]
     error = 0
     cb = cc.calibrater()
-    error += not cb.open("{0}.ms".format(msname))
+    error += not cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
     error += not cb.setsolve(
         type=bptype,
         combine=combine,
-        table="{0}_{1}_bcal".format(msname, calname),
+        table=f"{msname}_{calname}_bcal",
         minblperant=1,
         refant=refant,
     )
     error += not cb.solve()
     error += not cb.close()
     caltables += [
-        {"table": "{0}_bcal".format(caltable_prefix), "type": bptype, "spwmap": spwmap}
+        {"table": f"{caltable_prefix}_bcal", "type": bptype, "spwmap": spwmap}
     ]
     cb = cc.calibrater()
-    error += not cb.open("{0}.ms".format(msname))
+    error += not cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
     error += not cb.setsolve(
         type=gtype,
         combine=combine,
-        table="{0}_{1}_gpcal".format(msname, calname),
+        table=f"{msname}_{calname}_gpcal",
         t=tgp,
         minblperant=1,
         refant=refant,
@@ -1133,10 +725,10 @@ def calibrate_gain(
     error += not cb.solve()
     error += not cb.close()
     cb = cc.calibrater()
-    error += not cb.open("{0}.ms".format(msname))
+    error += not cb.open(f"{msname}.ms")
     caltables += [
         {
-            "table": "{0}_{1}_gpcal".format(msname, calname),
+            "table": f"{msname}_{calname}_gpcal",
             "type": gtype,
             "spwmap": spwmap,
         }
@@ -1145,7 +737,7 @@ def calibrate_gain(
     error += not cb.setsolve(
         type=gtype,
         combine=combine,
-        table="{0}_{1}_gacal".format(msname, calname),
+        table=f"{msname}_{calname}_gacal",
         t=tga,
         minblperant=1,
         refant=refant,
@@ -1156,7 +748,7 @@ def calibrate_gain(
     return error
 
 
-def apply_and_correct_calibrations(msname, calibration_tables):
+def apply_and_correct_calibrations(msname: str, calibration_tables: List[dict]) -> int:
     """Applies and corrects calibration tables in an ms.
 
     Parameters
@@ -1175,14 +767,14 @@ def apply_and_correct_calibrations(msname, calibration_tables):
     """
     error = 0
     cb = cc.calibrater()
-    error += not cb.open("{0}.ms".format(msname))
+    error += not cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, calibration_tables)
     error += not cb.correct()
     error += not cb.close()
     return error
 
 
-def apply_calibration_tables(cb, calibration_tables):
+def apply_calibration_tables(cb: "cc.calibrater", calibration_tables: List[dict]) -> int:
     """Applies calibration tables to an open calibrater object.
 
     Parameters
@@ -1207,7 +799,9 @@ def apply_calibration_tables(cb, calibration_tables):
     return error
 
 
-def interpolate_bandpass_solutions(msname, calname, thresh=1.5, polyorder=7, mode="ap"):
+def interpolate_bandpass_solutions(
+        msname: str, calname: str, thresh: float = 1.5, polyorder: int = 7, mode: str = "ap"
+) -> None:
     r"""Interpolates bandpass solutions.
 
     Parameters
@@ -1235,14 +829,14 @@ def interpolate_bandpass_solutions(msname, calname, thresh=1.5, polyorder=7, mod
     else:
         raise RuntimeError('mode must be one of "a", "p" or "ap"')
 
-    with table("{0}_{1}_{2}".format(msname, calname, tbname)) as tb:
+    with table(f"{msname}_{calname}_{tbname}") as tb:
         bpass = np.array(tb.CPARAM[:])
         flags = np.array(tb.FLAG[:])
 
-    with table("{0}.ms".format(msname)) as tb:
+    with table(f"{msname}.ms") as tb:
         antennas = np.unique(np.array(tb.ANTENNA1[:]))
 
-    with table("{0}.ms/SPECTRAL_WINDOW".format(msname)) as tb:
+    with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
         fobs = np.array(tb.CHAN_FREQ[:]).squeeze(0) / 1e9
 
     bpass_amp = np.abs(bpass)
@@ -1286,14 +880,16 @@ def interpolate_bandpass_solutions(msname, calname, thresh=1.5, polyorder=7, mod
                     p_fit = np.poly1d(z_fit)
                     bpass_ang_out[ant - 1, :, j] = p_fit(fobs)
 
-    with table("{0}_{1}_{2}".format(msname, calname, tbname), readonly=False) as tb:
+    with table(f"{msname}_{calname}_{tbname}", readonly=False) as tb:
         tb.putcol("CPARAM", bpass_amp_out * np.exp(1j * bpass_ang_out))
         # Reset flags for the interpolated solutions
         tbflag = np.array(tb.FLAG[:])
         tb.putcol("FLAG", np.zeros(tbflag.shape, tbflag.dtype))
 
 
-def calibrate_phases(filenames, refant, msdir="/mnt/data/dsa110/calibration/"):
+def calibrate_phases(
+        filenames: dict, refant: str, msdir: str = "/mnt/data/dsa110/calibration/"
+) -> None:
     """Calibrate phases only for a group of calibrator passes.
 
     Parameters
@@ -1310,16 +906,14 @@ def calibrate_phases(filenames, refant, msdir="/mnt/data/dsa110/calibration/"):
     """
     for date in filenames.keys():
         for cal in filenames[date].keys():
-            msname = "{0}/{1}_{2}".format(msdir, date, cal)
-            if os.path.exists("{0}.ms".format(msname)):
-                reset_flags(msname)
-                flag_baselines(msname, "2~27m")
+            msname = f"{msdir}/{date}_{cal}"
+            if os.path.exists(f"{msname}.ms"):
                 cb = cc.calibrater()
-                cb.open("{0}.ms".format(msname))
+                cb.open(f"{msname}.ms")
                 cb.setsolve(
                     type="B",
                     combine="field,scan,obs",
-                    table="{0}_{1}_bpcal".format(msname, cal),
+                    table=f"{msname}_{cal}_bpcal",
                     refant=refant,
                     apmode="p",
                     t="inf",
@@ -1328,16 +922,48 @@ def calibrate_phases(filenames, refant, msdir="/mnt/data/dsa110/calibration/"):
                 cb.close()
 
 
-def calibrate_phase_single_ms(msname, refant, calname):
+def calibrate_phase_single_ms(msname: str, refant: str, calname: str) -> None:
+    """Generate a bandpass gain calibration table for a single ms.
+
+    Parameters
+    ----------
+    msname : str
+        Will open `msname`.ms
+    refant : str
+        The reference antenna name.
+    calname : str
+        The calibrator name.
+    """
     cb = cc.calibrater()
-    cb.open("{0}.ms".format(msname))
+    cb.open(f"{msname}.ms")
     cb.setsolve(
         type="B",
         combine="field,scan,obs",
-        table="{0}_{1}_bpcal".format(msname, calname),
+        table=f"{msname}_{calname}_bpcal",
         refant=refant,
         apmode="p",
         t="inf",
     )
     cb.solve()
     cb.close()
+
+
+def combine_bandpass_and_delay(table_prefix: str, forsystemhealth: bool) -> None:
+    """Combine bandpass and delay tables into a single bandpass table."""
+    with table(f"{table_prefix}_bacal") as tb:
+        bpass = np.array(tb.CPARAM[:])
+    with table(f"{table_prefix}_bpcal") as tb:
+        bpass *= np.array(tb.CPARAM[:])
+
+    if not forsystemhealth:
+        with table(f"{table_prefix}_bkcal") as tb:
+            bpass *= np.array(tb.CPARAM[:])
+
+    if not os.path.exists(f"{table_prefix}_bcal"):
+        tablecopy(f"{table_prefix}_bpcal", f"{table_prefix}_bcal")
+
+    with table(f"{table_prefix}_bcal", readonly=False) as tb:
+        tb.putcol("CPARAM", bpass)
+        if not forsystemhealth:
+            tbflag = np.array(tb.FLAG[:])
+            tb.putcol("FLAG", np.zeros(tbflag.shape, tbflag.dtype))

@@ -16,11 +16,12 @@ from dsacalib.calib import apply_calibration_tables, apply_delay_bp_cal
 from dsacalib.fringestopping import amplitude_sky_model
 from dsacalib.ms_io import extract_vis_from_ms, get_antenna_gains, read_caltable
 
-MYCONF = cnf.Conf()
-CALPARAMS = MYCONF.get("cal")
-CORRPARAMS = MYCONF.get("corr")
-REFANT = CALPARAMS["refant"][0]
-POLS = CORRPARAMS["pols_corr"]
+
+def get_refant() -> int:
+    """Retrieve the first refant from cnf."""
+    myconf = cnf.Conf()
+    calparams = myconf.get("cal")
+    return calparams["refant"][0]
 
 
 def _gauss_offset(xvals, amp, mean, sigma, offset):
@@ -68,14 +69,14 @@ def remove_model(msname):
     msname : str
         The path to the measurement set, with the extension omitted.
     """
-    with table("{0}.ms".format(msname), readonly=False) as tb:
+    with table(f"{msname}.ms", readonly=False) as tb:
         model = np.array(tb.MODEL_DATA[:])
         if not os.path.exists(f"{msname}.ms/model.npz"):
             np.savez(f"{msname}.ms/model", model)
         tb.putcol("MODEL_DATA", np.ones(model.shape, model.dtype))
 
 
-def solve_gains(msname, calname, msname_delaycal, calname_delaycal, refant=REFANT):
+def solve_gains(msname, calname, msname_delaycal, calname_delaycal, refant=None):
     """Solves for complex gains on 30s timescales.
 
     Parameters
@@ -90,25 +91,28 @@ def solve_gains(msname, calname, msname_delaycal, calname_delaycal, refant=REFAN
     calname_delaycal : str
         The name of the calibrator for `msname_delaycal`.
     """
+    if refant is None:
+        refant = get_refant()
+
     caltables = [
         {
-            "table": "{0}_{1}_kcal".format(msname_delaycal, calname_delaycal),
+            "table": f"{msname_delaycal}_{calname_delaycal}_kcal",
             "type": "K",
             "spwmap": [-1],
         },
         {
-            "table": "{0}_{1}_bcal".format(msname_delaycal, calname_delaycal),
+            "table": f"{msname_delaycal}_{calname_delaycal}_bcal",
             "type": "B",
             "spwmap": [-1],
         },
     ]
     cb = cc.calibrater()
-    cb.open("{0}.ms".format(msname))
+    cb.open(f"{msname}.ms")
     apply_calibration_tables(cb, caltables)
     cb.setsolve(
         type="G",
         combine="scan, field, obs",
-        table="{0}_{1}_2gcal".format(msname, calname),
+        table=f"{msname}_{calname}_2gcal",
         t="30s",
         refant=refant,
         apmode="ap",
@@ -237,17 +241,10 @@ def get_autocorr_gains_off(
 
 
 def calculate_sefd(
-    msname,
-    cal,
-    fmin=None,
-    fmax=None,
-    nfint=1,
-    showplots=False,
-    msname_delaycal=None,
-    calname_delaycal=None,
-    repeat=False,
-    refant=REFANT,
-):
+        msname: str, cal: "CalibratorSource", fmin: float = None, fmax: float = None,
+        nfint: int = 1, showplots: bool = False, msname_delaycal: str = None,
+        calname_delaycal: str = None, repeat: bool = False, refant: int = None,
+) -> tuple:
     r"""Calculates the SEFD from a measurement set.
 
     The measurement set must have been calibrated against a model of ones and
@@ -300,8 +297,8 @@ def calculate_sefd(
     hwhms : float
         The hwhms of the calibrator transits in days.
     """
-    # TODO: Change beam shape to something that more closely matches than a gaussian
-
+    if refant is None:
+        refant = get_refant()
     if msname_delaycal is None:
         msname_delaycal = msname
     if calname_delaycal is None:
@@ -333,7 +330,10 @@ def calculate_sefd(
     width = idxr0 - idxl0
     assert (
         width % nfint == 0
-    ), f"the number of frequency channels ({width}) between fmin ({fmin}) and fmax ({fmax}) must be divisible by nfint ({nfint})"
+    ), (
+        f"the number of frequency channels ({width}) between fmin "
+        f"({fmin}) and fmax ({fmax}) must be divisible by nfint ({nfint})"
+    )
     fvis = fvis[idxl0:idxr0].reshape(nfint, -1)
     fref = np.median(fvis, axis=-1)
     max_flux = amplitude_sky_model(cal, cal.ra.to_value(u.rad), pt_dec, fref)
@@ -537,6 +537,6 @@ def plot_sefds(antennas, sefds, esefds, fref, ymax=None):
         ax[i].set_ylim(0, ymax)
     for axi in ax:
         x0, x1 = axi.get_xlim()
-        y0, y1 = axi.get_ylim()
+        _y0, y1 = axi.get_ylim()
         axi.fill_between([x0, x1], [10200, 10200], [y1, y1], color="lightgrey")
     return fig

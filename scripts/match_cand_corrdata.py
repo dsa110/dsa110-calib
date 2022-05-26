@@ -13,6 +13,7 @@ savedir = '/mnt/data/dsa110/candidate_corrdata/'
 duration = 5*u.min
 hours_tosave = 24
 
+# Collect information on all of archived T3 candidates
 df = pandas.DataFrame()
 for file in glob.iglob('/media/ubuntu/data/dsa110/T3/*/[0-9][0-9][0-9][0-9][0-9][0-9][a-z][a-z][a-z][a-z].json'):
     with open(file) as f:
@@ -22,6 +23,7 @@ for file in glob.iglob('/media/ubuntu/data/dsa110/T3/*/[0-9][0-9][0-9][0-9][0-9]
         df = pandas.concat(
             [df, pandas.DataFrame(dict({k: [v] for k, v in data.items()}))], sort=True)
 
+# Construct list of files to save
 corrfiles_cands = {}
 for index, row in df.iterrows():
     candtime = Time(row['mjds'], format='mjd')
@@ -37,5 +39,7 @@ for index, row in df.iterrows():
             if filetime + duration > candtime - hours_tosave/2*u.h and filetime < candtime + hours_tosave/2*u.h :
                 tokeep += [file]
                 corrfiles_cands[row['trigname']] = tokeep
+
+# Write list of files to save to disk
 with open('corrfiles_cands.json', 'w') as f:
     json.dump(corrfiles_cands, f)

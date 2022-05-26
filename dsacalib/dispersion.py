@@ -3,7 +3,7 @@
 
 import astropy.units as u
 import numpy as np
-import scipy  # must come before casacore
+import scipy  # pylint: disable=unused-import # must come before casacore
 from casacore.tables import table
 from numba import jit
 
@@ -78,7 +78,7 @@ def disperse(msname, dispersion_measure, ref_freq=1.405 * u.GHz):
 
     # Write out the data to the ms
     data = data.reshape(-1, data.shape[3], data.shape[4])
-    with table("{0}.ms".format(msname), readonly=False) as tb:
+    with table(f"{msname}.ms", readonly=False) as tb:
         tb.putcol("DATA", data)
 
 

@@ -1,13 +1,16 @@
 """A service to create measurement sets and calibrate data.
 """
 import os
+import shutil
 import sys
 import shutil
+import socket
 import warnings
 from multiprocessing import Process, Queue
 import datetime
 import time
 import yaml
+
 import h5py
 import numpy as np
 import astropy.units as u
@@ -15,341 +18,372 @@ from astropy.time import Time
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
 import dsautils.cnf as dsc
+
+import matplotlib
+matplotlib.use("Agg")
+# pylint: disable=wrong-import-position
+import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
+
 from dsacalib.preprocess import first_true, update_caltable
 from dsacalib.utils import exception_logger
 from dsacalib.calib import calibrate_phase_single_ms
 from dsacalib.routines import get_files_for_cal, calibrate_measurement_set
 from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd
 from dsacalib.hdf5_io import extract_applied_delays
-from dsacalib.weights import write_beamformer_solutions, average_beamformer_solutions, filter_beamformer_solutions, get_good_solution, \
-    consistent_correlator
-from dsacalib.plotting import summary_plot, plot_bandpass_phases, \
-    plot_beamformer_weights
+from dsacalib.weights import (
+    write_beamformer_solutions, average_beamformer_solutions, filter_beamformer_solutions,
+    get_good_solution, consistent_correlator
+)
+from dsacalib.plotting import summary_plot, plot_bandpass_phases, plot_beamformer_weights
 
-import matplotlib
-matplotlib.use('Agg')
-import matplotlib.pyplot as plt
-from matplotlib.backends.backend_pdf import PdfPages
 warnings.filterwarnings("ignore")
+
+ETCD = ds.DsaStore()
 
 # Logger
 LOGGER = dsl.DsaSyslogger()
 LOGGER.subsystem("software")
 LOGGER.app("dsacalib")
 
-CONF = dsc.Conf()
-CORR_PARAMS = CONF.get('corr')
-CAL_PARAMS = CONF.get('cal')
-MFS_PARAMS = CONF.get('fringe')
-
-# These should be put somewhere else eventually
-CALTIME = CAL_PARAMS['caltime_minutes']*u.min
-REFANTS = CAL_PARAMS['refant']
-if isinstance(REFANTS, (str, int)):
-    REFANTS = [REFANTS]
-FILELENGTH = MFS_PARAMS['filelength_minutes']*u.min
-MSDIR = CAL_PARAMS['msdir']
-BEAMFORMER_DIR = CAL_PARAMS['beamformer_dir']
-HDF5DIR = CAL_PARAMS['hdf5_dir']
-# This should be made more general for more antennas
-ANTENNAS = list(CORR_PARAMS['antenna_order'].values())
-POLS = CORR_PARAMS['pols_voltage']
-ANTENNAS_IN_MS = CAL_PARAMS['antennas_in_ms']
-ANTENNAS_NOT_IN_BF = CAL_PARAMS['antennas_not_in_bf']
-CORR_LIST = list(CORR_PARAMS['ch0'].keys())
-CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
-REFCORR = '{0:02d}'.format(CORR_LIST[0])
-WEBPLOTS = '/mnt/data/dsa110/webPLOTS/calibration/'
-PLOTDIR = f'{WEBPLOTS}/allpngs/'
-
 TSLEEP = 60
 CALIB_Q = Queue()
 
 def calibrate_file(calname, flist):
-    """Calibrate a calibrator pass.
-    """
-    etcd = ds.DsaStore()
-    date = first_true(flist).split('/')[-1][:-14]
-    msname = '{0}/{1}_{2}'.format(MSDIR, date, calname)
-    date_specifier = '{0}*'.format(date)
-    # Get the start time for the snaps
-    start_time = Time(
-       etcd.get_dict('/mon/snap/1/armed_mjd')['armed_mjd'], format='mjd'
-    )
-    with h5py.File(first_true(flist), mode='r') as h5file:
-        pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value*u.rad
+    """Calibrate a calibrator pass."""
+
+    config = get_configuration()
+
+    date = first_true(flist).split("/")[-1][:-14]
+
+    msname = f"{config['msdir']}/{date}_{calname}"
+    date_specifier = f"{date}*"
+
+    # Get the pointing declination from the file
+    with h5py.File(first_true(flist), mode="r") as h5file:
+        pt_dec = h5file["Header"]["extra_keywords"]["phase_center_dec"][()]*u.rad
+
+    # Get the list of sources at the current pointing dec
     caltable = update_caltable(pt_dec)
-    LOGGER.info('Creating {0}.ms at dec {1}'.format(msname, pt_dec))
+    # Find the ones that have files
     filenames = get_files_for_cal(
         caltable,
-        REFCORR,
-        CALTIME,
-        FILELENGTH,
-        hdf5dir=HDF5DIR,
+        config["refcorr"],
+        config["caltime"],
+        config["filelength"],
+        hdf5dir=config["hdf5dir"],
         date_specifier=date_specifier,
     )
-    ttime = filenames[date][calname]['transit_time']
-    # Only use calibrators within the last 24 hours or since the snaps
-    # were restarted
-    if ttime-start_time > 24*u.h:
-        start_time = ttime - 24*u.h
-    ttime.precision = 0
-    etcd.put_dict(
-        '/mon/cal/calibration',
+    caltime = filenames[date][calname]["transit_time"]
+    caltime.precision = 0
+    ETCD.put_dict(
+        "/mon/cal/calibration",
         {
-            "transit_time": filenames[date][calname]['transit_time'].mjd,
+            "transit_time": filenames[date][calname]["transit_time"].mjd,
             "calibration_source": calname,
             "filelist": flist,
             "status": -1
         }
     )
 
-    if not os.path.exists(f'{msname}.ms'):
-        print('writing ms')
+    # Generate the measurement set
+    message = f"Creating {msname}.ms at dec {pt_dec}"
+    LOGGER.info(message)
+    print(message)
+    if not os.path.exists(f"{msname}.ms"):
+        print("writing ms")
         convert_calibrator_pass_to_ms(
-            cal=filenames[date][calname]['cal'],
+            cal=filenames[date][calname]["cal"],
             date=date,
-            files=filenames[date][calname]['files'],
-            duration=CALTIME,
+            files=filenames[date][calname]["files"],
+            msdir=config["msdir"],
+            hdf5dir=config["hdf5dir"],
             logger=LOGGER,
-            msdir=MSDIR
         )
-        print('done writing ms')
-        LOGGER.info(f'{msname}.ms created.')
+        print("done writing ms")
+        message = f"{msname}.ms created."
+        LOGGER.info(message)
+        print(message)
     else:
-        LOGGER.info(f'{msname}.ms already exists.  Not recreating.')
+        message = f"{msname}.ms already exists.  Not recreating."
+        LOGGER.info(message)
+        print(message)
 
+    # Calibrate for system health & flagging
     status = calibrate_measurement_set(
         msname,
-        filenames[date][calname]['cal'],
-        refants=REFANTS,
-        bad_antennas=None,
-        bad_uvrange='2~27m',
+        filenames[date][calname]["cal"],
+        logger=LOGGER,
+        throw_exceptions=False,
         forsystemhealth=True,
-        throw_exceptions=True,
-        logger=LOGGER
     )
-    print('done calibration')
+
+    # Write solutions to etcd
     caltable_to_etcd(
         msname,
         calname,
-        filenames[date][calname]['transit_time'].mjd,
+        filenames[date][calname]["transit_time"].mjd,
         status,
         logger=LOGGER
     )
 
-    etcd.put_dict(
-        '/mon/cal/calibration',
+    ETCD.put_dict(
+        "/mon/cal/calibration",
         {
-            "transit_time": filenames[date][calname]['transit_time'].mjd,
+            "transit_time": filenames[date][calname]["transit_time"].mjd,
             "calibration_source": calname,
             "filelist": flist,
             "status": status
         }
     )
-    print('solns written to etcd')
+
     LOGGER.info(
-        'Calibrated {0}.ms for system health with status {1}'
-        .format(msname, status)
+        f"Calibrated {msname}.ms for system health with status {status}"
     )
-    print('creating figures')
-    figure_path = '{0}/{1}_{2}'.format(PLOTDIR, date, calname)
+
     try:
-        with PdfPages('{0}.pdf'.format(figure_path)) as pdf:
-            for j in range(len(ANTENNAS)//10+1):
-                fig = summary_plot(
-                    msname,
-                    calname,
-                    2,
-                    ['B', 'A'],
-                    ANTENNAS[j*10:(j+1)*10]
-                )
-                pdf.savefig(fig)
-                plt.close(fig)
-        target = f'{WEBPLOTS}/summary_current.pdf'
-        if os.path.exists(target):
-            os.unlink(target)
-        shutil.copyfile(
-            f'{PLOTDIR}/{date}_{calname}.pdf',
-            target
-        )
+        generate_summary_plot(
+            date, msname, calname, config["antennas"], config["tempdir"], config["webplots"])
     except Exception as exc:
         exception_logger(
             LOGGER,
-            'plotting of calibration solutions for {0}.ms'.format(msname),
+            f"plotting of calibration solutions for {msname}.ms",
             exc,
-            throw=False
-        )
-    print('calibration for bf')
+            throw=False)
+
     status = calibrate_measurement_set(
         msname,
-        filenames[date][calname]['cal'],
-        refants=REFANTS,
-        bad_antennas=None,
-        bad_uvrange='2~27m',
+        filenames[date][calname]["cal"],
+        logger=LOGGER,
+        throw_exceptions=False,
         keepdelays=False,
         forsystemhealth=False,
-        throw_exceptions=False,
-        logger=LOGGER
-    )
+        reuse_flags=True)
     LOGGER.info(
-        'Calibrated {0}.ms for beamformer weights with status {1}'
-        .format(msname, status)
-    )
-    print('calculating beamformer weights')
+        f"Calibrated {msname}.ms for beamformer weights with status {status}")
+
     try:
-        applied_delays = extract_applied_delays(first_true(flist), ANTENNAS)
+        applied_delays = extract_applied_delays(first_true(flist), config["antennas"])
         # Write beamformer solutions for one source
-        _ = write_beamformer_solutions(
+        write_beamformer_solutions(
             msname,
             calname,
-            ttime,
-            ANTENNAS,
+            caltime,
+            config["antennas"],
             applied_delays,
-            flagged_antennas=ANTENNAS_NOT_IN_BF,
-            corr_list=np.array(CORR_LIST)
-        )
+            flagged_antennas=config["antennas_not_in_bf"],
+            corr_list=np.array(config["corr_list"]))
     except Exception as exc:
         exception_logger(
             LOGGER,
-            'calculation of beamformer weights for {0}.ms'.format(msname),
+            f"calculation of beamformer weights for {msname}.ms",
             exc,
-            throw=False
-        )
+            throw=False)
 
     # Create the bandpass phase table for plotting later
-    calibrate_phase_single_ms(msname, REFANTS[0], calname)
+    calibrate_phase_single_ms(msname, config["refant"], calname)
 
-    print('getting list of calibrators')
+    beamformer_solns, beamformer_names = generate_averaged_beamformer_solns(
+        config["snap_start_time"], caltime, config["beamformer_dir"], config["corr_list"],
+        config["antennas"], config["pols"])
+
+    if beamformer_solns:
+        with open(
+                f"{config['beamformer_dir']}/beamformer_weights_{caltime.isot}.yaml",
+                "w",
+                encoding="utf-8"
+        ) as file:
+            yaml.dump(beamformer_solns, file)
+
+        ETCD.put_dict(
+            "/mon/cal/bfweights",
+            {
+                "cmd": "update_weights",
+                "val": beamformer_solns["cal_solutions"]})
+
+        # Plot the beamformer solutions
+        figure_prefix = f"{config['tempdir']}/{caltime}"
+        plot_beamformer_weights(
+            beamformer_names,
+            antennas_to_plot=np.array(config["antennas"]),
+            outname=figure_prefix,
+            corrlist=np.array(config["corr_list"]),
+            show=False)
+        store_file(
+            f"{figure_prefix}_averagedweights.png",
+            f"{config['webplots']}/bfw_current.png",
+            remove_source_files=False)
+        store_file(
+            f"{figure_prefix}_averagedweights.png",
+            f"{config['webplots']}/allpngs/{caltime}_averagedweights.png",
+            remove_source_files=True)
+
+
+        # Plot evolution of the phase over the day
+        plot_bandpass_phases(
+            beamformer_names,
+            np.array(config["antennas"]),
+            outname=figure_prefix,
+            show=False
+        )
+        plt.close("all")
+        store_file(
+            f"{figure_prefix}_phase.png",
+            f"{config['webplots']}/phase_current.png",
+            remove_source_files=False)
+        store_file(
+            f"{figure_prefix}_phase.png",
+            f"{config['webplots']}/allpngs/{caltime}_phase.png",
+            remove_source_files=True)
+
+
+def get_configuration():
+    """Get the default configuration for calibration."""
+    dsaconf = dsc.Conf()
+    corr_params = dsaconf.get("corr")
+    cal_params = dsaconf.get("cal")
+    fringe_params = dsaconf.get("fringe")
+
+    snap_start_time = Time(
+       ETCD.get_dict("/mon/snap/1/armed_mjd")["armed_mjd"], format="mjd")
+
+    config = {
+        "msdir": cal_params["msdir"],
+        "caltime": cal_params["caltime_minutes"]*u.min,
+        "filelength": fringe_params["filelength_minutes"]*u.min,
+        "hdf5dir":  cal_params["hdf5_dir"],
+        "snap_start_time": snap_start_time,
+        "antennas": list(corr_params["antenna_order"].values()),
+        "antennas_not_in_bf": cal_params["antennas_not_in_bf"],
+        "corr_list": [int(cl.strip("corr")) for cl in corr_params["ch0"].keys()],
+        "webplots": "/mnt/data/dsa110/webPLOTS/calibration/",
+        "tempdir": "/home/user/temp/" if socket.gethostname() == "dsa-storage" else "/home/ubuntu/caldata/temp/",
+        "refant": (
+            cal_params["refant"][0] if isinstance(cal_params["refant"], list)
+            else cal_params["refant"]),
+        "pols": corr_params["pols_voltage"],
+        "beamformer_dir" : cal_params["beamformer_dir"],
+    }
+    config["refcorr"] = f"{config['corr_list'][0]:02d}"
+
+    return config
+
+
+def generate_averaged_beamformer_solns(
+        start_time, caltime, beamformer_dir, corr_list, antennas, pols
+):
+    """Generate an averaged beamformer solution.
+
+    Uses only calibrator passes within the last 24 hours or since the snaps
+    were restarted.
+    """
+
+    if caltime-start_time > 24*u.h:
+        start_time = caltime - 24*u.h
+
     # Now we want to find all sources in the last 24 hours
     # start by updating our list with calibrators from the day before
     beamformer_names = get_good_solution()
     beamformer_names, latest_solns = filter_beamformer_solutions(
         beamformer_names, start_time.mjd)
 
-    # Average beamformer solutions
-    if len(beamformer_names) > 0:
-        print('checking reference gains')
-        try:
-            add_reference_bfname(beamformer_names, latest_solns, start_time)
-        except:
-            print(f'could not get reference bname. continuing...')
+    if len(beamformer_names) == 0:
+        return None, None
 
-        print('averaging beamformer weights')
-        averaged_files, avg_flags = average_beamformer_solutions(
-            beamformer_names,
-            ttime,
-            corridxs=CORR_LIST
-        )
-        print('setting parameters for new yaml file')
-        # Make the final yaml file
-        latest_solns['cal_solutions']['weight_files'] = averaged_files
-        latest_solns['cal_solutions']['source'] = [
-            bf.split('_')[0] for bf in beamformer_names
-        ]
-        latest_solns['cal_solutions']['caltime'] = [
-            float(Time(bf.split('_')[1]).mjd) for bf in beamformer_names
-        ]
-        # Remove the old bad cal solutions
-        for key, value in \
-            latest_solns['cal_solutions']['flagged_antennas'].items():
-            if 'casa solutions flagged' in value:
-                value = value.remove('casa solutions flagged')
-        # Flag new bad solutions
-        idxant, idxpol = np.nonzero(avg_flags)
-        for i, ant in enumerate(idxant):
-            key = '{0} {1}'.format(ANTENNAS[ant], POLS[idxpol[i]])
-            if key not in \
-                latest_solns['cal_solutions']['flagged_antennas'].keys():
-                latest_solns['cal_solutions']['flagged_antennas'][key] = []
-            latest_solns['cal_solutions']['flagged_antennas'][key] += \
-                ['casa solutions flagged']
-        latest_solns['cal_solutions']['flagged_antennas'] = {
-            key: value for key, value in
-            latest_solns['cal_solutions']['flagged_antennas'].items()
-            if len(value) > 0
-        }
-        print('opening yaml file')
-        with open(
-            '{0}/beamformer_weights_{1}.yaml'.format(
-                BEAMFORMER_DIR, ttime.isot
-            ),
-            'w'
-        ) as file:
-            print('writing bf weights')
-            _ = yaml.dump(latest_solns, file)
-        latest_solns['cal_solutions']['time'] = ttime.mjd
-        latest_solns['cal_solutions']['bfname'] = ttime.isot
-        etcd.put_dict(
-            '/mon/cal/bfweights',
-            {
-                'cmd': 'update_weights',
-                'val': latest_solns['cal_solutions']
-            }
-        )
-        print('done writing')
-        os.system(
-            "cd {0} ; "
-            "git add beamformer_weights.yaml ; "
-            "git commit -m {1} ; "
-            "cd /home/user/proj/dsa110-shell/dsa110-calib/services/".format(
-                BEAMFORMER_DIR,
-                beamformer_names[0]
-            )
-        )
-        beamformer_names += [averaged_files[0].split('_')[-1].strip(".dat")]
-        _ = plot_beamformer_weights(
-            beamformer_names,
-            antennas_to_plot=np.array(ANTENNAS),
-            outname='{0}/{1}'.format(PLOTDIR, ttime),
-            corrlist=np.array(CORR_LIST),
-            show=False
-        )
+    try:
+        add_reference_bfname(beamformer_names, latest_solns, start_time, beamformer_dir)
+    except:
+        print("could not get reference bname. continuing...")
 
-        # Copy plot to "current" WebPLOTS
-        target = f'{WEBPLOTS}/bfw_current.png'
-        if os.path.exists(target):
-            os.unlink(target)
-        shutil.copyfile(
-            f'{PLOTDIR}/{ttime}_averagedweights.png',
-            target
-        )
-
-    # Plot evolution of the phase over the day
-    plot_bandpass_phases(
+    averaged_files, avg_flags = average_beamformer_solutions(
         beamformer_names,
-        np.array(ANTENNAS),
-        outname='{0}/{1}'.format(PLOTDIR, ttime),
-        show=False
-    )
-    plt.close('all')
-
-    # Copy plot to "current" WebPLOTS
-    target = f'{WEBPLOTS}/phase_current.png'
-    if os.path.exists(target):
-        os.unlink(target)
-    shutil.copyfile(
-        f'{PLOTDIR}/{ttime}_phases.png',
-        target
+        caltime,
+        corridxs=corr_list
     )
 
-def add_reference_bfname(beamformer_names, latest_solns, start_time):
+    update_solution_dictionary(
+        latest_solns, beamformer_names, averaged_files, avg_flags, antennas, pols)
+    latest_solns["cal_solutions"]["time"] = caltime.mjd
+    latest_solns["cal_solutions"]["bfname"] = caltime.isot
+
+    beamformer_names += [averaged_files[0].split("_")[-1].strip(".dat")]
+
+    return latest_solns, beamformer_names
+
+
+def update_solution_dictionary(
+        latest_solns, beamformer_names, averaged_files, avg_flags, antennas, pols
+):
+    """Update latest_solns to reflect the averaged beamformer weight parameters."""
+
+    latest_solns["cal_solutions"]["weight_files"] = averaged_files
+    latest_solns["cal_solutions"]["source"] = [
+        bf.split("_")[0] for bf in beamformer_names
+    ]
+    latest_solns["cal_solutions"]["caltime"] = [
+        float(Time(bf.split("_")[1]).mjd) for bf in beamformer_names
+    ]
+
+    # Remove the old bad casas solutions from flagged_antennas
+    for key, value in latest_solns["cal_solutions"]["flagged_antennas"].items():
+        if "casa solutions flagged" in value:
+            value = value.remove("casa solutions flagged")
+
+    # Flag new bad solutions
+    idxant, idxpol = np.nonzero(avg_flags)
+    for i, ant in enumerate(idxant):
+        key = f"{antennas[ant]} {pols[idxpol[i]]}"
+
+        latest_solns["cal_solutions"]["flagged_antennas"][key] = (
+            latest_solns["cal_solutions"]["flagged_antennas"].get(key, []) +
+            ["casa solutions flagged"])
+
+    # Remove any empty keys in the flagged_antennas dictionary
+    to_remove = []
+    for key, value in latest_solns["cal_solutions"]["flagged_antennas"].items():
+        if not value:
+            to_remove += [key]
+    for key in to_remove:
+        del latest_solns["cal_solutions"]["flagged_antennas"][key]
+
+
+def generate_summary_plot(date, msname, calname, antennas, tempdir, webplots):
+    """Generate a summary plot and put it in webplots."""
+
+    figure_path = f"{tempdir}/{date}_{calname}.pdf"
+    with PdfPages(figure_path) as pdf:
+        for j in range(len(antennas)//10+1):
+            fig = summary_plot(
+                msname,
+                calname,
+                2,
+                ["B", "A"],
+                antennas[j*10:(j+1)*10]
+            )
+            pdf.savefig(fig)
+            plt.close(fig)
+
+    store_file(figure_path, f"{webplots}/allpngs/{date}_{calname}.pdf", remove_source_files=False)
+    store_file(figure_path, f"{webplots}/summary_current.pdf", remove_source_files=True)
+
+
+def add_reference_bfname(beamformer_names, latest_solns, start_time, beamformer_dir):
     """
-    If the setup of the current beamformer weights matches that of the latest file, 
+    If the setup of the current beamformer weights matches that of the latest file,
     add the current weights to the beamformer_names list
     """
 
-    etcd = ds.DsaStore()
-    ref_bfweights = etcd.get_dict('/mon/cal/bfweights')
-    if 'bfname' in ref_bfweights['val']:
-        ref_bfname = ref_bfweights['val']['bfname']
+    ref_bfweights = ETCD.get_dict("/mon/cal/bfweights")
+    if "bfname" in ref_bfweights["val"]:
+        ref_bfname = ref_bfweights["val"]["bfname"]
     else:
 #        parse from name like "beamformer_weights_corr03_2022-03-18T04:40:15.dat"
-        ref_bfname = ref_bfweights['val']['weights_files'].rstrip('.dat').split('_')[-1]
-    print(f'Got reference bfname of {ref_bfname}. Checking solutions...')
+        ref_bfname = ref_bfweights["val"]["weights_files"].rstrip(".dat").split("_")[-1]
+    print(f"Got reference bfname of {ref_bfname}. Checking solutions...")
 
     with open(
-        "{0}/beamformer_weights_{1}.yaml".format(BEAMFORMER_DIR, ref_bfname)
+            f"{beamformer_dir}/beamformer_weights_{ref_bfname}.yaml",
+            encoding="utf-8"
     ) as f:
         ref_solns = yaml.load(f, Loader=yaml.FullLoader)
 
@@ -357,7 +391,6 @@ def add_reference_bfname(beamformer_names, latest_solns, start_time):
         beamformer_names.append(ref_bfname)
 
 
-# TODO: Etcd watch robust to etcd connection failures.
 def calibrate_file_manager(inqueue=CALIB_Q):
     """Manages the queue and creates subprocesses for calibration.
     """
@@ -365,46 +398,59 @@ def calibrate_file_manager(inqueue=CALIB_Q):
         if not inqueue.empty():
             try:
                 val = inqueue.get()
-                calname = val['calname']
-                flist = val['flist']
+                calname = val["calname"]
+                flist = val["flist"]
             except Exception as exc:
                 exception_logger(
                     LOGGER,
-                    'attempt to retrieve calibration task from queue',
+                    "attempt to retrieve calibration task from queue",
                     exc,
-                    throw=False
-                )
+                    throw=False)
             else:
-                print('flist[0]: {0}, {1}'.format(
-                    first_true(flist), type(first_true(flist))
-                ))
                 # start a subprocess
                 calib_process = Process(
                     target=calibrate_file,
-                    args=(
-                        calname,
-                        flist
-                    ),
-                    daemon=True
-                )
+                    args=(calname, flist),
+                    daemon=True)
                 calib_process.start()
                 calib_process.join()
             time.sleep(TSLEEP)
 
+
 def populate_queue(etcd_dict, outqueue=CALIB_Q):
     """Populates the calibration queue.
     """
-    if etcd_dict['cmd'] == 'calibrate':
-        outqueue.put(etcd_dict['val'])
+    if etcd_dict["cmd"] == "calibrate":
+        outqueue.put(etcd_dict["val"])
+
+
+def store_file(source: str, target: str, remove_source_files: bool = False) -> None:
+    """Sends an etcd command for a file to be stored on dsa-storage."""
+    if socket.gethostname() == "dsa-storage":
+        shutil.copyfile(source, target)
+    else:
+        ETCD.put_dict("/cmd/store", {
+            'cmd': 'rsync', 
+            'val': {
+                'source': source,
+                'dest': target,
+                'remove_source_files': remove_source_files}})
+
+
+# def copy_figure(source, target):
+#     """Copy figure to new path."""
+#     if os.path.exists(target):
+#         os.unlink(target)
+#     shutil.copyfile(source, target)
+
 
 def watch_for_calibration():
     """Watch for calibration commands from etcd.
     """
-    etcd = ds.DsaStore()
-    etcd.add_watch('/cmd/cal', populate_queue)
+    ETCD.add_watch("/cmd/cal", populate_queue)
     while True:
-        etcd.put_dict(
-            '/mon/service/calibration',
+        ETCD.put_dict(
+            "/mon/service/calibration",
             {
                 "cadence": 60,
                 "time": Time(datetime.datetime.utcnow()).mjd
@@ -412,31 +458,31 @@ def watch_for_calibration():
         )
         time.sleep(60)
 
+
 if __name__=="__main__":
     processes = {}
-    processes['calibrate'] = Process(
+    processes["calibrate"] = Process(
         target=calibrate_file_manager,
         args=(CALIB_Q,)
     )
-    processes['calibrate'].start()
-    print('calibration process started')
-    processes['watch'] = Process(
+    processes["calibrate"].start()
+    print("calibration process started")
+    processes["watch"] = Process(
         target=watch_for_calibration,
         daemon=True
     )
-    processes['watch'].start()
-    print('watch process started')
+    processes["watch"].start()
+    print("watch process started")
 
     try:
         while True:
-            assert processes['watch'].is_alive() # needs a timeout
-            assert processes['calibrate'].is_alive() # needs a timeout
-            print(f'{CALIB_Q.qsize()} objects in calibration queue')
-            #sys.stdout.flush()
-            #sys.stderr.flush()
+            assert processes["watch"].is_alive() # needs a timeout
+            assert processes["calibrate"].is_alive() # needs a timeout
+            print(f"{CALIB_Q.qsize()} objects in calibration queue")
             time.sleep(5*60)
+
     except (KeyboardInterrupt, SystemExit, AssertionError):
         # Terminate non-daemon processes
-        processes['calibrate'].terminate()
-        processes['calibrate'].join()
+        processes["calibrate"].terminate()
+        processes["calibrate"].join()
         sys.exit()
