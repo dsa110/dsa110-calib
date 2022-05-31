@@ -16,7 +16,7 @@ from casacore.tables import table
 from dsautils import cnf
 
 import dsacalib.constants as ct
-from dsacalib.ms_io import extract_vis_from_ms, read_caltable
+from dsacalib.ms_io import extract_vis_from_ms, read_caltable, freq_GHz_from_ms
 
 
 def plot_dyn_spec(
@@ -986,16 +986,17 @@ def summary_plot(msname, calname, npol, plabels, antennas):
     else:
         tplot = None
 
-    if os.path.exists(f"{msname}_{calname}_bcal"):
-        bpass, _tbpass, _flags, ant1, ant2 = read_caltable(
-            f"{msname}_{calname}_bcal", cparam=True
-        )
+    if os.path.exists(f"{msname}_{calname}_bacal") and os.path.exists(f"{msname}_{calname}_bpcal"):
+        bpass, _tbpass, _flags, ant1, ant2 = read_caltable(f"{msname}_{calname}_bacal", cparam=True)
+        bppass, *_ = read_caltable(f"{msname}_{calname}_bpcal", cparam=True)
+        bpass = bpass*bppass
+        del bppass
+
         bpass = bpass.squeeze(axis=1)
         bpass = bpass.reshape(bpass.shape[0], -1, bpass.shape[-1])
         npol = bpass.shape[-1]
 
-        with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
-            fobs = (np.array(tb.col("CHAN_FREQ")[:]) / 1e9).reshape(-1)
+        fobs = freq_GHz_from_ms(msname)
 
         if bpass.shape[1] != fobs.shape[0]:
             nint = fobs.shape[0] // bpass.shape[1]
@@ -1294,9 +1295,9 @@ def plot_bandpass_phases(
         calnames += [f"{date}_{cal}"]
         msname = f"{msdir}/{date}_{cal}"
 
-        bpcal_table = f"{msname}_{cal}_bpcal"
-        if os.path.exists(bpcal_table):
-            with table(bpcal_table) as tb:
+        bcal_table = f"{msname}_{cal}_bcal"
+        if os.path.exists(bcal_table):
+            with table(bcal_table) as tb:
                 gains[i] = np.array(tb.CPARAM[:])
             if gshape is None:
                 gshape = gains[i].shape

@@ -147,9 +147,13 @@ def calibrate_measurement_set(
         )
         error = calobs.bandpass_and_gain_cal()
         if error > 0:
-            status = cs.update(status, cs.DELAY_CAL_ERR)
-            message = f"{error} non-fatal errors occured in delay calibration of {msname}."
+            status = cs.update(status, cs.GAIN_BP_CAL_ERR)
+            message = f"{error} non-fatal errors occured in gain calibration of {msname}."
             du.warning_logger(logger, message)
+
+
+        current_erorr = cs.GAIN_BP_CAL_ERR
+        combine_tables(msname, f"{msname}_{calname}")
 
     except Exception as exc:
         status = cs.update(status, current_error)
