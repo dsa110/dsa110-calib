@@ -8,18 +8,18 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 """
 import os
 import shutil
-from typing import List
+from typing import List, Tuple
 from copy import deepcopy
 
 # Always import scipy before casatools
 from scipy.fftpack import fft, fftfreq, fftshift
-from scipy.signal import medfilt
+from scipy.signal import medfilt, savgol_filter
 
 import numpy as np
 import casatools as cc
 from casacore.tables import table, tablecopy
 
-from dsacalib.ms_io import read_caltable
+from dsacalib.ms_io import read_caltable, freq_GHz_from_ms
 
 
 def delay_calibration_worker(
@@ -181,7 +181,7 @@ def delay_calibration(
 
 def gain_calibration(
         msname: str, sourcename: str, refant: str, blbased: bool = False,
-        forsystemhealth: bool = False, keepdelays: bool = False, tbeam: str = "30s") -> int:
+        keepdelays: bool = False, tbeam: str = "30s") -> int:
     r"""Use CASA to calculate bandpass and complex gain solutions.
 
     Saves solutions to calibration tables and calibrates the measurement set by
@@ -201,10 +201,6 @@ def gain_calibration(
         in the measurement set.
     blbased : boolean
         Set to True if baseline-based calibration desired.
-    forsystemhealth : boolean
-        Set to True if gain calibration is for system health monitoring. Delays
-        will be kept at full resolution. If set to False, then at least some of
-        the delay will be incorporated into the bandpass gain table.
     keepdelays : boolean
         Set to True if you want to update the delays currently set in the
         system. In this case, delay changes of integer 2 ns will be kept in the
@@ -241,69 +237,15 @@ def gain_calibration(
         }
     ]
 
-    if not forsystemhealth:
-        with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
-            fobs = np.array(tb.CHAN_FREQ[:]).squeeze(0) / 1e9
-            fref = np.array(tb.REF_FREQUENCY[:]) / 1e9
-        cb = cc.calibrater()
-        error += not cb.open(f"{msname}.ms")
-        error += apply_calibration_tables(cb, caltables)
-        error += not cb.setsolve(
-            type="MF" if blbased else "B",
-            combine=combine,
-            table=f"{msname}_{sourcename}_bkcal",
-            refant=refant,
-            apmode="a",
-            solnorm=True,
-        )
-        error += not cb.solve()
-        error += not cb.close()
-
-        with table(f"{msname}_{sourcename}_kcal", readonly=False) as tb:
-            kcorr = np.array(tb.FPARAM[:])
-            tb.putcol("FPARAM", np.zeros(kcorr.shape, kcorr.dtype))
-
-        with table(f"{msname}_{sourcename}_bkcal", readonly=False) as tb:
-            bpass = np.array(tb.CPARAM[:])
-            bpass = np.ones(bpass.shape, bpass.dtype)
-            kcorr = kcorr.squeeze()
-            bpass *= np.exp(
-                2j
-                * np.pi
-                * (fobs[:, np.newaxis] - fref)
-                * (kcorr[:, np.newaxis, :])  # -kcorr[int(refant)-1, :]
-            )
-            tb.putcol("CPARAM", bpass)
-        caltables += [
-            {
-                "table": f"{msname}_{sourcename}_bkcal",
-                "type": "B",
-                "spwmap": spwmap,
-            }
-        ]
-
     error += solve_gain_calibration(
-        msname, sourcename, refant, caltables, forsystemhealth, combine, spwmap,
+        msname, sourcename, refant, caltables, combine, spwmap,
         blbased, tbeam)
-
-    if not forsystemhealth and keepdelays:
-        with table(f"{msname}_{sourcename}_kcal", readonly=False) as tb:
-            fparam = np.array(tb.FPARAM[:])
-            newparam = np.round(kcorr[:, np.newaxis, :] / 2) * 2
-            print("kcal", fparam.shape, newparam.shape)
-            tb.putcol("FPARAM", newparam)
-        with table(f"{msname}_{sourcename}_bkcal", readonly=False) as tb:
-            bpass = np.array(tb.CPARAM[:])
-            print(newparam.shape, bpass.shape, fobs.shape)
-            bpass *= np.exp(-2j * np.pi * (fobs[:, np.newaxis] - fref_snaps) * newparam)
-            print(bpass.shape)
-            tb.putcol("CPARAM", bpass)
 
     return error
 
 def solve_gain_calibration(
         msname: str, sourcename: str, refant: str, caltables: List[dict],
-        forsystemhealth: bool, combine: str = "field,scan,obs", spwmap: List = None,
+        combine: str = "field,scan,obs", spwmap: List = None,
         blbased: bool = False, tbeam: str = "60s"
 ) -> int:
 
@@ -404,13 +346,6 @@ def solve_gain_calibration(
     error += cb.solve()
     error += cb.close()
 
-    if not forsystemhealth:
-        interpolate_bandpass_solutions(
-            msname,
-            sourcename,
-            mode="a",
-        )
-
     caltables += [
         {
             "table": f"{msname}_{sourcename}_bacal",
@@ -434,34 +369,26 @@ def solve_gain_calibration(
     error += cb.solve()
     error += cb.close()
 
-    if not forsystemhealth:
-        interpolate_bandpass_solutions(
-            msname,
-            sourcename,
-            mode="p",
-        )
-
-    if forsystemhealth:
-        caltables += [
-            {
-                "table": f"{msname}_{sourcename}_bpcal",
-                "type": "B",
-                "spwmap": spwmap,
-            }
-        ]
-        cb = cc.calibrater()
-        error += not cb.open(f"{msname}.ms")
-        error += apply_calibration_tables(cb, caltables)
-        error += not cb.setsolve(
-            type="M" if blbased else "G",
-            combine=combine,
-            table=f"{msname}_{sourcename}_2gcal",
-            refant=refant,
-            apmode="ap",
-            t=tbeam,
-        )
-        error += not cb.solve()
-        error += not cb.close()
+    caltables += [
+        {
+            "table": f"{msname}_{sourcename}_bpcal",
+            "type": "B",
+            "spwmap": spwmap,
+        }
+    ]
+    cb = cc.calibrater()
+    error += not cb.open(f"{msname}.ms")
+    error += apply_calibration_tables(cb, caltables)
+    error += not cb.setsolve(
+        type="M" if blbased else "G",
+        combine=combine,
+        table=f"{msname}_{sourcename}_2gcal",
+        refant=refant,
+        apmode="ap",
+        t=tbeam,
+    )
+    error += not cb.solve()
+    error += not cb.close()
 
     return error
 
@@ -799,94 +726,6 @@ def apply_calibration_tables(cb: "cc.calibrater", calibration_tables: List[dict]
     return error
 
 
-def interpolate_bandpass_solutions(
-        msname: str, calname: str, thresh: float = 1.5, polyorder: int = 7, mode: str = "ap"
-) -> None:
-    r"""Interpolates bandpass solutions.
-
-    Parameters
-    ----------
-    msname : str
-        The measurement set filepath (with the `.ms` extension omitted).
-    calname : str
-        The name of the calibrator source. Calibration tables starting with
-        `msname`\_`calname` will be opened.
-    thresh : float
-        Sets flagging of bandpass solutions before interpolating in order to
-        smooth the solutions. After median baselining, any points that deviate
-        by more than interp_thresh*std are flagged.
-    polyorder : int
-        The order of the polynomial used to smooth bandpass solutions.
-    mode : str
-        The bandpass calibration mode. Must be one of "a", "p" or "ap".
-    """
-    if mode == "a":
-        tbname = "bacal"
-    elif mode == "p":
-        tbname = "bpcal"
-    elif mode == "ap":
-        tbname = "bcal"
-    else:
-        raise RuntimeError('mode must be one of "a", "p" or "ap"')
-
-    with table(f"{msname}_{calname}_{tbname}") as tb:
-        bpass = np.array(tb.CPARAM[:])
-        flags = np.array(tb.FLAG[:])
-
-    with table(f"{msname}.ms") as tb:
-        antennas = np.unique(np.array(tb.ANTENNA1[:]))
-
-    with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
-        fobs = np.array(tb.CHAN_FREQ[:]).squeeze(0) / 1e9
-
-    bpass_amp = np.abs(bpass)
-    bpass_ang = np.angle(bpass)
-    bpass_amp_out = np.ones(bpass.shape, dtype=bpass.dtype)
-    bpass_ang_out = np.zeros(bpass.shape, dtype=bpass.dtype)
-
-    # Interpolate amplitudes
-    if mode in ("a", "ap"):
-        std = bpass_amp.std(axis=1, keepdims=True)
-        for ant in antennas:
-            for j in range(bpass.shape[-1]):
-                offset = (
-                    np.abs(
-                        bpass_amp[ant - 1, :, j] - medfilt(bpass_amp[ant - 1, :, j], 9)
-                    )
-                    / std[ant - 1, :, j]
-                )
-                idx = offset < thresh
-                idx[flags[ant - 1, :, j]] = 1
-                if sum(idx) > 0:
-                    z_fit = np.polyfit(fobs[idx], bpass_amp[ant - 1, idx, j], polyorder)
-                    p_fit = np.poly1d(z_fit)
-                    bpass_amp_out[ant - 1, :, j] = p_fit(fobs)
-
-    # Interpolate phase
-    if mode in ("p", "ap"):
-        std = bpass_ang.std(axis=1, keepdims=True)
-        for ant in antennas:
-            for j in range(bpass.shape[-1]):
-                offset = (
-                    np.abs(
-                        bpass_ang[ant - 1, :, j] - medfilt(bpass_ang[ant - 1, :, j], 9)
-                    )
-                    / std[ant - 1, :, j]
-                )
-                idx = offset < thresh
-                idx[flags[ant - 1, :, j]] = 1
-                if sum(idx) > 0:
-                    z_fit = np.polyfit(fobs[idx], bpass_ang[ant - 1, idx, j], 7)
-                    p_fit = np.poly1d(z_fit)
-                    bpass_ang_out[ant - 1, :, j] = p_fit(fobs)
-
-    with table(f"{msname}_{calname}_{tbname}", readonly=False) as tb:
-        tb.putcol("CPARAM", bpass_amp_out * np.exp(1j * bpass_ang_out))
-        # Reset flags for the interpolated solutions
-        tbflag = np.array(tb.FLAG[:])
-        tb.putcol("FLAG", np.zeros(tbflag.shape, tbflag.dtype))
-
-
 def calibrate_phases(
         filenames: dict, refant: str, msdir: str = "/mnt/data/dsa110/calibration/"
 ) -> None:
@@ -922,48 +761,46 @@ def calibrate_phases(
                 cb.close()
 
 
-def calibrate_phase_single_ms(msname: str, refant: str, calname: str) -> None:
-    """Generate a bandpass gain calibration table for a single ms.
+def calculate_bandpass(msname: str, table_prefix: str, filter_phase: bool = True) -> Tuple[np.ndarray]:
+    """Combines gain, bandpass, and delay tables into a single bandpass. 
 
-    Parameters
-    ----------
-    msname : str
-        Will open `msname`.ms
-    refant : str
-        The reference antenna name.
-    calname : str
-        The calibrator name.
+    If `filter_phase` is set to `True`, then use savgol filter to smooth the bandpass phases,
+    and channel flags are not propagated to the returned flags array.
     """
-    cb = cc.calibrater()
-    cb.open(f"{msname}.ms")
-    cb.setsolve(
-        type="B",
-        combine="field,scan,obs",
-        table=f"{msname}_{calname}_bpcal",
-        refant=refant,
-        apmode="p",
-        t="inf",
-    )
-    cb.solve()
-    cb.close()
+    fobs = freq_GHz_from_ms(msname)
+    fmean = np.mean(fobs)
+
+    kcal, _, kflags, *_ = read_caltable(f"{table_prefix}_kcal", reshape=False)
+    bacal, _, baflags, *_ = read_caltable(f"{table_prefix}_bacal", reshape=False, cparam=True)
+    bpcal, _, bpflags, *_ = read_caltable(f"{table_prefix}_bpcal", reshape=False, cparam=True)
+    gacal, _, gaflags, *_ = read_caltable(f"{table_prefix}_gacal", reshape=False, cparam=True)
+    gpcal, _, gpflags, *_ = read_caltable(f"{table_prefix}_gpcal", reshape=False, cparam=True)
+
+    if filter_phase:
+        bpcal = (
+            np.ones(bpcal.shape, bpcal.dtype) *
+            np.exp(1j * savgol_filter(np.angle(bpcal), 11, 1, axis=1)))
+
+    flags = kflags | gaflags | gpflags
+    flags = np.tile(flags, (1, bpcal.shape[1], 1))
+    if filter_phase:
+        flags = flags | baflags | bpflags
+
+    bandpass = (
+        bacal * bpcal * gacal * gpcal *
+        np.exp(2j*np.pi * (fmean - fobs[:, np.newaxis]) * kcal))
+
+    return bandpass, flags
 
 
-def combine_bandpass_and_delay(table_prefix: str, forsystemhealth: bool) -> None:
-    """Combine bandpass and delay tables into a single bandpass table."""
-    with table(f"{table_prefix}_bacal") as tb:
-        bpass = np.array(tb.CPARAM[:])
-    with table(f"{table_prefix}_bpcal") as tb:
-        bpass *= np.array(tb.CPARAM[:])
+def combine_tables(msname: str, table_prefix: str, filter_phase: bool = True) -> None:
+    """Combine gain, bandpass and delay tables into a single bandpass table."""
 
-    if not forsystemhealth:
-        with table(f"{table_prefix}_bkcal") as tb:
-            bpass *= np.array(tb.CPARAM[:])
+    bandpass, flags = calculate_bandpass(table_prefix, filter_phase, fmean_GHz)
 
     if not os.path.exists(f"{table_prefix}_bcal"):
         tablecopy(f"{table_prefix}_bpcal", f"{table_prefix}_bcal")
 
     with table(f"{table_prefix}_bcal", readonly=False) as tb:
-        tb.putcol("CPARAM", bpass)
-        if not forsystemhealth:
-            tbflag = np.array(tb.FLAG[:])
-            tb.putcol("FLAG", np.zeros(tbflag.shape, tbflag.dtype))
+        tb.putcol("CPARAM", bandpass)
+        tb.putcol("FLAG", flags)

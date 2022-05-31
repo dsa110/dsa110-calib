@@ -609,8 +609,7 @@ def extract_vis_from_ms(msname, data="data", swapaxes=True, metadataonly=False):
             flags = np.array(tb.FLAG[:])
         time = np.array(tb.TIME[:])
         spw = np.array(tb.DATA_DESC_ID[:])
-    with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
-        fobs = (np.array(tb.col("CHAN_FREQ")[:]) / 1e9).reshape(-1)
+    fobs = freq_GHz_from_ms(msname)
 
     baseline = 2048 * (ant1 + 1) + (ant2 + 1) + 2**16
 
@@ -632,6 +631,13 @@ def extract_vis_from_ms(msname, data="data", swapaxes=True, metadataonly=False):
         spw,
         orig_shape,
     )
+
+
+def freq_GHz_from_ms(msname: str) -> np.ndarray:
+    """Return the frequency in GHz in a ms."""
+    with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
+        fobs = (np.array(tb.col("CHAN_FREQ")[:]) / 1e9).reshape(-1)
+    return fobs
 
 
 def read_caltable(tablename, cparam=False, reshape=True):
@@ -1034,10 +1040,14 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
     output_shape = list(gains.shape)
     output_shape[0] = len(antennas)
     antenna_gains = np.zeros(tuple(output_shape), dtype=gains.dtype)
+
     if np.all(ant2 == ant2[0]):
+        # Antenna-based solutions already
         for i, ant in enumerate(antennas):
             antenna_gains[i] = 1 / gains[ant1 == ant]
+
     else:
+        # Baseline-based solutions
         assert len(antennas) == 3, (
             "Baseline-based only supported for trio of" "antennas"
         )
