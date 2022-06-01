@@ -171,7 +171,9 @@ def quick_bfweightcal(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
     calobs.reset_calibration()
     error = 0
     error += calobs.quick_delay_calibration()
-    error += calobs.bandpass_and_gain_cal()
+    error += calobs.bandpass_calibration()
+    error += calobs.gain_calibration()
+    error += calobs.bandpass_calibration()
     combine_tables(msname, cal.name)
 
     with table(f"{msname}.ms") as tb:
@@ -204,7 +206,9 @@ def quick_calibration(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
     calobs.reset_calibration()
     error = 0
     error += calobs.quick_delay_calibration()
-    error += calobs.bandpass_and_gain_cal()
+    error += calobs.bandpass_calibration()
+    error += calobs.gain_calibration()
+    error += calobs.bandpass_calibration()
 
     return error
 
