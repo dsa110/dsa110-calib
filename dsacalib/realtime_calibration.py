@@ -57,10 +57,7 @@ class PipelineComponent:
             if error > 0:
                 status = cs.update(status, self.nonfatal_error_code)
                 message = f'Non-fatal error occured in {self.description} on {msname}'
-                if logger is not None:
-                    logger.warning(message)
-                else:
-                    print(message)
+                du.warning_logger(self.logger, message)
 
         return status
 
@@ -70,8 +67,8 @@ class Flagger(PipelineComponent):
 
     def __init__(self, logger: "DsaSyslogger", throw_exceptions: bool):
         """Describe Flagger and error code if fails."""
-        super.__init__(logger, throw_exceptions)
-        self.description = "Flagging of ms data"
+        super().__init__(logger, throw_exceptions)
+        self.description = 'flagging'
         self.error_code = (
             cs.FLAGGING_ERR |
             cs.INV_GAINAMP_P1 |
@@ -84,30 +81,14 @@ class Flagger(PipelineComponent):
             cs.INV_DELAYCALTIME )
         self.nonfatal_error_code = cs.FLAGGING_ERR
 
-    def target(self, msname: str, bad_uvrange: str, bad_antennas: List[str], manual_flags: List[tuple]):
+    def target(self, calobs: "CalibratorObservation"):
         """Flag data in the measurement set."""
-        dfl.reset_all_flags(msname)     
-        self.current_error = cs.FLAGGING_ERR
-
-        error = 0
-        error += dfl.flag_baselines(msname, uvrange=bad_uvrange)
-        error += dfl.flag_zeros(msname)
-
-        if bad_antennas is not None:
-            for ant in bad_antennas:
-                error += dfl.flag_antenna(msname, ant)
-
-        if manual_flags is not None:
-            for entry in manual_flags:
-                error += dfl.flag_manual(msname, entry[0], entry[1])
-
-        dfl.flag_rfi(msname)
-
+        error = calobs.set_flags()
         return error
 
-class DelayCalibrator(PipelineComponent):
-    def __init__(self, logger, throw_exceptions):
-        super.__init__(logger, throw_exceptions)
+class DelayCalibrater(PipelineComponent):
+    def __init__(self, logger: "DsaSyslogger", throw_exceptions: bool):
+        super().__init__(logger, throw_exceptions)
         self.description = 'delay calibration'
         self.error_code = (
             cs.DELAY_CAL_ERR |
@@ -121,33 +102,14 @@ class DelayCalibrator(PipelineComponent):
             cs.INV_DELAYCALTIME )
         self.nonfatal_error_code = cs.DELAY_CAL_ERR
 
-    def flag_using_delay_calibration(self, msname, cal, refants, t2):
-        error = 0
-        error += dc.delay_calibration(msname, cal.name, refants=refants, t2=t2)
-        _check_path('{0}_{1}_kcal'.format(msname, cal.name))
-        _times, antenna_delays, kcorr, _ant_nos = dp.plot_antenna_delays(
-            msname, cal.name, show=False)
-        _check_path('{0}_{1}_2kcal'.format(msname, cal.name))
-        error += flag_antennas_using_delays(antenna_delays, kcorr, msname)
-        shutil.rmtree('{0}_{1}_kcal'.format(msname, cal.name))
-        shutil.rmtree('{0}_{1}_2kcal'.format(msname, cal.name))
+    def target(self, calobs):
+        error = calobs.delay_calibration()
         return error
 
-    def delay_calibrate(self, msname, cal, refants, t2):
-        error = 0
-        error += dc.delay_calibration(msname, cal.name, refants=refants, t2=t2)
-        _check_path('{0}_{1}_kcal'.format(msname, cal.name))
-        return error
 
-    def target(self, msname, cal, refants, t2):
-        error = 0
-        error += self.flag_using_delay_calibration(msname, cal, refants, t2)
-        error += self.delay_calibrate(msname, cal, refants, t2)
-        return error
-
-class BandpassGainCalibrator(PipelineComponent):
-    def __init__(self, logger, throw_exceptions):
-        super.__init__(logger, throw_exceptions)
+class BandpassGainCalibrater(PipelineComponent):
+    def __init__(self, logger: "DsaSyslogger", throw_exceptions: bool):
+        super().__init__(logger, throw_exceptions)
         self.description = 'bandpass and gain calibration'
         self.error_code = (
             cs.GAIN_BP_CAL_ERR |
@@ -158,77 +120,23 @@ class BandpassGainCalibrator(PipelineComponent):
             cs.INV_GAINCALTIME)
         self.nonfatal_error_code = cs.GAIN_BP_CAL_ERR
 
-    def check_tables_created(self, msname, cal, forsystemhealth, keepdelays):
-        fnames = [
-            '{0}_{1}_bcal'.format(msname, cal.name),
-            '{0}_{1}_bacal'.format(msname, cal.name),
-            '{0}_{1}_bpcal'.format(msname, cal.name),
-            '{0}_{1}_gpcal'.format(msname, cal.name),
-            '{0}_{1}_gacal'.format(msname, cal.name)
-        ]
-        if forsystemhealth:
-            fnames += [
-                '{0}_{1}_2gcal'.format(msname, cal.name)
-            ]
-        if not keepdelays and not forsystemhealth:
-            fnames += [
-                '{0}_{1}_bkcal'.format(msname, cal.name)
-            ]
-        for fname in fnames:
-            _check_path(fname)
+    def target(self, calobs, delay_bandpass_table_prefix: str = ""):
+        if not delay_bandpass_table_prefix:
+            error = calobs.bandpass_calibration()
+            error += calobs.gain_calibration()
+            error += calobs.bandpass_calibration()
 
-    def combine_tables(self, msname, cal, forsystemhealth):
-        print('combining bandpass and delay solns')
-        # Combine bandpass solutions and delay solutions
-        with table('{0}_{1}_bacal'.format(msname, cal.name)) as tb:
-            bpass = np.array(tb.CPARAM[:])
-        with table('{0}_{1}_bpcal'.format(msname, cal.name)) as tb:
-            bpass *= np.array(tb.CPARAM[:])
-        if not forsystemhealth:
-            with table('{0}_{1}_bkcal'.format(msname, cal.name)) as tb:
-                bpass = np.array(tb.CPARAM[:])
-        with table(
-            '{0}_{1}_bcal'.format(msname, cal.name),
-            readonly=False
-        ) as tb:
-            tb.putcol('CPARAM', bpass)
-            if not forsystemhealth:
-                tbflag = np.array(tb.FLAG[:])
-                tb.putcol('FLAG', np.zeros(tbflag.shape, tbflag.dtype))
-
-    def target(self, msname, cal, refant, blbased, forsystemhealth, keepdelays,
-               interp_thresh, interp_polyorder, t2):
-        error = 0
-        error += dc.gain_calibration(
-            msname,
-            cal.name,
-            refant,
-            blbased=blbased,
-            forsystemhealth=forsystemhealth,
-            keepdelays=keepdelays,
-            interp_thresh=interp_thresh,
-            interp_polyorder=interp_polyorder,
-            tbeam=t2)
-
-        self.check_tables_created(msname, cal, forsystemhealth, keepdelays)
-
-        self.combine_tables(msname, cal, forsystemhealth)
+        else:
+            error += calobs.gain_calibration(delay_bandpass_table_prefix)
 
         return error
 
+# TODO: delay_bandpass_table_prefix should be part of calobs
 def calibrate_measurement_set(
-    msname, cal, refants, throw_exceptions=True, bad_antennas=None,
-    bad_uvrange='2~27m', keepdelays=False, forsystemhealth=False,
-    interp_thresh=1.5, interp_polyorder=7, blbased=False, manual_flags=None,
-    logger=None, t2='60s'
-):
+        msname: str, cal: "CalibratorSource", delay_bandpass_table_prefix: str = "",
+        logger: "DsaSyslogger" = None, throw_exceptions: bool = True, **kwargs
+) -> int:
     r"""Calibrates the measurement set.
-
-    Calibration can be done with the aim of monitoring system health (set
-    `forsystemhealth=True`), obtaining beamformer weights (set
-    `forsystemhealth=False` and `keepdelays=False`), or obtaining delays (set
-    `forsystemhealth=False` and `keepdelays=True`, new beamformer weights will
-    be generated as well).
 
     Parameters
     ----------
@@ -237,89 +145,60 @@ def calibrate_measurement_set(
     cal : dsacalib.utils.src instance
         The calibration source. Calibration tables will begin with
         `msname`\_`cal.name`
-    refant : str or int
-        The reference antenna name (if str) or index (if int) for calibration.
+    logger : dsautils.dsa_syslog.DsaSyslogger() instance
+        Logger to write messages too. If None, messages are printed.
     throw_exceptions : bool
         If set to False, exceptions will not be thrown, although they will be
         logged to syslog. Defaults True.
+    refants : str or int
+        The reference antenna name (if str) or index (if int) for calibration.
     bad_antennas : list(str)
         Antennas (names) to be flagged before calibration.
     bad_uvrange : str
         Baselines with lengths within bad_uvrange will be flagged before
         calibration. Must be a casa-understood string with units.
-    keepdelays : bool
-        Only used if `forsystemhealth` is False. If `keepdelays` is set to
-        False and `forsystemhealth` is set to False, then delays are integrated
-        into the bandpass solutions and the kcal table is set to all zeros. If
-        `keepdelays` is set to True and `forsystemhealth` is set to False, then
-        delays are kept at 2 nanosecond resolution.  If `forsystemhealth` is
-        set to True, delays are kept at full resolution regardless of the
-        keepdelays parameter. Defaults False.
-    forsystemhealth : bool
-        Set to True for full-resolution delay and bandpass solutions to use to
-        monitor system health, or to False to generate beamformer weights and
-        delays. Defaults False.
-    interp_thresh: float
-        Used if `forsystemhealth` is False, when smoothing bandpass gains.
-        The gain amplitudes and phases are fit using a polynomial after any
-        points more than interp_thresh*std away from the median-filtered trend
-        are flagged.
-    interp_polyorder : int
-        Used if `forsystemhealth` is False, when smoothing bandpass gains.
-        The gain amplitudes and phases are fit using a polynomial of order
-        interp_polyorder.
-    blbased : boolean
-        Set to True for baseline-based calibration, False for antenna-based
-        calibration.
-    manual_flags : list(str)
+    manual_flags : list(list(str))
         Include any additional flags to be done prior to calibration, as
         CASA-understood strings.
-    logger : dsautils.dsa_syslog.DsaSyslogger() instance
-        Logger to write messages too. If None, messages are printed.
 
     Returns
     -------
     int
         A status code. Decode with dsautils.calstatus
     """
-    if isinstance(refants, (int,str)):
-        refant = refants
-        refants = [refant]
-    else:
-        refant = refants[0]
+    calobs = CalibratorObservation(msname, cal)
+    calobs.set_calibration_parameters(**kwargs)
+    flag = Flagger(logger, throw_exceptions)
+    delaycal = DelayCalibrater(logger, throw_exceptions)
+    bpgaincal = BandpassGainCalibrater(logger, throw_exceptions)
 
+    print("entered calibration")
+    print("removing files")
+    
     status = 0
+    calobs.reset_calibration()
 
-    # Remove files that we will create so that things will fail if casa
-    # doesn't write a table.
-    tables_to_remove = [
-        '{0}_{1}_2kcal'.format(msname, cal.name),
-        '{0}_{1}_kcal'.format(msname, cal.name),
-        '{0}_{1}_bkcal'.format(msname, cal.name),
-        '{0}_{1}_gacal'.format(msname, cal.name),
-        '{0}_{1}_gpcal'.format(msname, cal.name),
-        '{0}_{1}_bcal'.format(msname, cal.name)
-    ]
-    if forsystemhealth:
-        tables_to_remove += [
-            '{0}_{1}_2gcal'.format(msname, cal.name)
-        ]
-    for path in tables_to_remove:
-        if os.path.exists(path):
-            shutil.rmtree(path)
+    if not calobs.config["reuse_flags"]:
+        print("flagging of ms data")
+        status |= flagger(calobs)
+           
+    if not delay_bandpass_table_prefix:
+        print("delay cal")
+        status |= delaycal(calobs)
+    
+    print("bp and gain cal")    
+    status |= bpgaincal(calobs, delay_bandpass_table_prefix)
 
-    flagger = Flagger(logger, throw_exceptions)
-    delaycal = DelayCalibrator(logger, throw_exceptions)
-    gaincal = BandpassGainCalibrator(logger, throw_exceptions)
+    combine_tables(msname, f"{msname}_{cal.name}", delay_bandpass_table_prefix)
 
-    status = flagger(status, msname, bad_uvrange)
-    status = delaycal(status, msname, cal, refants, t2)
-    status = gaincal(status, msname, cal, refant, blbased, forsystemhealth,
-                     keepdelays, interp_thresh, interp_polyorder, t2)
-
+    print("end of cal routine")
     return status
 
-def cal_in_datetime(dt, transit_time, duration=5*u.min, filelength=15*u.min):
+
+def cal_in_datetime(
+        dt: str, transit_time: "Time", duration: "Quantity" = 5*u.min,
+        filelength: "Quantity" = 15*u.min
+) -> bool:
     """Check to see if a transit is in a given file.
 
     Parameters
@@ -362,8 +241,10 @@ def cal_in_datetime(dt, transit_time, duration=5*u.min, filelength=15*u.min):
     return transit_file
 
 def get_files_for_cal(
-    caltable, refcorr='01', duration=5*u.min, filelength=15*u.min,
-    hdf5dir='/mnt/data/dsa110/correlator/', date_specifier='*'):
+        caltable: str, refcorr: str = "03", duration: "Quantity" = 5*u.min,
+        filelength: "Quantity" = 15*u.min, hdf5dir: str = "/mnt/data/dsa110/correlator/",
+        date_specifier: str = "*"
+) -> dict:
     """Returns a dictionary containing the filenames for each calibrator pass.
 
     Parameters
@@ -447,13 +328,3 @@ def get_files_for_cal(
                 'files': transit_files
             }
     return filenames
-
-def _check_path(fname):
-    """Raises an AssertionError if the path `fname` does not exist.
-
-    Parameters
-    ----------
-    fname : str
-        The file to check existence of.
-    """
-    assert os.path.exists(fname), 'File {0} does not exist'.format(fname)

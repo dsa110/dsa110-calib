@@ -21,7 +21,7 @@ from dsacalib.calibrator_observation import CalibratorObservation
 from dsacalib.weights import write_beamformer_solutions
 from dsacalib.calib import combine_tables
 
-
+# TODO: delay_bandpass_table_prefix should be part of calobs
 def calibrate_measurement_set(
         msname: str, cal: du.CalibratorSource, refants: List[str],
         delay_bandpass_cal_prefix: str = "", logger: dsl.DsaSyslogger = None,
