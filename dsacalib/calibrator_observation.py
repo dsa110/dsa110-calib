@@ -38,9 +38,7 @@ class CalibratorObservation:
         """Remove existing calibration tables."""
         tables_to_remove = [
             f"{self.table_prefix}_{ext}" for ext in [
-                "2kcal", "kcal", "bkcal", "gacal", "gpcal", "bcal",]]
-        if self.config["forsystemhealth"]:
-            tables_to_remove += [f"{self.table_prefix}_2gcal"]
+                "2kcal", "kcal", "bkcal", "gacal", "gpcal", "bcal", "2gcal"]]
 
         for path in tables_to_remove:
             if os.path.exists(path):
@@ -86,30 +84,62 @@ class CalibratorObservation:
         for ext in ["kcal", "2kcal"]:
             shutil.rmtree(f"{self.table_prefix}_{ext}")
         error += dc.delay_calibration(
-            self.msname, self.cal.name, refants=self.config["refants"],
-            t2=t2 if self.config["forsystemhealth"] else None)
+            self.msname, self.cal.name, refants=self.config["refants"], t2=t2)
         _check_path(f"{self.table_prefix}_kcal")
 
         return error
 
-    def bandpass_and_gain_cal(self, tbeam: str = "60s") -> int:
-        """Gain and bandpass calibration."""
-        error = dc.gain_calibration(
-            self.msname,
-            self.cal.name,
-            self.config['refants'][0],
-            blbased=False,
-            forsystemhealth=self.config["forsystemhealth"],
-            keepdelays=self.config["keepdelays"],
-            #interp_thresh=1.5,
-            #interp_polyorder=7,
-            tbeam=tbeam)
-        print(error)
-        dc.combine_bandpass_and_delay(self.table_prefix, self.config["forsystemhealth"])
+    def gain_calibration(self, delay_bandpass_cal_prefix: str = "", tbeam: str = "60s") -> int:
+        """Gain calibration."""
+        if not delay_bandpass_cal_prefix:
+            delay_bandpass_cal_prefix = self.table_prefix
 
+        caltables = [
+            {
+                "table": f"{delay_bandpass_cal_prefix}_kcal",
+                "type": "K",
+                "spwmap": [-1]}]
+        if os.path.exists(f"{delay_bandpass_cal_prefix}_bacal"):
+            caltables += [
+                {
+                    "table": f"{delay_bandpass_cal_prefix}_bacal",
+                    "type": "B",
+                    "spwmap": [-1]
+                },
+                {
+                    "table": f"{delay_bandpass_cal_prefix}_bpcal",
+                    "type": "B",
+                    "spwmap": [-1]}]
+        error = dc.gain_calibration(
+            self.msname, self.cal.name, self.config['refants'][0], caltables, tbeam=tbeam)
+        return error
+
+    def bandpass_calibration(self, delay_bandpass_cal_prefix: str = "") -> int:
+        """Bandpass calibration."""
+        if not delay_bandpass_cal_prefix:
+            delay_bandpass_cal_prefix = self.table_prefix
+
+        caltables = [
+            {
+                "table": f"{delay_bandpass_cal_prefix}_kcal",
+                "type": "K",
+                "spwmap": [-1]}]
+        if os.path.exists(f"{self.table_prefix}_gacal"):
+            caltables += [
+                {
+                    "table": f"{self.table_prefix}_gacal",
+                    "type": "G",
+                    "spwmap": [-1]},
+                {
+                    "table": f"{self.table_prefix}_gpcal",
+                    "type": "G",
+                    "spwmap": [-1]}]
+        error = dc.bandpass_calibration(
+            self.msname, self.cal.name, self.config['refants'][0], caltables)
         return error
 
     def quick_delay_calibration(self) -> int:
+        """Calibrate delays after averaging entire observation."""
         error = 0
         error += dc.delay_calibration(
             self.msname, self.cal.name, refants=self.config["refants"])
@@ -123,14 +153,9 @@ def get_configuration() -> dict:
 
     config = {
         "refants": cal_params["refant"],
-
         "bad_antennas" : [],
         "bad_uvrange" : "2~50m",
         "manual_flags": [],
-
-        "forsystemhealth": False,
-        "keepdelays": False,
-
         "reuse_flags": False}
 
     return config
