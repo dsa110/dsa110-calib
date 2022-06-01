@@ -97,12 +97,10 @@ class CalibratorObservation:
             self.config['refants'][0],
             blbased=False,
             tbeam=tbeam)
-        print(error)
-        dc.combine_bandpass_and_delay(self.table_prefix)
-
         return error
 
     def quick_delay_calibration(self) -> int:
+        """Calibrate delays after averaging entire observation."""
         error = 0
         error += dc.delay_calibration(
             self.msname, self.cal.name, refants=self.config["refants"])
