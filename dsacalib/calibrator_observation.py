@@ -89,8 +89,9 @@ class CalibratorObservation:
 
         return error
 
-    def gain_calibration(self, delay_bandpass_table_prefix: str = "", tbeam: str = "60s") -> int:
+    def gain_calibration(self, tbeam: str = "60s") -> int:
         """Gain calibration."""
+        delay_bandpass_table_prefix = self.config['delay_bandpass_table_prefix']
         if not delay_bandpass_table_prefix:
             delay_bandpass_table_prefix = self.table_prefix
 
