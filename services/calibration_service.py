@@ -113,6 +113,7 @@ def calibrate_file(calname, flist):
     status = calibrate_measurement_set(
         msname,
         filenames[date][calname]["cal"],
+        delay_bandpass_cal_prefix=delay_bandpass_cal_prefix,
         logger=LOGGER,
         throw_exceptions=False,
     )

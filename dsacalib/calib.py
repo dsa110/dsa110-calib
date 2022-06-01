@@ -181,7 +181,7 @@ def delay_calibration(
 
 def gain_calibration(
         msname: str, sourcename: str, refant: str, blbased: bool = False,
-        tbeam: str = "30s") -> int:
+        tbeam: str = "30s", delay_bandpass_cal_prefix: str = "") -> int:
     r"""Use CASA to calculate bandpass and complex gain solutions.
 
     Saves solutions to calibration tables and calibrates the measurement set by
@@ -227,116 +227,49 @@ def gain_calibration(
     spwmap = [-1]
     error = 0
 
-    # Convert delay calibration into a bandpass representation
-    caltables = [
-        {
-            "table": f"{msname}_{sourcename}_kcal",
-            "type": "K",
-            "spwmap": spwmap,
-        }
-    ]
+    if not delay_bandpass_cal_prefix:
 
-    error += solve_gain_calibration(
-        msname, sourcename, refant, caltables, combine, spwmap,
-        blbased, tbeam)
+        caltables = [
+            {
+                "table": f"{msname}_{sourcename}_kcal",
+                "type": "K",
+                "spwmap": spwmap}]
+
+        error += solve_gain_calibration(
+            msname, sourcename, refant, caltables, combine, spwmap,
+            blbased, tbeam)
+
+    else:
+
+        caltables = [
+        {
+            "table": f"{delay_bandpass_cal_prefix}_kcal",
+            "type": "K",
+            "spwmap": spwmap},
+        {
+            "table": f"{delay_bandpass_cal_prefix}_bacal",
+            "type": "B",
+            "spwmap": spwmap},
+        {
+            "table": f"{delay_bandpass_cal_prefix}_bpcal",
+            "type": "B",
+            "spwmap": spwmap}]
+
+        error += solve_bandpass_calibration(
+            msname, sourcename, refant, caltables, combine, spwmap)
 
     return error
 
-def solve_gain_calibration(
+def bandpass_calibration(
         msname: str, sourcename: str, refant: str, caltables: List[dict],
-        combine: str = "field,scan,obs", spwmap: List = None,
-        blbased: bool = False, tbeam: str = "60s"
-) -> int:
-    """Solve for gain calibration after applying `caltables`.
+        combine: str = "field,scan,obs", spwmap: List = None) -> int:
 
-    This includes:
-    Rough bandpass calibration (bcal)
-    Gain calibration (gacal, then gpcal)
-    Bandpass calibration (bacal, then bpcal)
-    Gain calibration on short timescales of tbeam (2gcal)
-    """
     if not spwmap:
         spwmap = [-1]
 
     error = 0
 
-    # Rough bandpass calibration
-    caltables_orig = deepcopy(caltables)
-
-    cb = cc.calibrater()
-    error += not cb.open(f"{msname}.ms")
-    error += apply_calibration_tables(cb, caltables)
-    error += cb.setsolve(
-        type="B",
-        combine=combine,
-        table=f"{msname}_{sourcename}_bcal",
-        refant=refant,
-        apmode="ap",
-        t="inf",
-        solnorm=True,
-    )
-    error += cb.solve()
-    error += cb.close()
-
-    caltables += [
-        {
-            "table": f"{msname}_{sourcename}_bcal",
-            "type": "B",
-            "spwmap": spwmap,
-        }
-    ]
-
-    # Gain calibration
-    cb = cc.calibrater()
-    error += cb.open(f"{msname}.ms")
-    error += apply_calibration_tables(cb, caltables)
-    error += cb.setsolve(
-        type="G",
-        combine=combine,
-        table=f"{msname}_{sourcename}_gacal",
-        refant=refant,
-        apmode="a",
-        t="inf",
-    )
-    error += cb.solve()
-    error += cb.close()
-
-    caltables += [
-        {
-            "table": f"{msname}_{sourcename}_gacal",
-            "type": "G",
-            "spwmap": spwmap,
-        }
-    ]
-
-    cb = cc.calibrater()
-    error += cb.open(f"{msname}.ms")
-    error += apply_calibration_tables(cb, caltables)
-    error += cb.setsolve(
-        type="G",
-        combine=combine,
-        table=f"{msname}_{sourcename}_gpcal",
-        refant=refant,
-        apmode="p",
-        t="inf",
-    )
-    error += cb.solve()
-    error += cb.close()
-
-    # Final bandpass calibration
-    caltables = caltables_orig + [
-        {
-            "table": f"{msname}_{sourcename}_gacal",
-            "type": "G",
-            "spwmap": spwmap,
-        },
-        {
-            "table": f"{msname}_{sourcename}_gpcal",
-            "type": "G",
-            "spwmap": spwmap,
-        },
-    ]
-
+    # Amplitude 
     cb = cc.calibrater()
     error += cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
@@ -352,14 +285,12 @@ def solve_gain_calibration(
     error += cb.solve()
     error += cb.close()
 
+    # Phase
     caltables += [
         {
             "table": f"{msname}_{sourcename}_bacal",
             "type": "B",
-            "spwmap": spwmap,
-        }
-    ]
-
+            "spwmap": spwmap}]
     cb = cc.calibrater()
     error += cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
@@ -374,25 +305,62 @@ def solve_gain_calibration(
     )
     error += cb.solve()
     error += cb.close()
+    
+    return error
 
+def gain_calibration(
+        msname: str, sourcename: str, refant: str, caltables: List[dict],
+        combine: str = "field,scan,obs", spwmap: List = None,
+        tbeam: str = "60s"
+) -> int:
+    """Solve for gain calibration after applying `caltables`.
+
+    This includes:
+    Rough bandpass calibration (bcal)
+    Gain calibration (gacal, then gpcal)
+    Bandpass calibration (bacal, then bpcal)
+    Gain calibration on short timescales of tbeam (2gcal)
+    """
+    if not spwmap:
+        spwmap = [-1]
+
+    error = 0
+
+    caltables_orig = deepcopy(caltables)
+
+    # Gain calibration - amplitude
+    cb = cc.calibrater()
+    error += cb.open(f"{msname}.ms")
+    error += apply_calibration_tables(cb, caltables)
+    error += cb.setsolve(
+        type="G", combine=combine, table=f"{msname}_{sourcename}_gacal", refant=refant,
+        apmode="a", t="inf")
+    error += cb.solve()
+    error += cb.close()
+
+    # Gain calibration - phase
     caltables += [
         {
-            "table": f"{msname}_{sourcename}_bpcal",
-            "type": "B",
-            "spwmap": spwmap,
-        }
-    ]
+            "table": f"{msname}_{sourcename}_gacal",
+            "type": "G",
+            "spwmap": spwmap}]
+    cb = cc.calibrater()
+    error += cb.open(f"{msname}.ms")
+    error += apply_calibration_tables(cb, caltables)
+    error += cb.setsolve(
+        type="G", combine=combine, table=f"{msname}_{sourcename}_gpcal", refant=refant, apmode="p",
+        t="inf")
+    error += cb.solve()
+    error += cb.close()
+
+    # Gain calibration - short timescales
+    caltables = caltables_orig
     cb = cc.calibrater()
     error += not cb.open(f"{msname}.ms")
     error += apply_calibration_tables(cb, caltables)
     error += not cb.setsolve(
-        type="M" if blbased else "G",
-        combine=combine,
-        table=f"{msname}_{sourcename}_2gcal",
-        refant=refant,
-        apmode="ap",
-        t=tbeam,
-    )
+        type="G", combine=combine, table=f"{msname}_{sourcename}_2gcal", refant=refant,
+        apmode="ap", t=tbeam)
     error += not cb.solve()
     error += not cb.close()
 
@@ -768,18 +736,21 @@ def calibrate_phases(
 
 
 def calculate_bandpass(
-        msname: str, table_prefix: str, filter_phase: bool = True) -> Tuple[np.ndarray]:
+        msname: str, table_prefix: str, delay_bandpass_table_prefix: str = "",
+        filter_phase: bool = True) -> Tuple[np.ndarray]:
     """Combines gain, bandpass, and delay tables into a single bandpass.
 
     If `filter_phase` is set to `True`, then use savgol filter to smooth the bandpass phases,
     and channel flags are not propagated to the returned flags array.
     """
+    if not delay_bandpass_cal_prefix:
+        delay_bandpass_cal_prefix = table_prefix
     fobs = freq_GHz_from_ms(msname)
     fmean = np.mean(fobs)
 
-    kcal, _, kflags, *_ = read_caltable(f"{table_prefix}_kcal", reshape=False)
-    bacal, _, baflags, *_ = read_caltable(f"{table_prefix}_bacal", reshape=False, cparam=True)
-    bpcal, _, bpflags, *_ = read_caltable(f"{table_prefix}_bpcal", reshape=False, cparam=True)
+    kcal, _, kflags, *_ = read_caltable(f"{delay_bandpasss_table_prefix}_kcal", reshape=False)
+    bacal, _, baflags, *_ = read_caltable(f"{delay_bandpasss_table_prefix}_bacal", reshape=False, cparam=True)
+    bpcal, _, bpflags, *_ = read_caltable(f"{delay_bandpasss_table_prefix}_bpcal", reshape=False, cparam=True)
     gacal, _, gaflags, *_ = read_caltable(f"{table_prefix}_gacal", reshape=False, cparam=True)
     gpcal, _, gpflags, *_ = read_caltable(f"{table_prefix}_gpcal", reshape=False, cparam=True)
 
@@ -800,10 +771,13 @@ def calculate_bandpass(
     return bandpass, flags
 
 
-def combine_tables(msname: str, table_prefix: str, filter_phase: bool = True) -> None:
+def combine_tables(
+        msname: str, table_prefix: str, delay_bandpass_table_prefix: str = "",
+        filter_phase: bool = True) -> None:
     """Combine gain, bandpass and delay tables into a single bandpass table."""
 
-    bandpass, flags = calculate_bandpass(msname, table_prefix, filter_phase)
+    bandpass, flags = calculate_bandpass(
+        msname, table_prefix, delay_bandpass_table_prefix, filter_phase)
 
     if not os.path.exists(f"{table_prefix}_bcal"):
         tablecopy(f"{table_prefix}_bpcal", f"{table_prefix}_bcal")

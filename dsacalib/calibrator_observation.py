@@ -89,14 +89,53 @@ class CalibratorObservation:
 
         return error
 
-    def bandpass_and_gain_cal(self, tbeam: str = "60s") -> int:
-        """Gain and bandpass calibration."""
+    def gain_calibration(self, delay_bandpass_cal_prefix: str = "", tbeam: str = "60s") -> int:
+        """Gain calibration."""
+        if not delay_bandpass_cal_prefix:
+            delay_bandpass_cal_prefix = self.table_prefix
+
+        caltables = [
+            {
+                "table": f"{delay_bandpass_cal_prefix}_kcal",
+                "type": "K",
+                "spwmap": [-1]}]
+        if os.path.exists(f"{delay_bandpass_cal_prefix}_bacal"):
+            caltables += [
+                {
+                    "table": f"{delay_bandpass_cal_prefix}_bacal",
+                    "type": "B",
+                    "spwmap": [-1]
+                },
+                {
+                    "table": f"{delay_bandpass_cal_prefix}_bpcal",
+                    "type": "B",
+                    "spwmap": [-1]}]
         error = dc.gain_calibration(
-            self.msname,
-            self.cal.name,
-            self.config['refants'][0],
-            blbased=False,
-            tbeam=tbeam)
+            self.msname, self.cal.name, self.config['refants'][0], caltables, tbeam=tbeam)
+        return error
+
+    def bandpass_calibration(self, delay_bandpass_cal_prefix: str = "") -> int:
+        """Bandpass calibration."""
+                if not delay_bandpass_cal_prefix:
+            delay_bandpass_cal_prefix = self.table_prefix
+
+        caltables = [
+            {
+                "table": f"{delay_bandpass_cal_prefix}_kcal",
+                "type": "K",
+                "spwmap": [-1]}]
+        if os.path.exists(f"{self.table_prefix}_gacal"):
+            caltables += [
+                {
+                    "table": f"{self.table_prefix}_gacal",
+                    "type": "G",
+                    "spwmap": [-1]},
+                {
+                    "table": f"{self.table_prefix}_gpcal",
+                    "type": "G",
+                    "spwmap": [-1]}]
+        error = dc.gain_calibration(
+            self.msname, self.cal.name, self.config['refants'][0], caltables, tbeam=tbeam)
         return error
 
     def quick_delay_calibration(self) -> int:
