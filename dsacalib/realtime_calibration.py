@@ -5,30 +5,34 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 2020/06
 import shutil
 import os
 import glob
+from typing import List
+
 import numpy as np
 from astropy.coordinates import Angle
+import astropy.units as u
+from astropy.time import Time
 import pandas
+
 import scipy # pylint: disable=unused-import
 from casacore.tables import table
+
 import dsautils.calstatus as cs
 import dsacalib.utils as du
 import dsacalib.ms_io as dmsio
 import dsacalib.fits_io as dfio
 import dsacalib.calib as dc
 import dsacalib.plotting as dp
+import dsacalib.flagging as dfl
 import dsacalib.fringestopping as df
 import dsacalib.constants as ct
 from dsacalib.ms_io import extract_vis_from_ms
-import astropy.units as u # pylint: disable=wrong-import-order
-from astropy.utils import iers # pylint: disable=wrong-import-order
-iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
-iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=wrong-import-position
 
 
 class PipelineComponent:
-    def __init__(self, logger, throw_exceptions):
-        self.description = 'Pipline component'
+    """A component of the real-time pipeline."""
+
+    def __init__(self, logger: "DsaSyslogger", throw_exceptions: bool):
+        self.description = 'Pipeline component'
         self.error_code = 0
         self.nonfatal_error_code = 0
         self.logger = logger
@@ -37,8 +41,11 @@ class PipelineComponent:
     def target(self):
         return 0
 
-    def __call__(self, status, *args):
-        """Handle fatal and nonfatal errors."""
+    def __call__(self, status: int, *args) -> int:
+        """Handle fatal and nonfatal errors.
+
+        Return an updated status that reflects any errors that occurred in `target`.
+        """
         try:
             error = self.target(msname, *args)
 
@@ -57,11 +64,14 @@ class PipelineComponent:
 
         return status
 
+
 class Flagger(PipelineComponent):
-    def __init__(self, logger, throw_exceptions):
+    """The ms flagger.  Flags baselines, zeros, bad antennas, and rfi."""
+
+    def __init__(self, logger: "DsaSyslogger", throw_exceptions: bool):
         """Describe Flagger and error code if fails."""
         super.__init__(logger, throw_exceptions)
-        self.description = 'Flagging of ms data'
+        self.description = "Flagging of ms data"
         self.error_code = (
             cs.FLAGGING_ERR |
             cs.INV_GAINAMP_P1 |
@@ -74,26 +84,24 @@ class Flagger(PipelineComponent):
             cs.INV_DELAYCALTIME )
         self.nonfatal_error_code = cs.FLAGGING_ERR
 
-    def target(self, msname, bad_uvrange):
+    def target(self, msname: str, bad_uvrange: str, bad_antennas: List[str], manual_flags: List[tuple]):
         """Flag data in the measurement set."""
-        dc.reset_flags(msname, datacolumn='data')
-        dc.reset_flags(msname, datacolumn='model')
-        dc.reset_flags(msname, datacolumn='corrected')        
+        dfl.reset_all_flags(msname)     
         self.current_error = cs.FLAGGING_ERR
 
         error = 0
-        error += dc.flag_baselines(msname, uvrange=bad_uvrange)
-        error += dc.flag_zeros(msname)
+        error += dfl.flag_baselines(msname, uvrange=bad_uvrange)
+        error += dfl.flag_zeros(msname)
 
         if bad_antennas is not None:
             for ant in bad_antennas:
-                error += dc.flag_antenna(msname, ant)
+                error += dfl.flag_antenna(msname, ant)
 
         if manual_flags is not None:
             for entry in manual_flags:
-                error += dc.flag_manual(msname, entry[0], entry[1])
+                error += dfl.flag_manual(msname, entry[0], entry[1])
 
-        flag_pixels(msname)
+        dfl.flag_rfi(msname)
 
         return error
 
@@ -150,7 +158,7 @@ class BandpassGainCalibrator(PipelineComponent):
             cs.INV_GAINCALTIME)
         self.nonfatal_error_code = cs.GAIN_BP_CAL_ERR
 
-    def check_tables_created(self, msname, cal, forsystemhealth, keepdelays)
+    def check_tables_created(self, msname, cal, forsystemhealth, keepdelays):
         fnames = [
             '{0}_{1}_bcal'.format(msname, cal.name),
             '{0}_{1}_bacal'.format(msname, cal.name),
