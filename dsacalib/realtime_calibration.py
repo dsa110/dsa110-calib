@@ -121,20 +121,20 @@ class BandpassGainCalibrater(PipelineComponent):
         self.nonfatal_error_code = cs.GAIN_BP_CAL_ERR
 
     def target(self, calobs, delay_bandpass_table_prefix: str = ""):
-        if not delay_bandpass_table_prefix:
+        if not calobs.config['delay_bandpass_table_prefix']:
             error = calobs.bandpass_calibration()
             error += calobs.gain_calibration()
             error += calobs.bandpass_calibration()
 
         else:
-            error += calobs.gain_calibration(delay_bandpass_table_prefix)
+            error += calobs.gain_calibration()
 
         return error
 
 # TODO: delay_bandpass_table_prefix should be part of calobs
 def calibrate_measurement_set(
-        msname: str, cal: "CalibratorSource", delay_bandpass_table_prefix: str = "",
-        logger: "DsaSyslogger" = None, throw_exceptions: bool = True, **kwargs
+        msname: str, cal: "CalibratorSource", logger: "DsaSyslogger" = None,
+        throw_exceptions: bool = True, **kwargs
 ) -> int:
     r"""Calibrates the measurement set.
 
@@ -160,7 +160,9 @@ def calibrate_measurement_set(
     manual_flags : list(list(str))
         Include any additional flags to be done prior to calibration, as
         CASA-understood strings.
-
+    delay_bandpass_table_prefix : str
+        The prefix to the kcal, bacal, bpcal tables to be applied for gain-only
+        calibration.
     Returns
     -------
     int
@@ -178,18 +180,18 @@ def calibrate_measurement_set(
     status = 0
     calobs.reset_calibration()
 
-    if not calobs.config["reuse_flags"]:
+    if not calobs.config['reuse_flags']:
         print("flagging of ms data")
         status |= flagger(calobs)
            
-    if not delay_bandpass_table_prefix:
+    if not calobs.config['delay_bandpass_table_prefix']:
         print("delay cal")
         status |= delaycal(calobs)
     
     print("bp and gain cal")    
-    status |= bpgaincal(calobs, delay_bandpass_table_prefix)
+    status |= bpgaincal(calobs)
 
-    combine_tables(msname, f"{msname}_{cal.name}", delay_bandpass_table_prefix)
+    combine_tables(msname, f"{msname}_{cal.name}", calobs.config['delay_bandpass_table_prefix'])
 
     print("end of cal routine")
     return status
