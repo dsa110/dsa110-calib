@@ -116,7 +116,7 @@ class CalibratorObservation:
 
     def bandpass_calibration(self, delay_bandpass_cal_prefix: str = "") -> int:
         """Bandpass calibration."""
-                if not delay_bandpass_cal_prefix:
+        if not delay_bandpass_cal_prefix:
             delay_bandpass_cal_prefix = self.table_prefix
 
         caltables = [
@@ -134,8 +134,8 @@ class CalibratorObservation:
                     "table": f"{self.table_prefix}_gpcal",
                     "type": "G",
                     "spwmap": [-1]}]
-        error = dc.gain_calibration(
-            self.msname, self.cal.name, self.config['refants'][0], caltables, tbeam=tbeam)
+        error = dc.bandpass_calibration(
+            self.msname, self.cal.name, self.config['refants'][0], caltables)
         return error
 
     def quick_delay_calibration(self) -> int:

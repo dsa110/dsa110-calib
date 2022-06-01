@@ -180,135 +180,6 @@ def delay_calibration(
 
 
 def gain_calibration(
-        msname: str, sourcename: str, refant: str, blbased: bool = False,
-        tbeam: str = "30s", delay_bandpass_cal_prefix: str = "") -> int:
-    r"""Use CASA to calculate bandpass and complex gain solutions.
-
-    Saves solutions to calibration tables and calibrates the measurement set by
-    applying delay, bandpass, and complex gain solutions.  Uses baseline-based
-    calibration routines within CASA.
-
-    Parameters
-    ----------
-    msname : str
-        The name of the measurement set.  The MS `msname`.ms will be opened.
-    sourcename : str
-        The name of the calibrator source.  The calibration table will be
-        written to `msname`\_`sourcename`\_kcal.
-    refant : str
-        The reference antenna to use in calibration.  If type *str*, this is
-        the name of the antenna.  If type *int*, it is the index of the antenna
-        in the measurement set.
-    blbased : boolean
-        Set to True if baseline-based calibration desired.
-    keepdelays : boolean
-        Set to True if you want to update the delays currently set in the
-        system. In this case, delay changes of integer 2 ns will be kept in the
-        delay calibration table, and residual delays will be incorporated into
-        the bandpass gain table. If set to False, all of the delay will be
-        incorporated into the bandpass gain table.
-    tbeam : str
-        The integration time to use when measuring gain variations over time,
-        e.g. ``'inf'`` or ``'60s'``.  See the CASA documentation for more
-        examples.
-    interp_thresh : float
-        Sets flagging of bandpass solutions before interpolating in order to
-        smooth the solutions. After median baselining, any points that deviate
-        by more than interp_thresh*std are flagged.
-    interp_polyorder : int
-        The order of the polynomial used to smooth bandpass solutions.
-
-    Returns
-    -------
-    int
-        The number of errors that occured during calibration.
-    """
-    combine = "field,scan,obs"
-    spwmap = [-1]
-    error = 0
-
-    if not delay_bandpass_cal_prefix:
-
-        caltables = [
-            {
-                "table": f"{msname}_{sourcename}_kcal",
-                "type": "K",
-                "spwmap": spwmap}]
-
-        error += solve_gain_calibration(
-            msname, sourcename, refant, caltables, combine, spwmap,
-            blbased, tbeam)
-
-    else:
-
-        caltables = [
-        {
-            "table": f"{delay_bandpass_cal_prefix}_kcal",
-            "type": "K",
-            "spwmap": spwmap},
-        {
-            "table": f"{delay_bandpass_cal_prefix}_bacal",
-            "type": "B",
-            "spwmap": spwmap},
-        {
-            "table": f"{delay_bandpass_cal_prefix}_bpcal",
-            "type": "B",
-            "spwmap": spwmap}]
-
-        error += solve_bandpass_calibration(
-            msname, sourcename, refant, caltables, combine, spwmap)
-
-    return error
-
-def bandpass_calibration(
-        msname: str, sourcename: str, refant: str, caltables: List[dict],
-        combine: str = "field,scan,obs", spwmap: List = None) -> int:
-
-    if not spwmap:
-        spwmap = [-1]
-
-    error = 0
-
-    # Amplitude 
-    cb = cc.calibrater()
-    error += cb.open(f"{msname}.ms")
-    error += apply_calibration_tables(cb, caltables)
-    error += cb.setsolve(
-        type="B",
-        combine=combine,
-        table=f"{msname}_{sourcename}_bacal",
-        refant=refant,
-        apmode="a",
-        t="inf",
-        solnorm=True,
-    )
-    error += cb.solve()
-    error += cb.close()
-
-    # Phase
-    caltables += [
-        {
-            "table": f"{msname}_{sourcename}_bacal",
-            "type": "B",
-            "spwmap": spwmap}]
-    cb = cc.calibrater()
-    error += cb.open(f"{msname}.ms")
-    error += apply_calibration_tables(cb, caltables)
-    error += cb.setsolve(
-        type="B",
-        combine=combine,
-        table=f"{msname}_{sourcename}_bpcal",
-        refant=refant,
-        apmode="p",
-        t="inf",
-        solnorm=True,
-    )
-    error += cb.solve()
-    error += cb.close()
-    
-    return error
-
-def gain_calibration(
         msname: str, sourcename: str, refant: str, caltables: List[dict],
         combine: str = "field,scan,obs", spwmap: List = None,
         tbeam: str = "60s"
@@ -363,6 +234,64 @@ def gain_calibration(
         apmode="ap", t=tbeam)
     error += not cb.solve()
     error += not cb.close()
+
+    return error
+
+def bandpass_calibration(
+        msname: str, sourcename: str, refant: str, caltables: List[dict],
+        combine: str = "field,scan,obs", spwmap: List = None) -> int:
+    """Calibrate the bandpass.
+
+    Parameters
+    ----------
+    msname : str
+        The path to the measurement set, omitting the final ".ms"
+    sourcename : str
+        The name of the calibrator, at which the ms is phased.
+    refant : str
+        The reference antenna name to use.
+    caltables : List[dict]
+        The tables to be applied prior to bandpass calibration.  Should include
+        "table", "type" and "spwmap" keys.
+    combine : str
+        The casa combine parameter for solving calibration.
+    spwmap : List[int]
+        The casa spwmap parameter. e.g. [-1] beams apply each spw's solution to the same
+        spw in the ms.  [0]*nspws means apply spw 0's solution to every spw.
+
+    Returns
+    -------
+    int : the number of errors that occured in the casa calls
+    """
+    if not spwmap:
+        spwmap = [-1]
+
+    error = 0
+
+    # Amplitude
+    cb = cc.calibrater()
+    error += cb.open(f"{msname}.ms")
+    error += apply_calibration_tables(cb, caltables)
+    error += cb.setsolve(
+        type="B", combine=combine, table=f"{msname}_{sourcename}_bacal",
+        refant=refant, apmode="a", t="inf", solnorm=True)
+    error += cb.solve()
+    error += cb.close()
+
+    # Phase
+    caltables += [
+        {
+            "table": f"{msname}_{sourcename}_bacal",
+            "type": "B",
+            "spwmap": spwmap}]
+    cb = cc.calibrater()
+    error += cb.open(f"{msname}.ms")
+    error += apply_calibration_tables(cb, caltables)
+    error += cb.setsolve(
+        type="B", combine=combine, table=f"{msname}_{sourcename}_bpcal",
+        refant=refant, apmode="p", t="inf", solnorm=True)
+    error += cb.solve()
+    error += cb.close()
 
     return error
 
@@ -748,9 +677,11 @@ def calculate_bandpass(
     fobs = freq_GHz_from_ms(msname)
     fmean = np.mean(fobs)
 
-    kcal, _, kflags, *_ = read_caltable(f"{delay_bandpasss_table_prefix}_kcal", reshape=False)
-    bacal, _, baflags, *_ = read_caltable(f"{delay_bandpasss_table_prefix}_bacal", reshape=False, cparam=True)
-    bpcal, _, bpflags, *_ = read_caltable(f"{delay_bandpasss_table_prefix}_bpcal", reshape=False, cparam=True)
+    kcal, _, kflags, *_ = read_caltable(f"{delay_bandpass_table_prefix}_kcal", reshape=False)
+    bacal, _, baflags, *_ = read_caltable(
+        f"{delay_bandpass_table_prefix}_bacal", reshape=False, cparam=True)
+    bpcal, _, bpflags, *_ = read_caltable(
+        f"{delay_bandpass_table_prefix}_bpcal", reshape=False, cparam=True)
     gacal, _, gaflags, *_ = read_caltable(f"{table_prefix}_gacal", reshape=False, cparam=True)
     gpcal, _, gpflags, *_ = read_caltable(f"{table_prefix}_gpcal", reshape=False, cparam=True)
 
