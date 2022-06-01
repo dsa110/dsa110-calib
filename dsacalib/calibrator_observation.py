@@ -89,39 +89,43 @@ class CalibratorObservation:
 
         return error
 
-    def gain_calibration(self, delay_bandpass_cal_prefix: str = "", tbeam: str = "60s") -> int:
+    def gain_calibration(self, delay_bandpass_table_prefix: str = "", tbeam: str = "60s") -> int:
         """Gain calibration."""
-        if not delay_bandpass_cal_prefix:
-            delay_bandpass_cal_prefix = self.table_prefix
+        if not delay_bandpass_table_prefix:
+            delay_bandpass_table_prefix = self.table_prefix
 
         caltables = [
             {
-                "table": f"{delay_bandpass_cal_prefix}_kcal",
+                "table": f"{delay_bandpass_table_prefix}_kcal",
                 "type": "K",
                 "spwmap": [-1]}]
-        if os.path.exists(f"{delay_bandpass_cal_prefix}_bacal"):
+        if os.path.exists(f"{delay_bandpass_table_prefix}_bacal"):
             caltables += [
                 {
-                    "table": f"{delay_bandpass_cal_prefix}_bacal",
+                    "table": f"{delay_bandpass_table_prefix}_bacal",
                     "type": "B",
                     "spwmap": [-1]
                 },
                 {
-                    "table": f"{delay_bandpass_cal_prefix}_bpcal",
+                    "table": f"{delay_bandpass_table_prefix}_bpcal",
                     "type": "B",
                     "spwmap": [-1]}]
         error = dc.gain_calibration(
             self.msname, self.cal.name, self.config['refants'][0], caltables, tbeam=tbeam)
+
+        for suffix in ["gacal", "gpcal", "2gcal"]:
+            _check_path(f"{self.table_prefix}_{suffix}")
+
         return error
 
-    def bandpass_calibration(self, delay_bandpass_cal_prefix: str = "") -> int:
+    def bandpass_calibration(self, delay_bandpass_table_prefix: str = "") -> int:
         """Bandpass calibration."""
-        if not delay_bandpass_cal_prefix:
-            delay_bandpass_cal_prefix = self.table_prefix
+        if not delay_bandpass_table_prefix:
+            delay_bandpass_table_prefix = self.table_prefix
 
         caltables = [
             {
-                "table": f"{delay_bandpass_cal_prefix}_kcal",
+                "table": f"{delay_bandpass_table_prefix}_kcal",
                 "type": "K",
                 "spwmap": [-1]}]
         if os.path.exists(f"{self.table_prefix}_gacal"):
@@ -136,6 +140,10 @@ class CalibratorObservation:
                     "spwmap": [-1]}]
         error = dc.bandpass_calibration(
             self.msname, self.cal.name, self.config['refants'][0], caltables)
+
+        for suffix in ["bacal", "bpcal"]:
+            _check_path(f"{self.table_prefix}_{suffix}")
+
         return error
 
     def quick_delay_calibration(self) -> int:
@@ -156,7 +164,8 @@ def get_configuration() -> dict:
         "bad_antennas" : [],
         "bad_uvrange" : "2~50m",
         "manual_flags": [],
-        "reuse_flags": False}
+        "reuse_flags": False,
+        "delay_bandpass_table_prefix": ""}
 
     return config
 
