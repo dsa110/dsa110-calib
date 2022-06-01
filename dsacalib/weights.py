@@ -1,8 +1,10 @@
 """Determine and inspect beamformer weights."""
 
+from typing import List
 import glob
 import os
 from collections import namedtuple
+from datetime import datetime, timedelta, timezone
 
 import astropy.units as u
 import matplotlib.pyplot as plt
@@ -10,7 +12,6 @@ import numpy as np
 import yaml
 from antpos.utils import get_itrf
 import scipy  #pylint: disable=unused-import # must come before casacore
-from casacore.tables import table
 from dsautils import cnf
 
 import dsacalib.constants as ct
@@ -19,6 +20,7 @@ from dsacalib.ms_io import get_antenna_gains, get_delays, read_caltable, freq_GH
 
 
 def get_refmjd() -> float:
+    """Get the reference mjd used in fringestopping."""
     conf = cnf.Conf()
     return conf.get("fringe")["refmjd"]
 
@@ -57,7 +59,6 @@ def get_good_solution(
     """Find good set of solutions and calculate average gains.
     TODO: go from good bfnames to average gains.
     """
-    from datetime import datetime, timedelta, timezone
 
     config = get_config()
 
@@ -355,7 +356,7 @@ def sort_beamformer_names(beamformer_names):
 def filter_beamformer_solutions(beamformer_names, start_time):
     """Removes beamformer solutions inconsistent with the latest solution."""
     config = get_config()
-    beamformer_dir = config["beamformer_dir"]
+    beamformer_dir = config.beamformer_dir
 
     if len(beamformer_names) == 0:
         return beamformer_names, None

@@ -18,6 +18,7 @@ import dsacalib.constants as ct
 import dsacalib.utils as du
 from dsacalib.calibrator_observation import CalibratorObservation
 from dsacalib.weights import write_beamformer_solutions
+from dsacalib.calib import combine_tables
 
 
 def calibrate_measurement_set(
@@ -25,12 +26,6 @@ def calibrate_measurement_set(
         throw_exceptions: bool = True, **kwargs
 ) -> int:
     r"""Calibrates the measurement set.
-
-    Calibration can be done with the aim of monitoring system health (set
-    `forsystemhealth=True`), obtaining beamformer weights (set
-    `forsystemhealth=False` and `keepdelays=False`), or obtaining delays (set
-    `forsystemhealth=False` and `keepdelays=True`, new beamformer weights will
-    be generated as well).
 
     Parameters
     ----------
@@ -51,27 +46,6 @@ def calibrate_measurement_set(
     bad_uvrange : str
         Baselines with lengths within bad_uvrange will be flagged before
         calibration. Must be a casa-understood string with units.
-    keepdelays : bool
-        Only used if `forsystemhealth` is False. If `keepdelays` is set to
-        False and `forsystemhealth` is set to False, then delays are integrated
-        into the bandpass solutions and the kcal table is set to all zeros. If
-        `keepdelays` is set to True and `forsystemhealth` is set to False, then
-        delays are kept at 2 nanosecond resolution.  If `forsystemhealth` is
-        set to True, delays are kept at full resolution regardless of the
-        keepdelays parameter. Defaults False.
-    forsystemhealth : bool
-        Set to True for full-resolution delay and bandpass solutions to use to
-        monitor system health, or to False to generate beamformer weights and
-        delays. Defaults False.
-    interp_thresh: float
-        Used if `forsystemhealth` is False, when smoothing bandpass gains.
-        The gain amplitudes and phases are fit using a polynomial after any
-        points more than interp_thresh*std away from the median-filtered trend
-        are flagged.
-    interp_polyorder : int
-        Used if `forsystemhealth` is False, when smoothing bandpass gains.
-        The gain amplitudes and phases are fit using a polynomial of order
-        interp_polyorder.
     blbased : boolean
         Set to True for baseline-based calibration, False for antenna-based
         calibration.
@@ -151,9 +125,8 @@ def calibrate_measurement_set(
             message = f"{error} non-fatal errors occured in gain calibration of {msname}."
             du.warning_logger(logger, message)
 
-
-        current_erorr = cs.GAIN_BP_CAL_ERR
-        combine_tables(msname, f"{msname}_{calname}")
+        current_error = cs.GAIN_BP_CAL_ERR
+        combine_tables(msname, f"{msname}_{cal.name}")
 
     except Exception as exc:
         status = cs.update(status, current_error)
@@ -178,11 +151,10 @@ def quick_bfweightcal(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
         "corr_list": [int(cl.strip("corr")) for cl in corr_params["ch0"].keys()],
     }
 
-    for key in ["forsystemhealth", "reuse_flags"]:
+    for key in ["reuse_flags"]:
         if key in kwargs:
             raise RuntimeError(
                 f"Input arg {key} not compatible with quick_bfweightcal")
-    kwargs["forsystemhealth"] = False
     kwargs["reuse_flags"] = True
 
     calobs = CalibratorObservation(msname, cal)
@@ -191,6 +163,7 @@ def quick_bfweightcal(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
     error = 0
     error += calobs.quick_delay_calibration()
     error += calobs.bandpass_and_gain_cal()
+    combine_tables(msname, cal.name)
 
     with table(f"{msname}.ms") as tb:
         caltime = Time((tb.TIME_CENTROID[tb.nrows()//2]*u.s).to(u.d), format='mjd')
@@ -201,23 +174,22 @@ def quick_bfweightcal(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
         caltime,
         config["antennas"],
         applied_delays=None,
-        flagged_antennas=config["antennas_not_in_bf"],
-        corr_list=np.array(config["corr_list"]))
+        flagged_antennas=config["antennas_not_in_bf"])
 
     return int
 
 
 def quick_calibration(msname: str, cal: "CalibratorSource" = None, **kwargs) -> int:
+    """Calibrate without resetting flags."""
     if not cal:
         cal = get_cal_from_msname(msname)
 
     calobs = CalibratorObservation(msname, cal)
 
-    for key in ["forsystemhealth", "reuse_flags"]:
+    for key in ["reuse_flags"]:
         if key in kwargs and not kwargs[key]:
             raise RuntimeError(
                 f"Input arg {key}: {kwargs[key]} not compatible with quick_calibration")
-    kwargs["forsystemhealth"] = True
     kwargs["reuse_flags"] = True
     calobs.set_calibration_parameters(**kwargs)
     calobs.reset_calibration()

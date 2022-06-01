@@ -13,7 +13,7 @@ from copy import deepcopy
 
 # Always import scipy before casatools
 from scipy.fftpack import fft, fftfreq, fftshift
-from scipy.signal import medfilt, savgol_filter
+from scipy.signal import savgol_filter
 
 import numpy as np
 import casatools as cc
@@ -181,7 +181,7 @@ def delay_calibration(
 
 def gain_calibration(
         msname: str, sourcename: str, refant: str, blbased: bool = False,
-        keepdelays: bool = False, tbeam: str = "30s") -> int:
+        tbeam: str = "30s") -> int:
     r"""Use CASA to calculate bandpass and complex gain solutions.
 
     Saves solutions to calibration tables and calibrates the measurement set by
@@ -226,7 +226,6 @@ def gain_calibration(
     combine = "field,scan,obs"
     spwmap = [-1]
     error = 0
-    fref_snaps = 0.03  # SNAPs correct to freq of 30 MHz
 
     # Convert delay calibration into a bandpass representation
     caltables = [
@@ -248,7 +247,14 @@ def solve_gain_calibration(
         combine: str = "field,scan,obs", spwmap: List = None,
         blbased: bool = False, tbeam: str = "60s"
 ) -> int:
+    """Solve for gain calibration after applying `caltables`.
 
+    This includes:
+    Rough bandpass calibration (bcal)
+    Gain calibration (gacal, then gpcal)
+    Bandpass calibration (bacal, then bpcal)
+    Gain calibration on short timescales of tbeam (2gcal)
+    """
     if not spwmap:
         spwmap = [-1]
 
@@ -761,8 +767,9 @@ def calibrate_phases(
                 cb.close()
 
 
-def calculate_bandpass(msname: str, table_prefix: str, filter_phase: bool = True) -> Tuple[np.ndarray]:
-    """Combines gain, bandpass, and delay tables into a single bandpass. 
+def calculate_bandpass(
+        msname: str, table_prefix: str, filter_phase: bool = True) -> Tuple[np.ndarray]:
+    """Combines gain, bandpass, and delay tables into a single bandpass.
 
     If `filter_phase` is set to `True`, then use savgol filter to smooth the bandpass phases,
     and channel flags are not propagated to the returned flags array.
@@ -796,7 +803,7 @@ def calculate_bandpass(msname: str, table_prefix: str, filter_phase: bool = True
 def combine_tables(msname: str, table_prefix: str, filter_phase: bool = True) -> None:
     """Combine gain, bandpass and delay tables into a single bandpass table."""
 
-    bandpass, flags = calculate_bandpass(table_prefix, filter_phase, fmean_GHz)
+    bandpass, flags = calculate_bandpass(msname, table_prefix, filter_phase)
 
     if not os.path.exists(f"{table_prefix}_bcal"):
         tablecopy(f"{table_prefix}_bpcal", f"{table_prefix}_bcal")
