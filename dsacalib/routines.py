@@ -22,8 +22,8 @@ from dsacalib.calib import combine_tables
 
 
 def calibrate_measurement_set(
-        msname: str, cal: "CalibratorSource", logger: "DsaSyslogger" = None,
-        throw_exceptions: bool = True, **kwargs
+        msname: str, cal: "CalibratorSource", delay_bandpass_cal_prefix: str = "",
+        logger: "DsaSyslogger" = None, throw_exceptions: bool = True, **kwargs
 ) -> int:
     r"""Calibrates the measurement set.
 
@@ -90,24 +90,25 @@ def calibrate_measurement_set(
                 message = f"{error} non-fatal errors occured in flagging of {msname}."
                 du.warning_logger(logger, message)
 
-        print("delay cal")
-        calstring = "delay calibration"
-        current_error = (
-            cs.DELAY_CAL_ERR
-            | cs.INV_GAINAMP_P1
-            | cs.INV_GAINAMP_P2
-            | cs.INV_GAINPHASE_P1
-            | cs.INV_GAINPHASE_P2
-            | cs.INV_DELAY_P1
-            | cs.INV_DELAY_P2
-            | cs.INV_GAINCALTIME
-            | cs.INV_DELAYCALTIME
-        )
-        error = calobs.delay_calibration()
-        if error > 0:
-            status = cs.update(status, cs.DELAY_CAL_ERR)
-            message = f"{error} non-fatal errors occured in delay calibration of {msname}."
-            du.warning_logger(logger, message)
+        if not delay_bandpass_cal_prefix:
+            print("delay cal")
+            calstring = "delay calibration"
+            current_error = (
+                cs.DELAY_CAL_ERR
+                | cs.INV_GAINAMP_P1
+                | cs.INV_GAINAMP_P2
+                | cs.INV_GAINPHASE_P1
+                | cs.INV_GAINPHASE_P2
+                | cs.INV_DELAY_P1
+                | cs.INV_DELAY_P2
+                | cs.INV_GAINCALTIME
+                | cs.INV_DELAYCALTIME
+            )
+            error = calobs.delay_calibration()
+            if error > 0:
+                status = cs.update(status, cs.DELAY_CAL_ERR)
+                message = f"{error} non-fatal errors occured in delay calibration of {msname}."
+                du.warning_logger(logger, message)
 
         print("bandpass and gain cal")
         calstring = "bandpass and gain calibration"
@@ -119,14 +120,22 @@ def calibrate_measurement_set(
             | cs.INV_GAINPHASE_P2
             | cs.INV_GAINCALTIME
         )
-        error = calobs.bandpass_and_gain_cal()
+
+        if not delay_bandpass_cal_prefix:
+            error = calobs.bandpass_calibration()
+            error += calobs.gain_calibration()
+            error += calobs.bandpass_calibration()
+
+        else:
+            error += calobs.gain_calibration(delay_bandpass_cal_prefix)
+
         if error > 0:
             status = cs.update(status, cs.GAIN_BP_CAL_ERR)
             message = f"{error} non-fatal errors occured in gain calibration of {msname}."
             du.warning_logger(logger, message)
 
         current_error = cs.GAIN_BP_CAL_ERR
-        combine_tables(msname, f"{msname}_{cal.name}")
+        combine_tables(msname, f"{msname}_{cal.name}", delay_bandpass_cal_prefix)
 
     except Exception as exc:
         status = cs.update(status, current_error)
