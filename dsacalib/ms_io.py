@@ -13,6 +13,7 @@ import glob
 import os
 import shutil
 import traceback
+from typing import List
 
 import astropy.units as u
 from astropy.time import Time
@@ -609,8 +610,7 @@ def extract_vis_from_ms(msname, data="data", swapaxes=True, metadataonly=False):
             flags = np.array(tb.FLAG[:])
         time = np.array(tb.TIME[:])
         spw = np.array(tb.DATA_DESC_ID[:])
-    with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
-        fobs = (np.array(tb.col("CHAN_FREQ")[:]) / 1e9).reshape(-1)
+    fobs = freq_GHz_from_ms(msname)
 
     baseline = 2048 * (ant1 + 1) + (ant2 + 1) + 2**16
 
@@ -632,6 +632,13 @@ def extract_vis_from_ms(msname, data="data", swapaxes=True, metadataonly=False):
         spw,
         orig_shape,
     )
+
+
+def freq_GHz_from_ms(msname: str) -> np.ndarray:
+    """Return the frequency in GHz in a ms."""
+    with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
+        fobs = (np.array(tb.col("CHAN_FREQ")[:]) / 1e9).reshape(-1)
+    return fobs
 
 
 def read_caltable(tablename, cparam=False, reshape=True):
@@ -1006,8 +1013,10 @@ def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
         de.put_dict(f"/mon/cal/{antnum + 1}", dd)
 
 
-def get_antenna_gains(gains, ant1, ant2, refant=0):
-    """Calculates antenna gains, g_i, from CASA table of G_ij=g_i g_j*.
+def get_antenna_gains(
+        gains: np.ndarray, ant1: np.ndarray, ant2: np.ndarray, antennas: List[str], refant=0
+) -> np.ndarray:
+    """Calculates antenna gains, g_i, from CASA table of G_ij=1/(g_i g_j*) for `antennas`.
 
     Currently does not support baseline-based gains.
     Refant only used for baseline-based case.
@@ -1018,7 +1027,10 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
         The gains read in from the CASA gain table. 0th axis is baseline or
         antenna.
     ant1, ant2 : ndarray
-        The antenna pair for each entry along the 0th axis in gains.
+        The antenna pair for each entry along the 0th axis in gains.  Antennas are indexed starting
+        at 0.
+    antennas: List[str]
+        The antennas (names, starting at 1) for which to extract gains.
     refant : int
         The reference antenna index to use to get antenna gains from baseline
         gains.
@@ -1030,17 +1042,22 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
     antenna_gains : ndarray
         Gains for each antenna in `antennas`.
     """
-    antennas = np.unique(np.concatenate((ant1, ant2)))
-    output_shape = list(gains.shape)
-    output_shape[0] = len(antennas)
-    antenna_gains = np.zeros(tuple(output_shape), dtype=gains.dtype)
     if np.all(ant2 == ant2[0]):
-        for i, ant in enumerate(antennas):
-            antenna_gains[i] = 1 / gains[ant1 == ant]
+        # Antenna-based solutions already
+        ant1 = list(ant1)
+        antenna_gains = 1 / gains
+        antenna_gains = antenna_gains[[ant1.index(int(ant)-1) for ant in antennas], ...]
+        return antenna_gains
+
     else:
-        assert len(antennas) == 3, (
-            "Baseline-based only supported for trio of" "antennas"
-        )
+        # Baseline-based solutions
+        output_shape = list(gains.shape)
+        output_shape[0] = len(antennas)
+        antenna_gains = np.zeros(tuple(output_shape), dtype=gains.dtype)
+
+        assert len(np.unique(np.concatenate((ant1, ant2)))) == 3, (
+            "Baseline-based only supported for trio of antennas")
+
         for i, ant in enumerate(antennas):
             ant1idxs = np.where(ant1 == ant)[0]
             ant2idxs = np.where(ant2 == ant)[0]
@@ -1078,7 +1095,7 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
                 np.sqrt(np.abs(g01 * g20 / g21))
                 * np.exp(sign * 1.0j * np.angle(gains[idx_phase]))
             ) ** (-1)
-    return antennas, antenna_gains
+        return antenna_gains
 
 
 def get_delays(antennas, msname, calname, applied_delays):

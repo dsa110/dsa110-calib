@@ -215,6 +215,7 @@ def read_nvss_catalog():
 
 def read_vla_catalog():
     """Read the VLA calibrator list into a dataframe.
+
     Kept source, ra, dec, flux_20_cm keys in the NVSS catalog
     so we can easily switch the two of them out.
     flux is in mJy.
@@ -244,7 +245,8 @@ def read_vla_catalog():
                 if line.isspace() or not line:
                     # We've reached the end of an entry
                     if flux_20_cm not in [None, '?']:
-                        calsources += [Calibrator(source, ra, dec, 1000*float(flux_20_cm), code_20_cm)]
+                        calsources += [
+                            Calibrator(source, ra, dec, 1000*float(flux_20_cm), code_20_cm)]
                     break
                 if "20cm " in line:
                     _, _, code_a, code_b, code_c, code_d, flux_20_cm, *_ = line.split()
@@ -254,7 +256,9 @@ def read_vla_catalog():
     return df
 
 
-def generate_caltable(pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*u.Jy, min_percent_flux=0.15, codes=["P", "S"]):
+def generate_caltable(
+        pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*u.Jy,
+        min_percent_flux=0.15, codes=None):
     """Generate a table of calibrators at a given declination.
 
     Parameters
@@ -271,6 +275,8 @@ def generate_caltable(pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*
         The minimum ratio of the calibrator weighted flux to the weighted flux
         in the primary beam for which to include the calibrator.
     """
+    if codes is None:
+        codes = ["P", "S"]
 
     df = read_vla_catalog()
     calibrators = df[
@@ -309,8 +315,7 @@ def generate_caltable(pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*
                 )
             )
         calibrators.loc[name, "field_flux"] = sum(field["weighted_flux"])
- 
-    print(calibrators.head())
+
     # Calculate percent of the field flux that is contained in the
     # main calibrator
     calibrators = calibrators.assign(
@@ -323,9 +328,10 @@ def generate_caltable(pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*
         & [v[2] in codes for v in  calibrators.loc[:, 'code_20_cm']]
 #        & (calibrators["code_20_cm"][2] == code)  # c-config code match
     ]
-    print(calibrators.head())
+
     # Create the caltable needed by the calibrator service
-    caltable = calibrators[["ra", "dec", "flux_20_cm", "weighted_flux", "percent_flux", "code_20_cm"]]
+    caltable = calibrators[
+        ["ra", "dec", "flux_20_cm", "weighted_flux", "percent_flux", "code_20_cm"]]
     caltable.reset_index(inplace=True)
     caltable.rename(
         columns={
@@ -338,7 +344,7 @@ def generate_caltable(pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*
     caltable.loc[:, "source"] = [sname.strip("NVSS ") for sname in caltable["source"]]
     caltable.loc[:, "ra"] = caltable["ra"] * u.deg
     caltable.loc[:, "dec"] = caltable["dec"] * u.deg
-    print(caltable.head())
+
     caltable.to_csv(resource_filename("dsacalib", csv_string))
 
 
@@ -360,42 +366,3 @@ def update_caltable(pt_dec):
     if not resource_exists("dsacalib", csv_string):
         generate_caltable(pt_dec, csv_string)
     return resource_filename("dsacalib", csv_string)
-
-def read_vla_catalog():
-    """Read the VLA calibrator list into a dataframe.
-
-    Kept source, ra, dec, flux_20_cm keys in the NVSS catalog
-    so we can easily switch the two of them out.
-    """
-    Calibrator = namedtuple("Calibrator", "source ra dec flux_20_cm code_20_cm")
-    filename = resource_filename("dsacalib", "data/vlacalibrators.txt")
-    calsources = []
-    with open(filename) as file:
-        for _ in range(3):
-            file.readline()
-        while True:
-            line = file.readline()
-            if not line:
-                break
-
-            source, _, _, ra, dec, *_ = line.split()
-            ra = Angle(ra).to_value(u.deg)
-            dec = Angle(dec).to_value(u.deg)
-            flux_20_cm = None
-            code_20_cm = None
-            for _ in range(4):
-                file.readline()
-
-            while True:
-                line = file.readline()
-                if line.isspace() or not line:
-                    # We've reached the end of an entry
-                    calsources += [Calibrator(source, ra, dec, flux_20_cm, code_20_cm)]
-                    break
-                if "20cm " in line:
-                    _, _, code_a, code_b, code_c, code_d, flux_20_cm, *_ = line.split()
-                    code_20_cm = code_a+code_b+code_c+code_d
-    df = pandas.DataFrame.from_records(calsources, columns=Calibrator._fields)
-    df.set_index('source', inplace=True)
-
-    return df
