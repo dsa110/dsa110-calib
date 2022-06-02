@@ -113,11 +113,11 @@ def calibrate_file(calname, flist):
     status = calibrate_measurement_set(
         msname,
         filenames[date][calname]["cal"],
+        delay_bandpass_cal_prefix=delay_bandpass_cal_prefix,
         logger=LOGGER,
         throw_exceptions=False,
-        forsystemhealth=True,
     )
-
+    
     # Write solutions to etcd
     caltable_to_etcd(
         msname,
@@ -151,17 +151,6 @@ def calibrate_file(calname, flist):
             exc,
             throw=False)
 
-    status = calibrate_measurement_set(
-        msname,
-        filenames[date][calname]["cal"],
-        logger=LOGGER,
-        throw_exceptions=False,
-        keepdelays=False,
-        forsystemhealth=False,
-        reuse_flags=True)
-    LOGGER.info(
-        f"Calibrated {msname}.ms for beamformer weights with status {status}")
-
     try:
         applied_delays = extract_applied_delays(first_true(flist), config["antennas"])
         # Write beamformer solutions for one source
@@ -179,9 +168,6 @@ def calibrate_file(calname, flist):
             f"calculation of beamformer weights for {msname}.ms",
             exc,
             throw=False)
-
-    # Create the bandpass phase table for plotting later
-    calibrate_phase_single_ms(msname, config["refant"], calname)
 
     beamformer_solns, beamformer_names = generate_averaged_beamformer_solns(
         config["snap_start_time"], caltime, config["beamformer_dir"], config["corr_list"],

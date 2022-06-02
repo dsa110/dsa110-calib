@@ -62,12 +62,6 @@ MAX_WAIT = 5*60
 # Time to sleep if a queue is empty before trying to get an item
 TSLEEP = 10
 
-def _update_caltable_callback(etcd_dict):
-    """When the antennas are moved, make and read a new calibration table.
-    """
-    if etcd_dict['cmd'] == 'move':
-        pt_el = etcd_dict['val']*u.deg
-        update_caltable(pt_el)
 
 def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=HDF5DIR):
     """Populates the fscrunch and rsync queues using etcd.
@@ -82,6 +76,7 @@ def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=HDF5DIR):
             f"{hdf5dir}/{val['hostname']}/"
         )
         queue.put(rsync_string)
+
 
 def task_handler(task_fn, inqueue, outqueue=None):
     """Handles in and out queues of preprocessing tasks.
@@ -112,6 +107,7 @@ def task_handler(task_fn, inqueue, outqueue=None):
         else:
             time.sleep(TSLEEP)
 
+
 def gather_worker(inqueue, outqueue, corrlist=None):
     """Gather all files that match a filename.
 
@@ -141,6 +137,7 @@ def gather_worker(inqueue, outqueue, corrlist=None):
             nfiles += 1
         time.sleep(1)
     outqueue.put(filelist)
+
 
 def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=TSLEEP):
     """Gather files from all correlators.
@@ -191,6 +188,7 @@ def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=T
         else:
             time.sleep(tsleep)
 
+
 def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
     """Decides whether calibration is necessary.
 
@@ -209,6 +207,7 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
         a measurement set for calibration. Used to assess whether any part of
         the desired calibrator pass is in a given file.
     """
+    # TODO: also pass the prefix for the delay_bandpass_cal to calibration
     while True:
         if not inqueue.empty():
             try:
@@ -248,6 +247,7 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
                         calname = row['source']
                         print(f"Calibrating {calname}")
                         outqueue.put((calname, flist))
+
             except Exception as exc:
                 exception_logger(
                     LOGGER,
@@ -257,6 +257,7 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
                 )
         else:
             time.sleep(TSLEEP)
+
 
 if __name__=="__main__":
     processes = {
@@ -352,6 +353,7 @@ if __name__=="__main__":
                     }
                 )
             time.sleep(60)
+    
     except (KeyboardInterrupt, SystemExit):
         processes['gather']['processes'][0].terminate()
         processes['gather']['processes'][0].join()
