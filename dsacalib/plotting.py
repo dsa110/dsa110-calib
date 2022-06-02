@@ -1410,7 +1410,7 @@ def plot_beamformer_weights(
             temp = data[64:].reshape(64, 48, 2, 2)
             gains[i, :, corridx, :, :] = temp[..., 0] + 1.0j * temp[..., 1]
     gains = gains.reshape((len(beamformer_names), len(antennas), len(corrlist) * 48, 2))
-    gains = gains/gains[:, 0, :, :]
+    gains = gains/gains[:, [0], :, :]
     # Phase, polarization B
     fig, ax = plt.subplots(
         nplots * ny, nx, figsize=(6 * nx, 2.5 * ny * nplots), sharex=True, sharey=False
