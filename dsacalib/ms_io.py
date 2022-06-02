@@ -1016,7 +1016,7 @@ def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
 def get_antenna_gains(
         gains: np.ndarray, ant1: np.ndarray, ant2: np.ndarray, antennas: List[str], refant=0
 ) -> np.ndarray:
-    """Calculates antenna gains, g_i, from CASA table of G_ij=g_i g_j* for `antennas`.
+    """Calculates antenna gains, g_i, from CASA table of G_ij=1/(g_i g_j*) for `antennas`.
 
     Currently does not support baseline-based gains.
     Refant only used for baseline-based case.
