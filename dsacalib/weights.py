@@ -572,15 +572,11 @@ def write_beamformer_weights(
 
     gains = np.nanmean(gains.reshape(nant, ncorr, nfreq, -1, npol), axis=3)
     weights = gains.swapaxes(0, 1).astype(np.complex64).copy()
+    weights[np.isnan(weights)] = 0.0
 
     fracflagged = (
         np.sum(np.sum(np.isnan(weights), axis=2), axis=0) / (weights.shape[0] * weights.shape[2]))
     antenna_flags_badsolns = fracflagged > tol
-
-    # Divide by the first non-flagged antenna
-    idx0, idx1 = np.nonzero(np.logical_not(antenna_flags + antenna_flags_badsolns))
-    weights = weights / weights[:, idx0[0], ..., idx1[0]][:, np.newaxis, :, np.newaxis]
-    weights[np.isnan(weights)] = 0.0
 
     filenames = []
     for i, corr_idx in enumerate(corr_list):
