@@ -697,7 +697,7 @@ def calculate_bandpass(
 
     bandpass = (
         bacal * bpcal * gacal * gpcal *
-        np.exp(2j*np.pi * (fmean - fobs[:, np.newaxis]) * kcal))
+        np.exp(2j*np.pi * (fobs[:, np.newaxis] - fmean) * kcal))
 
     return bandpass, flags
 
