@@ -38,7 +38,7 @@ class CalibratorObservation:
         """Remove existing calibration tables."""
         tables_to_remove = [
             f"{self.table_prefix}_{ext}" for ext in [
-                "2kcal", "kcal", "bkcal", "gacal", "gpcal", "bcal", "2gcal"]]
+                "2kcal", "kcal", "gacal", "gpcal", "bcal", "2gcal"]]
 
         for path in tables_to_remove:
             if os.path.exists(path):
