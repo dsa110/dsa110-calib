@@ -672,8 +672,8 @@ def calculate_bandpass(
     If `filter_phase` is set to `True`, then use savgol filter to smooth the bandpass phases,
     and channel flags are not propagated to the returned flags array.
     """
-    if not delay_bandpass_cal_prefix:
-        delay_bandpass_cal_prefix = table_prefix
+    if not delay_bandpass_table_prefix:
+        delay_bandpass_table_prefix = table_prefix
     fobs = freq_GHz_from_ms(msname)
     fmean = np.mean(fobs)
 
@@ -706,7 +706,7 @@ def combine_tables(
         msname: str, table_prefix: str, delay_bandpass_table_prefix: str = "",
         filter_phase: bool = True) -> None:
     """Combine gain, bandpass and delay tables into a single bandpass table."""
-
+    
     bandpass, flags = calculate_bandpass(
         msname, table_prefix, delay_bandpass_table_prefix, filter_phase)
 

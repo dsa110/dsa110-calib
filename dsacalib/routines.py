@@ -127,7 +127,7 @@ def calibrate_measurement_set(
             error += calobs.bandpass_calibration()
 
         else:
-            error += calobs.gain_calibration(delay_bandpass_cal_prefix)
+            error = calobs.gain_calibration(delay_bandpass_cal_prefix)
 
         if error > 0:
             status = cs.update(status, cs.GAIN_BP_CAL_ERR)
