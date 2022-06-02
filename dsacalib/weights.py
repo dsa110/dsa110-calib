@@ -561,8 +561,7 @@ def write_beamformer_weights(
 
     gains, _time, flags, ant1, ant2 = read_caltable(f"{msname}_{calname}_bcal", cparam=True)
     gains[flags] = np.nan
-    gantennas, gains = get_antenna_gains(gains, ant1, ant2)
-
+    gains = get_antenna_gains(gains, ant1, ant2, antennas)
     assert gains.shape[0] == nant
     assert gains.shape[-1] == npol
 
@@ -571,13 +570,8 @@ def write_beamformer_weights(
     gains = gains.reshape(nant, ncorr, -1, npol)
     assert gains.shape[2] % nfreq == 0
 
-    gains = np.nanmean(gains.reshape(ncorr, nant, nfreq, -1, npol), axis=3)
-
-    weights = np.ones((ncorr, nant, nfreq, npol), dtype=np.complex64)
-    for i, antid in enumerate(gantennas):
-        if antid + 1 in antennas:
-            idx = np.where(antennas == antid + 1)[0][0]
-            weights[:, idx, ...] = gains[i, ...]
+    gains = np.nanmean(gains.reshape(nant, ncorr, nfreq, -1, npol), axis=3)
+    weights = gains.swapaxes(0, 1).astype(np.complex64).copy()
 
     fracflagged = (
         np.sum(np.sum(np.isnan(weights), axis=2), axis=0) / (weights.shape[0] * weights.shape[2]))
@@ -641,12 +635,6 @@ def write_beamformer_solutions(
         polarizations. e.g. ['24 B', '32 A']
     pols : list
         The order of the polarizations.
-
-    Returns
-    -------
-    flags : ndarray(boolean)
-        Dimensions (antennas, pols). True where the data is flagged, and should
-        not be used. Compiled from the ms flags as well as `flagged_antennas`.
     """
     config = get_config()
     beamformer_dir = config.beamformer_dir
@@ -655,6 +643,7 @@ def write_beamformer_solutions(
 
     # Set the delays and flags for large delays
     beamformer_flags = {}
+    
     delays, flags = get_delays(antennas, msname, calname, applied_delays)
 
     if flagged_antennas is not None:
@@ -677,6 +666,7 @@ def write_beamformer_solutions(
     #        beamformer_flags[key] = []
     #    beamformer_flags[key] += ['delay exceeds snap capabilities']
     #    delays = delays-np.min(delays[~flags])
+        
 
     caltime.precision = 0
     eastings, weights_files, flags_badsolns = write_beamformer_weights(
@@ -712,5 +702,3 @@ def write_beamformer_solutions(
             encoding="utf-8"
     ) as file:
         yaml.dump(calibration_dictionary, file)
-
-    return flags
