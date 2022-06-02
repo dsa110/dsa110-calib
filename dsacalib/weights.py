@@ -566,17 +566,18 @@ def write_beamformer_weights(
     assert gains.shape[-1] == npol
 
     if f_reversed:
+        print("Frequencies are reversed. Changing order of weights.")
         gains = gains.reshape((nant, -1, npol))[:, ::-1, :]
     gains = gains.reshape(nant, ncorr, -1, npol)
     assert gains.shape[2] % nfreq == 0
 
     gains = np.nanmean(gains.reshape(nant, ncorr, nfreq, -1, npol), axis=3)
     weights = gains.swapaxes(0, 1).astype(np.complex64).copy()
-    weights[np.isnan(weights)] = 0.0
 
     fracflagged = (
         np.sum(np.sum(np.isnan(weights), axis=2), axis=0) / (weights.shape[0] * weights.shape[2]))
     antenna_flags_badsolns = fracflagged > tol
+    weights[np.isnan(weights)] = 0.0
 
     filenames = []
     for i, corr_idx in enumerate(corr_list):
