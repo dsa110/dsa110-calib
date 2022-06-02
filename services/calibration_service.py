@@ -3,7 +3,6 @@
 import os
 import shutil
 import sys
-import shutil
 import socket
 import warnings
 from multiprocessing import Process, Queue
@@ -27,7 +26,6 @@ from matplotlib.backends.backend_pdf import PdfPages
 
 from dsacalib.preprocess import first_true, update_caltable
 from dsacalib.utils import exception_logger
-from dsacalib.calib import calibrate_phase_single_ms
 from dsacalib.routines import get_files_for_cal, calibrate_measurement_set
 from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd
 from dsacalib.hdf5_io import extract_applied_delays
@@ -113,11 +111,11 @@ def calibrate_file(calname, flist):
     status = calibrate_measurement_set(
         msname,
         filenames[date][calname]["cal"],
-        delay_bandpass_cal_prefix=delay_bandpass_cal_prefix,
+        delay_bandpass_cal_prefix="",
         logger=LOGGER,
         throw_exceptions=False,
     )
-    
+
     # Write solutions to etcd
     caltable_to_etcd(
         msname,
@@ -160,8 +158,7 @@ def calibrate_file(calname, flist):
             caltime,
             config["antennas"],
             applied_delays,
-            flagged_antennas=config["antennas_not_in_bf"],
-            corr_list=np.array(config["corr_list"]))
+            flagged_antennas=config["antennas_not_in_bf"])
     except Exception as exc:
         exception_logger(
             LOGGER,
@@ -243,7 +240,9 @@ def get_configuration():
         "antennas_not_in_bf": cal_params["antennas_not_in_bf"],
         "corr_list": [int(cl.strip("corr")) for cl in corr_params["ch0"].keys()],
         "webplots": "/mnt/data/dsa110/webPLOTS/calibration/",
-        "tempdir": "/home/user/temp/" if socket.gethostname() == "dsa-storage" else "/home/ubuntu/caldata/temp/",
+        "tempdir": (
+            "/home/user/temp/" if socket.gethostname() == "dsa-storage"
+            else "/home/ubuntu/caldata/temp/" ),
         "refant": (
             cal_params["refant"][0] if isinstance(cal_params["refant"], list)
             else cal_params["refant"]),
@@ -416,7 +415,7 @@ def store_file(source: str, target: str, remove_source_files: bool = False) -> N
         shutil.copyfile(source, target)
     else:
         ETCD.put_dict("/cmd/store", {
-            'cmd': 'rsync', 
+            'cmd': 'rsync',
             'val': {
                 'source': source,
                 'dest': target,
