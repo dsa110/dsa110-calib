@@ -5,7 +5,8 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 2020/06
 import shutil
 import os
 import glob
-from typing import List
+from typing import List, Union
+from pathlib import Path
 
 import numpy as np
 from astropy.coordinates import Angle
@@ -131,44 +132,142 @@ class BandpassGainCalibrater(PipelineComponent):
 
         return error
 
-# TODO: delay_bandpass_table_prefix should be part of calobs
-def calibrate_measurement_set(
-        msname: str, cal: "CalibratorSource", logger: "DsaSyslogger" = None,
-        throw_exceptions: bool = True, **kwargs
-) -> int:
-    r"""Calibrates the measurement set.
+
+class H5File:
+    """An hdf5 file containing correlated data."""
+
+    h5path = Path(get_h5path())
+
+    def __init__(self, corrname: str, remote_path: str):
+        self.corrname = corrname
+        self.remote_path = Path(remote_path)
+        self.stem = self.remote_path.stem
+        self.local_path = self.h5path/{self.corrname}/f"{self.stem}.hdf5"
+
+    def copy(self):
+        rsync_string = (
+            f"{self.corrname}.sas.pvt:{self.remote_path} {self.local_path}")
+        rsync_file(rsync_string)
+
+
+class Scan:
+    """A scan (multiple correlator hdf5 files that cover the same time)."""
+
+    corr_list = get_corr_list()
+    filelength = get_filelength()
+    cal_sidereal_span = get_cal_sidereal_span()
+
+    def __init__(self, h5file: H5File):
+        """Instantiate the Scan.
+
+        Parameters
+        ----------
+        h5file : H5File
+            A h5file to be included in the scan.
+        """
+        self.files = [None]*len(self.corr_list)
+        self.nfiles = 0
+
+        self.start_time = Time(h5file.stem)
+        self.add(h5file)
+
+        self.start_sidereal_time = None
+        self.end_sidereal_time = None
+        self.pt_dec = None
+        self.source = None
+
+    def add(self, h5file: H5File) -> None:
+        """Add an hdf5file to the list of files in the scan.
+
+        Parameters
+        ----------
+        h5file : H5file
+            The h5file to be added.
+        """
+        self.files[self.corr_list.index(h5file.corrname)] = h5file
+        self.nfiles += 1
+
+    def assess(self):
+        """Assess if the scan should be converted to a ms for calibration."""
+        self.start_sidereal_time, self.end_sidereal_time = [
+            (self.start_time + offset).sidereal_time(
+            'apparent', longitude=ct.OVRO_LON*u.rad)
+            for offset in 0*u.min, self.filelength]
+
+        first_file = first_true(self.files)
+        self.pt_dec = get_pointing_dec(first_file.local_path)
+
+        caltable = update_caltable(pt_dec)
+        calsources = pandas.read_csv(caltable, header=0)
+
+        self.source = self.check_for_source(calsources)
+
+    def check_for_source(self, calsources: "pandas.DataFrame") -> "pandas.DataFrame":
+        """Determine if there is any calibrator source of interest in the scan.
+
+        Parameters
+        ----------
+        calsources : pandas.DataFrame
+            A dataframe containing sources at the pointing declination of the scan.
+
+        Returns
+        -------
+        pandas.DataFrame
+            The row of the data frame with the first source that is in the scan.  If no source is
+            found, `None` is returned.
+        """
+        ras = calsources['ra']
+        if not isinstance(ras[0], str):
+            ras = [ra*u.deg for ra in ras]
+
+        delta_lst_start = [
+            sidereal_time_delta(self.start_sidereal_time, Angle(ra)) for ra in ras]
+        delta_lst_end = [
+            sidereal_time_delta(self.end_sidereal_time, Angle(ra)) for ra in ras]
+        
+        source_index = delta_lst_start < self.cal_sidereal_span < delta_lst_end
+        if True in source_index:
+            return calsources.iloc[source_index.index(True)]
+
+
+def convert_to_ms(scan: Scan, logger: "DsaSyslogger" = None) -> str:
+    """Convert a scan to a measurement set.
 
     Parameters
     ----------
-    msname : str
-        The name of the measurement set. Will open `msname`.ms
-    cal : dsacalib.utils.src instance
-        The calibration source. Calibration tables will begin with
-        `msname`\_`cal.name`
-    logger : dsautils.dsa_syslog.DsaSyslogger() instance
-        Logger to write messages too. If None, messages are printed.
-    throw_exceptions : bool
-        If set to False, exceptions will not be thrown, although they will be
-        logged to syslog. Defaults True.
-    refants : str or int
-        The reference antenna name (if str) or index (if int) for calibration.
-    bad_antennas : list(str)
-        Antennas (names) to be flagged before calibration.
-    bad_uvrange : str
-        Baselines with lengths within bad_uvrange will be flagged before
-        calibration. Must be a casa-understood string with units.
-    manual_flags : list(list(str))
-        Include any additional flags to be done prior to calibration, as
-        CASA-understood strings.
-    delay_bandpass_table_prefix : str
-        The prefix to the kcal, bacal, bpcal tables to be applied for gain-only
-        calibration.
-    Returns
-    -------
-    int
-        A status code. Decode with dsautils.calstatus
+    scan : Scan
+        A scan containing part of the calibrator pass of interest.
+    logger : DsaSyslogger
+        The logging interface.  If `None`, messages are only printed.
     """
-    calobs = CalibratorObservation(msname, cal)
+    date = scan.start_time.strftime("%Y-%m-%d")
+    msname = f"{config['msdir']}/{date}_{scan.source}"
+    if os.path.exists(f"{msname}.ms"):
+        message = f"{msname}.ms already exists.  Not recreating."
+        du.info_logger(logger, message)
+        return
+
+    file = first_true(scan.files)
+    directory = file.parents[0]
+    hdf5dir = file.parents[1]
+    filenames = get_files_for_cal(
+        scan.source, directory, f"{date}*", config['caltime'], config['filelength'])
+
+    convert_calibrator_pass_to_ms(
+        cal=filenames[date][calname]["cal"],
+        date=date,
+        files=filenames[date][calname]["files"],
+        msidr=msdir,
+        hdf5dir=hdf5dir,
+        logger=logger)
+
+    return msname, filenames[date][calname]['cal']
+
+
+def calibrate_measurement_set(
+        msname: str, cal: "CalibratorSource", scan: "Scan" = None,
+        logger: "DsaSyslogger" = None, throw_exceptions: bool = False, **kwargs) -> int:
+    calobs = CalibratorObservation(msname, cal, scan)
     calobs.set_calibration_parameters(**kwargs)
     flag = Flagger(logger, throw_exceptions)
     delaycal = DelayCalibrater(logger, throw_exceptions)
@@ -192,133 +291,58 @@ def calibrate_measurement_set(
     status |= bpgaincal(calobs)
 
     combine_tables(msname, f"{msname}_{cal.name}", calobs.config['delay_bandpass_table_prefix'])
+    calobs.create_beamformer_weights()
 
     print("end of cal routine")
     return status
 
-
-def cal_in_datetime(
-        dt: str, transit_time: "Time", duration: "Quantity" = 5*u.min,
-        filelength: "Quantity" = 15*u.min
-) -> bool:
-    """Check to see if a transit is in a given file.
+def sidereal_time_delta(time1: "Angle", time2: "Angle") -> float:
+    """Get the sidereal rotation between two LSTs. (time1-time2)
 
     Parameters
     ----------
-    dt : str
-        The start time of the file, given as a string.
-        E.g. '2020-10-06T23:19:02'
-    transit_time : astropy.time.Time instance
-        The transit time of the source.
-    duration : astropy quantity
-        The amount of time around transit you are interested in, in minutes or
-        seconds.
-    filelength : astropy quantity
-        The length of the hdf5 file, in minutes or seconds.
+    time1, time2 : Angle
+        The LSTs to compare.
 
     Returns
     -------
-    bool
-        True if at least part of the transit is within the file, else False.
+    float
+        The difference in the sidereal times, `time1` and `time2`, in radians.
     """
-    filestart = Time(dt)
-    fileend = filestart+filelength
-    transitstart = transit_time-duration/2
-    transitend = transit_time+duration/2
+    time_delta = (time1-time2).to_value(u.rad)%(2*np.pi)
+    if time_delta > np.pi:
+        time_delta -= 2*np.pi
+    return time_delta
 
-    # For any of these conditions,
-    # the file contains data that we want
-    if (filestart < transitstart) and (fileend > transitend):
-        transit_file = True
-    elif (filestart > transitstart) and (fileend < transitend):
-        transit_file = True
-    elif (fileend > transitstart) and \
-        (fileend-transitstart < duration):
-        transit_file = True
-    elif (filestart < transitend) and \
-        (transitend-filestart) < duration:
-        transit_file = True
-    else:
-        transit_file = False
-    return transit_file
 
-def get_files_for_cal(
-        calsources: "DataFrame", directory: str, date_specifier: str = "*", 
-        duration: "Quantity", filelength: "Quantity", 
-) -> dict:
-    """Returns a dictionary containing the filenames for each calibrator pass.
+def get_h5path() -> Path:
+    """Return the path to the hdf5 (correlator) directory."""
+    conf = cnf.Conf()
+    return Path(conf.get('cal')['hdf5_dir'])
 
-    Parameters
-    ----------
-    caltable : str
-        The path to the csv file containing calibrators of interest.
-    refcorr : str
-        The reference correlator to search for recent hdf5 files from. Searches
-        the directory `hdf5dir`/corr`refcorr`/
-    duration : astropy quantity
-        The duration around transit which you are interested in extracting, in
-        minutes or seconds.
-    filelength : astropy quantity
-        The length of the hdf5 files, in minutes or seconds.
-    hdf5dir : str
-        The path to the hdf5 files.
-    date_specifier : str
-        A specifier to include to limit the dates for which you are interested
-        in. Should be something interpretable by glob and should be to the
-        second precision. E.g. `2020-10-06*`, `2020-10-0[678]*` and
-        `2020-10-06T01:03:??` are all valid.
 
-    Returns
-    -------
-    dict
-        A dictionary specifying the hdf5 filenames that correspond to the
-        requested dates and calibrators.
-    """
-    files = sorted(list(directory.glob(f"{date_specifier}*.hdf5")))
-    datetimes = [f.stem for f in files]
+def get_corr_list() -> List[str]:
+    """Return the list of correlators, in freqency order (highest to lowest)."""
+    conf = cnf.Conf()
+    corr_conf = conf.get('corr')
+    return list(corr_conf['ch0'].keys())
 
-    if len(np.unique(datetimes)) != len(datetimes):
-        print('Multiple files exist for the same time.')
-    
-    dates = np.unique([dt[:10] for dt in datetimes])
 
-    filenames = dict()
-    for date in dates:
-        filenames[date] = dict()
-        for _index, row in calsources.iterrows():
-            if isinstance(row['ra'], str):
-                rowra = row['ra']
-            else:
-                rowra = row['ra']*u.deg
-            if isinstance(row['dec'], str):
-                rowdec = row['dec']
-            else:
-                rowdec = row['dec']*u.deg
-            cal = du.src(
-                row['source'],
-                ra=Angle(rowra),
-                dec=Angle(rowdec),
-                I=row['flux (Jy)']
-            )
+def get_filelength() -> "Quantity":
+    """Return the filelength of the hdf5 files."""
+    conf = cnf.Conf()
+    return conf.get('fringe')['filelength_minutes']*u.min
 
-            midnight = Time('{0}T00:00:00'.format(date))
-            delta_lst = -1*(
-                cal.direction.hadec(midnight.mjd)[0]
-            )%(2*np.pi)
-            transit_time = (
-                midnight + delta_lst/(2*np.pi)*ct.SECONDS_PER_SIDEREAL_DAY*u.s
-            )
-            assert transit_time.isot[:10]==date
 
-            # Get the filenames for each calibrator transit
-            transit_files = []
-            for dt in datetimes:
-                if cal_in_datetime(dt, transit_time, duration, filelength):
-                    transit_files += [dt]
+def get_cal_sidereal_span() -> float:
+    """Return the sidereal span desired for the calibration pass, in radians."""
+    conf = cnf.Conf()
+    caltime = conf.get('cal')['caltime_minutes']*u.min
+    return (caltime*np.pi*u.rad / (ct.SECONDS_PER_SIDEREAL_DAY*u.s)).to_value(u.rad)
 
-            filenames[date][cal.name] = {
-                'cal': cal,
-                'transit_time': transit_time,
-                'files': transit_files
-            }
-    return filenames
+
+def get_pointing_dec(filepath: Union[str, Path]) -> "Quantity":
+    """Extract the pointing declination from an h5 file."""
+    with h5py.File(str(filepath), mode='r') as h5file:
+        pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value*u.rad
+    return pt_dec
