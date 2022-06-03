@@ -2,23 +2,26 @@
 import os
 import shutil
 from typing import List
+import numpy as np
 
 import dsacalib.calib as dc
 import dsacalib.flagging as df
 import dsacalib.plotting as dp
 import dsacalib.utils as du
+from dsacalib.weights import write_beamformer_solutions
 
 
 class CalibratorObservation:
     """A calibrator observation used to obtain beamformer and voltage calibration solutions."""
 
-    def __init__(self, msname: str, cal: du.CalibratorSource, refants: List[str]) -> None:
+    def __init__(self, msname: str, cal: du.CalibratorSource,  refants: List[str], scan: du.Scan = None) -> None:
         """Initialize the calibrator observation, including settings for calibration.
 
         `msname` should exclude the ".ms" extension
         """
         self.msname = msname
         self.cal = cal
+        self.scan = scan
         self.table_prefix = f"{self.msname}_{self.cal.name}"
         self.config = get_configuration()
         self.config["refants"] = refants
@@ -121,9 +124,9 @@ class CalibratorObservation:
 
         return error
 
-    def bandpass_calibration(self, delay_bandpass_table_prefix: str = "") -> int:
+    def bandpass_calibration(self) -> int:
         """Bandpass calibration."""
-        if not delay_bandpass_table_prefix:
+        if not self.delay_bandpass_table_prefix:
             delay_bandpass_table_prefix = self.table_prefix
 
         caltables = [
@@ -149,6 +152,11 @@ class CalibratorObservation:
 
         return error
 
+    def combine_tables(self):
+        """Create the combined bcal table."""
+        dc.combine_tables(
+            self.msname, self.table_prefix, self.delay_bandpass_table_prefix)
+
     def quick_delay_calibration(self) -> int:
         """Calibrate delays after averaging entire observation."""
         error = 0
@@ -157,6 +165,18 @@ class CalibratorObservation:
         _check_path(f"{self.table_prefix}_kcal")
         return error
 
+    def create_beamformer_weights(self):
+        assert self.scan, "Scan must be defined to look up delays and set beamformer weights."
+        applied_delays = du.extract_applied_delays(
+            du.first_true(self.scan.files).local_path, self.config["antennas"])
+        write_beamformer_solutions(
+            self.msname,
+            self.calname,
+            self.caltime,
+            self.config["antennas"],
+            applied_delays,
+            flagged_antennas=self.config["antennas_not_in_bf"],
+            corr_list=np.array(self.config["corr_list"]))
 
 def get_configuration() -> dict:
     """Get the default configuration for calibration."""

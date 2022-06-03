@@ -3,11 +3,12 @@
 import datetime
 import sys
 import warnings
-from multiprocessing import Process, Queue
 import time
 from functools import partial
 import os
 
+from functools import partial
+import dask
 import pandas
 import h5py
 import numpy as np
@@ -16,6 +17,7 @@ from astropy.coordinates import Angle
 import astropy.units as u
 
 import dsautils.dsa_store as ds
+from dsautils import cnf
 import dsautils.dsa_syslog as dsl
 
 import dsacalib.constants as ct
@@ -27,36 +29,51 @@ from dsacalib.utils import exception_logger
 # make sure warnings do not spam syslog
 warnings.filterwarnings("ignore")
 
-# Logger
-LOGGER = dsl.DsaSyslogger()
-LOGGER.subsystem("software")
-LOGGER.app("dsacalib")
+def preprocess_service():
+    # Logger
+    logger = dsl.DsaSyslogger()
+    logger.subsystem("software")
+    logger.app("dsacalib")
 
-# ETCD interface
-ETCD = ds.DsaStore()
+    # ETCD interface
+    etcd = ds.DsaStore()
 
-# FIFO Queues for rsync, freq scrunching, calibration
-FSCRUNCH_Q = Queue()
-GATHER_Q = Queue()
-ASSESS_Q = Queue()
-CALIB_Q = Queue()
+    client = dask.Client()
 
-# Maximum number of files per correlator that can be assessed for calibration
-# needs at one time.
-MAX_ASSESS = 4
+def get_config():
+    conf = cnf.Conf()
+    corr_conf = conf.get('corr')
+    cal_conf = conf.get('cal')
+    mfs_conf = conf.get('fringe')
+    corr_list = list(corr_conf['ch0'].keys())
+    ncorr = len(corr_list)
+    caltime = cal_conf['caltime_minutes']*u.min
+    filelength = mfs_conf['filelength_minutes']*u.min
+    hdf5dir = cal_conf['hdf5_dir']
 
-# Maximum amount of time that gather_files will wait for all correlator files
-# to be gathered, in seconds
-MAX_WAIT = 5 * 60
+    # Maximum number of files per correlator that can be assessed for calibration
+    # needs at one time.
+    max_assess = 4
 
-# Time to sleep if a queue is empty before trying to get an item
-TSLEEP = 10
+    # Maximum amount of time that gather_files will wait for all correlator files
+    # to be gathered, in seconds
+    max_wait = 5*60
+
+    config = {
+        'corr_list': corr_list,
+        'ncorr': ncorr,
+        'caltime': caltime,
+        'filelength': filelength,
+        'hdf5dir': hdf5dir,
+        'max_assess': max_assess,
+        'max_wait': max_wait}
+
+    return config
 
 # Configuration
 CONFIG = config.Configuration()
 
-
-def populate_queue(etcd_dict, queue=GATHER_Q, hdf5dir=CONFIG.hdf5dir, subband_def=CONFIG.ch0):
+def process_file(hdf5dir, etcd_dict):
     """Populates the fscrunch and rsync queues using etcd.
 
     Etcd watch callback function.
@@ -175,7 +192,7 @@ def gather_files(inqueue, outqueue, ncorr=CONFIG.ncorr, max_assess=MAX_ASSESS, t
             time.sleep(tsleep)
 
 
-def assess_file(inqueue, outqueue, caltime=CONFIG.caltime, filelength=CONFIG.filelength):
+def assess_file(flist, caltime=CALTIME, filelength=FILELENGTH):
     """Decides whether calibration is necessary.
 
     Sends a command to etcd using the monitor point /cmd/cal if the file should
@@ -194,59 +211,43 @@ def assess_file(inqueue, outqueue, caltime=CONFIG.caltime, filelength=CONFIG.fil
         the desired calibrator pass is in a given file.
     """
     # TODO: also pass the prefix for the delay_bandpass_cal to calibration
-    while True:
-        if not inqueue.empty():
-            try:
-                flist = inqueue.get()
-                fname = first_true(flist)
-                print(f"Assessing {len(flist)} files {fname}")
-                datet = fname.split('/')[-1][:19]
-                tstart = Time(datet).sidereal_time(
-                    'apparent',
-                    longitude=ct.OVRO_LON * u.rad
-                )
-                tend = (Time(datet) + filelength).sidereal_time(
-                    'apparent',
-                    longitude=ct.OVRO_LON * u.rad
-                )
-                a0 = (
-                    caltime * np.pi * u.rad
-                    / (ct.SECONDS_PER_SIDEREAL_DAY * u.s)).to_value(u.rad)
-                with h5py.File(fname, mode='r') as h5file:
-                    pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'][()] * u.rad
-                caltable = update_caltable(pt_dec)
-                calsources = pandas.read_csv(caltable, header=0)
-                for _index, row in calsources.iterrows():
-                    if isinstance(row['ra'], str):
-                        rowra = Angle(row['ra'])
-                    else:
-                        rowra = Angle(row['ra'] * u.deg)
-                    delta_lst_start = (
-                        tstart - rowra
-                    ).to_value(u.rad) % (2 * np.pi)
-                    if delta_lst_start > np.pi:
-                        delta_lst_start -= 2 * np.pi
-                    delta_lst_end = (
-                        tend - rowra
-                    ).to_value(u.rad) % (2 * np.pi)
-                    if delta_lst_end > np.pi:
-                        delta_lst_end -= 2 * np.pi
-                    if delta_lst_start < a0 < delta_lst_end:
-                        calname = row['source']
-                        print(f"Calibrating {calname}")
-                        outqueue.put((calname, flist))
-                    else:
-                        print(f"Not calibrating {row['source']} with ra {rowra.to(u.deg)} using lst {tstart.to(u.deg)}")
 
-            except Exception as exc:
-                exception_logger(
-                    LOGGER,
-                    f"preprocessing of file {fname}",
-                    exc,
-                    throw=False
-                )
+    flist = inqueue.get()
+    fname = first_true(flist)
+    datet = fname.split('/')[-1][:19]
+    tstart = Time(datet).sidereal_time(
+        'apparent',
+        longitude=ct.OVRO_LON*u.rad
+    )
+    tend = (Time(datet)+filelength).sidereal_time(
+        'apparent',
+        longitude=ct.OVRO_LON*u.rad
+    )
+    a0 = (caltime*np.pi*u.rad/
+          (ct.SECONDS_PER_SIDEREAL_DAY*u.s)).to_value(u.rad)
+    with h5py.File(fname, mode='r') as h5file:
+        pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value*u.rad
+    caltable = update_caltable(pt_dec)
+    calsources = pandas.read_csv(caltable, header=0)
+    for _index, row in calsources.iterrows():
+        if isinstance(row['ra'], str):
+            rowra = row['ra']
         else:
-            time.sleep(TSLEEP)
+            rowra = row['ra']*u.deg
+        delta_lst_start = (
+            tstart-Angle(rowra)
+        ).to_value(u.rad)%(2*np.pi)
+        if delta_lst_start > np.pi:
+            delta_lst_start -= 2*np.pi
+        delta_lst_end = (
+            tend-Angle(rowra)
+        ).to_value(u.rad)%(2*np.pi)
+        if delta_lst_end > np.pi:
+            delta_lst_end -= 2*np.pi
+        if delta_lst_start < a0 < delta_lst_end:
+            calname = row['source']
+            print(f"Calibrating {calname}")
+            outqueue.put((calname, flist))
 
 
 if __name__ == "__main__":

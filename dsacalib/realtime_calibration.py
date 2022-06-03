@@ -243,9 +243,8 @@ def cal_in_datetime(
     return transit_file
 
 def get_files_for_cal(
-        caltable: str, refcorr: str = "03", duration: "Quantity" = 5*u.min,
-        filelength: "Quantity" = 15*u.min, hdf5dir: str = "/mnt/data/dsa110/correlator/",
-        date_specifier: str = "*"
+        calsources: "DataFrame", directory: str, date_specifier: str = "*", 
+        duration: "Quantity", filelength: "Quantity", 
 ) -> dict:
     """Returns a dictionary containing the filenames for each calibrator pass.
 
@@ -273,21 +272,14 @@ def get_files_for_cal(
     -------
     dict
         A dictionary specifying the hdf5 filenames that correspond to the
-        requested datesand calibrators.
+        requested dates and calibrators.
     """
-    calsources = pandas.read_csv(caltable, header=0)
-    files = sorted(
-        glob.glob(
-            '{0}/corr{1}/{2}.hdf5'.format(
-            hdf5dir,
-            refcorr,
-            date_specifier
-            )
-        )
-    )
-    datetimes = [f.split('/')[-1][:19] for f in files]
+    files = sorted(list(directory.glob(f"{date_specifier}*.hdf5")))
+    datetimes = [f.stem for f in files]
+
     if len(np.unique(datetimes)) != len(datetimes):
         print('Multiple files exist for the same time.')
+    
     dates = np.unique([dt[:10] for dt in datetimes])
 
     filenames = dict()

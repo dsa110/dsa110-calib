@@ -243,6 +243,13 @@ def warning_logger(logger, message):
     print(message)
 
 
+def info_logger(logger, message):
+    """Print and log (if a logger is specified) a message."""
+    if logger:
+        logger.info(message)
+    print(message)
+
+
 def get_autobl_indices(nant, casa=False):
     """Returns a list of the indices containing the autocorrelations.
 
