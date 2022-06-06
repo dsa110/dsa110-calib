@@ -121,7 +121,7 @@ class BandpassGainCalibrater(PipelineComponent):
             cs.INV_GAINCALTIME)
         self.nonfatal_error_code = cs.GAIN_BP_CAL_ERR
 
-    def target(self, calobs, delay_bandpass_table_prefix: str = ""):
+    def target(self, calobs):
         if not calobs.config['delay_bandpass_table_prefix']:
             error = calobs.bandpass_calibration()
             error += calobs.gain_calibration()
@@ -132,6 +132,15 @@ class BandpassGainCalibrater(PipelineComponent):
 
         return error
 
+
+class BFWeightCreater(PipelineComponent):
+    def __init__(self, logger: "DsaSyslogger", throw_exceptions: bool):
+        super().__init__(logger, throw_exceptions)
+        self.description = 'beamformer weight creation'
+
+    def target(self, calobs):
+        calobs.create_beamformer_weights()
+        return 0
 
 class H5File:
     """An hdf5 file containing correlated data."""
@@ -272,28 +281,28 @@ def calibrate_measurement_set(
     flag = Flagger(logger, throw_exceptions)
     delaycal = DelayCalibrater(logger, throw_exceptions)
     bpgaincal = BandpassGainCalibrater(logger, throw_exceptions)
+    bfgen = BFWeightCreater(logger, throw_exceptions)
 
-    print("entered calibration")
-    print("removing files")
+    message = f"Beginning calibration of {msname}."
+    logger.info(message)
     
     status = 0
     calobs.reset_calibration()
 
     if not calobs.config['reuse_flags']:
-        print("flagging of ms data")
         status |= flagger(calobs)
            
     if not calobs.config['delay_bandpass_table_prefix']:
-        print("delay cal")
         status |= delaycal(calobs)
     
-    print("bp and gain cal")    
     status |= bpgaincal(calobs)
 
     combine_tables(msname, f"{msname}_{cal.name}", calobs.config['delay_bandpass_table_prefix'])
-    calobs.create_beamformer_weights()
+    status |= bfgen(calobs)
+    
+    message = f"Completed calibration of {msname} with status {cs.decode(status)}"
+    logger.info(message)
 
-    print("end of cal routine")
     return status
 
 def sidereal_time_delta(time1: "Angle", time2: "Angle") -> float:

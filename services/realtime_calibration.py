@@ -27,26 +27,35 @@ FILEQ = Queue('FileQ', client)
 def process_file_queue(twait: int):
     scan_cache = ScanCache(max_scans=12)
     futures = []
+    twait = 60
+    
+    def remove_done_futures():
+        # We track futures, instead of using fire_and_forget, so that we can 
+        # cancel them on keyboard interrupt.  This means we have to remove
+        # references to them when they are completed.
+        nonlocal futures
+        for future in futures:
+            if future.done():
+                futures.remove(future)
+
+    def process_file(h5file, copy_future):
+        nonlocal futures, scan_cache
+        scan, scan_futures = scan_cache.get_scan_from_file(h5file, copy_future)
+
+        if scan.nfiles == 16:
+            scan_cache.remove(scan)
+            futures.append(client.submit(process_scan, scan, *scan_futures))
 
     try:
         while True:
-            # Track futures, instead of using fire_and_forget, so that we can 
-            # cancel them on keyboard interrupt.
 
-            for future in futures:
-                if future.done():
-                    futures.remove(future)
+            remove_done_futures()
 
-            if FILEQ.qsize() == 0:
+            if FILEQ.qsize() > 0:
+                h5file, copy_future = FILEQ.get()
+                process_file(h5file, copy_future)
+            else:
                 time.sleep(twait)
-                continue
-
-            h5file, copy_future = FILEQ.get()
-            scan, scan_futures = scan_cache.get_scan_from_file(h5file, copy_future)
-
-            if scan.nfiles == 16:
-                scan_cache.remove(scan)
-                futures.append(client.submit(process_scan, scan, *scan_futures))
 
     except KeyBoardInterrupt:
         client.cancel(futures)
@@ -109,7 +118,7 @@ class ScanCache:
             self.scans[to_remove] = None
             self.futures[to_remove] = None
 
-def __main__():
+if __name__ == "__main__":
     etcd = dsa_store.DsaStore()
-    etcd.add_watch('/cmd/cal', etcd_callback)
+    etcd.add_watch("/cmd/cal", etcd_callback)
     process_file_queue()
