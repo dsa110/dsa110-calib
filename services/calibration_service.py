@@ -19,8 +19,7 @@ import dsautils.dsa_syslog as dsl
 import dsautils.cnf as dsc
 
 import matplotlib
-matplotlib.use("Agg")
-# pylint: disable=wrong-import-position
+matplotlib.use("Agg")  # pylint: disable=wrong-import-position
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
