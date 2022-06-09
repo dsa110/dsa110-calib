@@ -35,6 +35,7 @@ WEIGHTFILE = CAL_PARAMS['weightfile']
 FLAGFILE = CAL_PARAMS['flagfile']
 BFARCHIVEDIR = CAL_PARAMS['bfarchivedir']
 
+
 def update_beamformer_weights(etcd_dict):
     """Updates beamformer weights and antenna flags on core machines.
 
@@ -82,6 +83,7 @@ def update_beamformer_weights(etcd_dict):
         LOGGER.info(
             f"Updated beamformer weights using {bfsolns['weight_files']}"
         )
+
 
 if __name__ == "__main__":
     ETCD.add_watch('/mon/cal/bfweights', update_beamformer_weights)
