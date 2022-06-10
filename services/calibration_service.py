@@ -49,10 +49,13 @@ TSLEEP = 60
 CALIB_Q = Queue()
 
 
-def calibrate_file(calname, flist):
+def calibrate_file(calname, flist, **kwargs):
     """Calibrate a calibrator pass."""
 
     config = get_configuration()
+    for key, value in kwargs.items():
+        if key in config:
+            config[key] = value
 
     date = first_true(flist).split("/")[-1][:-14]
 
