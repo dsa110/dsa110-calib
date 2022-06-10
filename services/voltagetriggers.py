@@ -30,6 +30,7 @@ TSLEEP = 10
 CONF = dsc.Conf()
 PARAMS = CONF.get('corr')
 
+
 def rsync_handler(inqueue):
     """Handles in and out queues of preprocessing tasks.
 
@@ -60,12 +61,13 @@ def rsync_handler(inqueue):
         else:
             time.sleep(TSLEEP)
 
+
 def populate_queue(etcd_dict):
     """Copies voltage triggers from corr machines.
     """
-    time.sleep(5*60) # Allow correlator voltage service to create metadata
+    time.sleep(5 * 60)  # Allow correlator voltage service to create metadata
     for specnum in etcd_dict.keys():
-        specnum = (int(specnum)-477)*16
+        specnum = (int(specnum) - 477) * 16
         for corr in PARAMS['ch0'].keys():
             fname = f"{corr}.sas.pvt:/home/ubuntu/data/fl*.out.{specnum}"
             fnameout = f"/mnt/data/dsa110/T3/{corr}/{DATE_STR}/"
@@ -75,6 +77,7 @@ def populate_queue(etcd_dict):
             print(f"{fname} {fnameout}")
             RSYNC_Q.put(f"{fname} {fnameout}")
             LOGGER.info(f"Copied voltage trigger {specnum} from {corr}")
+
 
 if __name__ == "__main__":
     processes = {

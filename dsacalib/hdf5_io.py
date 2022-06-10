@@ -12,13 +12,9 @@ import h5py
 
 import numpy as np
 from antpos.utils import get_baselines
-from astropy.utils import iers
+from astropy.time import Time  # noqa
 
 from dsacalib import constants as ct
-
-iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
-iers.conf.auto_max_age = None
-from astropy.time import Time  # pylint: disable=wrong-import-position,ungrouped-imports,wrong-import-order
 
 
 def read_hdf5_file(
@@ -211,11 +207,11 @@ def initialize_hdf5_file(fhdf, fobs, antenna_order, t0, nbls, nchan, npol, nant)
     t_ds : hdf5 dataset
         The dataset for the times.
     """
-    _ds_fobs = fhdf.create_dataset("fobs_GHz", (nchan,), dtype=np.float32, data=fobs)
-    _ds_ants = fhdf.create_dataset(
+    _ = fhdf.create_dataset("fobs_GHz", (nchan,), dtype=np.float32, data=fobs)
+    _ = fhdf.create_dataset(
         "antenna_order", (nant,), dtype=np.int, data=antenna_order
     )
-    _t_st = fhdf.create_dataset(
+    _ = fhdf.create_dataset(
         "tstart_mjd_seconds", (1,), maxshape=(1,), dtype=int, data=t0
     )
     vis_ds = fhdf.create_dataset(

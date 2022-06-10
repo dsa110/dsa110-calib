@@ -11,7 +11,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 from antpos.utils import get_itrf
-import scipy  #pylint: disable=unused-import # must come before casacore
+import scipy  # noqa
 from dsautils import cnf
 
 import dsacalib.constants as ct
@@ -25,12 +25,13 @@ def get_refmjd() -> float:
     return conf.get("fringe")["refmjd"]
 
 
-def get_config() -> "Config":
-    """Retrieve antenna parameters from cnf."""
-    ConfParams = namedtuple(
-        "Config", "antennas antennas_core antennas_not_in_bf refants pols corr_list refcorr "
-        "beamformer_dir")
+ConfParams = namedtuple(
+    "Config", "antennas antennas_core antennas_not_in_bf refants pols corr_list refcorr "
+    "beamformer_dir")
 
+
+def get_config() -> ConfParams:
+    """Retrieve antenna parameters from cnf."""
     conf = cnf.Conf()
     corr_params = conf.get("corr")
     cal_params = conf.get("cal")
@@ -387,6 +388,7 @@ def filter_beamformer_solutions(beamformer_names, start_time):
 
     return beamformer_names, latest_solns
 
+
 def pull_out_cal_solutions(input_dict):
     """Extract the cal solutions dictionary from `input_dict`
 
@@ -396,6 +398,7 @@ def pull_out_cal_solutions(input_dict):
     key = "cal_solutions"
     output_dict = input_dict[key] if key in input_dict else input_dict
     return output_dict
+
 
 def consistent_correlator(full_solns, full_latest_solns, start_time):
     """
@@ -407,15 +410,17 @@ def consistent_correlator(full_solns, full_latest_solns, start_time):
     solns = pull_out_cal_solutions(full_solns)
     latest_solns = pull_out_cal_solutions(full_latest_solns)
 
-    if solns['antenna_order'] != latest_solns['antenna_order'] or \
-        solns['corr_order'] != latest_solns['corr_order'] or \
-        solns['delays'] != latest_solns['delays'] or \
-        solns['eastings'] != latest_solns['eastings'] or \
-        solns['caltime'] < latest_solns['caltime']-1 or \
-        solns['caltime'] < start_time:
+    if (
+            solns['antenna_order'] != latest_solns['antenna_order']
+            or solns['corr_order'] != latest_solns['corr_order']
+            or solns['delays'] != latest_solns['delays']
+            or solns['eastings'] != latest_solns['eastings']
+            or solns['caltime'] < latest_solns['caltime'] - 1
+            or solns['caltime'] < start_time):
         return False
 
     return True
+
 
 def average_beamformer_solutions(
     fnames, ttime, corridxs=None, tol=0.3
@@ -443,7 +448,6 @@ def average_beamformer_solutions(
     """
     config = get_config()
     beamformer_dir = config.beamformer_dir
-
 
     if corridxs is None:
         corridxs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
@@ -640,7 +644,7 @@ def write_beamformer_solutions(
 
     # Set the delays and flags for large delays
     beamformer_flags = {}
-    
+
     delays, flags = get_delays(antennas, msname, calname, applied_delays)
 
     if flagged_antennas is not None:
@@ -663,7 +667,6 @@ def write_beamformer_solutions(
     #        beamformer_flags[key] = []
     #    beamformer_flags[key] += ['delay exceeds snap capabilities']
     #    delays = delays-np.min(delays[~flags])
-        
 
     caltime.precision = 0
     eastings, weights_files, flags_badsolns = write_beamformer_weights(

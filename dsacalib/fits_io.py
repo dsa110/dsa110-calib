@@ -16,14 +16,11 @@ import warnings
 import astropy.io.fits as pf
 import astropy.units as u
 import numpy as np
-from astropy.utils import iers
+from astropy.time import Time  # noqa
 
 from dsacalib import constants as ct
 from dsacalib.utils import get_autobl_indices
 
-iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
-iers.conf.auto_max_age = None
-from astropy.time import Time  # pylint: disable=wrong-import-position,ungrouped-imports,wrong-import-order
 
 warnings.warn(
     "the fits_io module is deprecated and will be removed in v2.0.0",
