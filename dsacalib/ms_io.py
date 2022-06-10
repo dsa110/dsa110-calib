@@ -17,7 +17,7 @@ from typing import List
 
 import astropy.units as u
 from astropy.time import Time
-import scipy # pylint: disable=unused-import
+import scipy  # noqa
 import casatools as cc
 import numpy as np
 from casacore.tables import table
@@ -68,7 +68,7 @@ def convert_calibrator_pass_to_ms(
             # TODO: improve this search so there are no edge cases
             for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{files[0][:-6]}*.hdf5")):
                 filetime = Time(hdf5f[:-5].split("/")[-1])
-                if abs(filetime-reftime) < 2.5*u.min:
+                if abs(filetime - reftime) < 2.5 * u.min:
                     hdf5files += [hdf5f]
             assert len(hdf5files) < 17
             assert len(hdf5files) > 1
@@ -85,11 +85,10 @@ def convert_calibrator_pass_to_ms(
             message = f"Wrote {msname}.ms"
             if logger is not None:
                 logger.info(message)
-            #else:
             print(message)
         except (ValueError, IndexError) as exception:
             tbmsg = "".join(traceback.format_tb(exception.__traceback__))
-            message = f'No data for {date} transit on {cal.name}. '+\
+            message = f'No data for {date} transit on {cal.name}. ' +\
                 f'Error {type(exception).__name__}. Traceback: {tbmsg}'
             if logger is not None:
                 logger.info(message)
@@ -104,7 +103,7 @@ def convert_calibrator_pass_to_ms(
                     hdf5files = []
                     for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{filename[:-6]}*.hdf5")):
                         filetime = Time(hdf5f[:-5].split('/')[-1])
-                        if abs(filetime-reftime) < 2.5*u.min:
+                        if abs(filetime - reftime) < 2.5 * u.min:
                             hdf5files += [hdf5f]
                     print(f"found {len(hdf5files)} hdf5files for {filename}")
                     uvh5_to_ms(
@@ -160,6 +159,7 @@ def convert_calibrator_pass_to_ms(
         if logger is not None:
             logger.info(message)
         print(message)
+
 
 def simulate_ms(
     ofile,
@@ -823,8 +823,8 @@ def reshape_calibration_data(
 
     return time, vals, flags, ant1, ant2, spw, orig_shape
 
-def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
 
+def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
     r"""Copies calibration values from delay and gain tables to etcd.
 
     The dictionary passed to etcd should look like: {"ant_num": <i>,
@@ -1046,7 +1046,7 @@ def get_antenna_gains(
         # Antenna-based solutions already
         ant1 = list(ant1)
         antenna_gains = 1 / gains
-        antenna_gains = antenna_gains[[ant1.index(int(ant)-1) for ant in antennas], ...]
+        antenna_gains = antenna_gains[[ant1.index(int(ant) - 1) for ant in antennas], ...]
         return antenna_gains
 
     else:

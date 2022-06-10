@@ -25,7 +25,7 @@ LOGGER.app("dsamfs")
 
 
 def get_nfreq() -> int:
-    """Retrieve the number of frequency channels to scrunch by stored in cnf."""
+    """Retrieve the number of frequency channels to scrunch from cnf."""
     conf = cnf.Conf()
     mfs_conf = conf.get("fringe")
     # parameters for freq scrunching
@@ -75,11 +75,14 @@ def rsync_file(rsync_string, remove_source_files=True):
     """
     fname, fdir = rsync_string.split(" ")
     if remove_source_files:
-        command = f". ~/.keychain/calibration-sh; rsync -avv --remove-source-files {fname} {fdir}"
+        command = (
+            f". ~/.keychain/calibration-sh; rsync -avv --remove-source-files "
+            f"{fname} {fdir}")
     else:
         command = f". ~/.keychain/calibration-sh; rsync -avv {fname} {fdir}"
     with subprocess.Popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True
+            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            shell=True
     ) as process:
         proc_stdout = str(process.communicate()[0].strip())
 
@@ -170,10 +173,14 @@ def read_nvss_catalog():
     """
     if not resource_exists("dsacalib", "data/heasarc_nvss.tdat"):
         urlretrieve(
-            "https://heasarc.gsfc.nasa.gov/FTP/heasarc/dbase/tdat_files/heasarc_nvss.tdat.gz",
+            (
+                "https://heasarc.gsfc.nasa.gov/FTP/heasarc/dbase/tdat_files/"
+                "heasarc_nvss.tdat.gz"),
             resource_filename("dsacalib", "data/heasarc_nvss.tdat.gz"),
         )
-        os.system(f"gunzip {resource_filename('dsacalib', 'data/heasarc_nvss.tdat.gz')}")
+        os.system((
+            f"gunzip "
+            f"{resource_filename('dsacalib', 'data/heasarc_nvss.tdat.gz')}"))
 
     df = pandas.read_csv(
         resource_filename("dsacalib", "data/heasarc_nvss.tdat"),
@@ -221,7 +228,8 @@ def read_vla_catalog():
     flux is in mJy.
     """
 
-    Calibrator = namedtuple("Calibrator", "source ra dec flux_20_cm code_20_cm")
+    Calibrator = namedtuple(
+        "Calibrator", "source ra dec flux_20_cm code_20_cm")
     filename = resource_filename("dsacalib", "data/vlacalibrators.txt")
     calsources = []
     with open(filename) as file:
@@ -246,18 +254,22 @@ def read_vla_catalog():
                     # We've reached the end of an entry
                     if flux_20_cm not in [None, '?']:
                         calsources += [
-                            Calibrator(source, ra, dec, 1000*float(flux_20_cm), code_20_cm)]
+                            Calibrator(
+                                source, ra, dec, 1000 * float(flux_20_cm),
+                                code_20_cm)]
                     break
                 if "20cm " in line:
-                    _, _, code_a, code_b, code_c, code_d, flux_20_cm, *_ = line.split()
-                    code_20_cm = code_a+code_b+code_c+code_d
+                    (
+                        _, _, code_a, code_b, code_c, code_d, flux_20_cm, *_
+                    ) = line.split()
+                    code_20_cm = code_a + code_b + code_c + code_d
     df = pandas.DataFrame.from_records(calsources, columns=Calibrator._fields)
     df.set_index('source', inplace=True)
     return df
 
 
 def generate_caltable(
-        pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*u.Jy,
+        pt_dec, csv_string, radius=2.5 * u.deg, min_weighted_flux=1 * u.Jy,
         min_percent_flux=0.15, codes=None):
     """Generate a table of calibrators at a given declination.
 
@@ -325,13 +337,14 @@ def generate_caltable(
     calibrators = calibrators[
         (calibrators["weighted_flux"] > min_weighted_flux.to_value(u.Jy))
         & (calibrators["percent_flux"] > min_percent_flux)
-        & [v[2] in codes for v in  calibrators.loc[:, 'code_20_cm']]
-#        & (calibrators["code_20_cm"][2] == code)  # c-config code match
+        & [v[2] in codes for v in calibrators.loc[:, 'code_20_cm']]
+        #       & (calibrators["code_20_cm"][2] == code)  # c-config code match
     ]
 
     # Create the caltable needed by the calibrator service
-    caltable = calibrators[
-        ["ra", "dec", "flux_20_cm", "weighted_flux", "percent_flux", "code_20_cm"]]
+    caltable = calibrators[[
+        "ra", "dec", "flux_20_cm", "weighted_flux", "percent_flux",
+        "code_20_cm"]]
     caltable.reset_index(inplace=True)
     caltable.rename(
         columns={
@@ -341,7 +354,8 @@ def generate_caltable(
             "percent_flux": "percent flux"},
         inplace=True)
     caltable.loc[:, "flux (Jy)"] = caltable["flux (Jy)"] / 1e3
-    caltable.loc[:, "source"] = [sname.strip("NVSS ") for sname in caltable["source"]]
+    caltable.loc[:, "source"] = [sname.strip(
+        "NVSS ") for sname in caltable["source"]]
     caltable.loc[:, "ra"] = caltable["ra"] * u.deg
     caltable.loc[:, "dec"] = caltable["dec"] * u.deg
 

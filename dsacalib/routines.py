@@ -4,7 +4,7 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 2020/06
 """
 import glob
 
-import scipy # pylint: disable=unused-import
+import scipy  # noqa
 import numpy as np
 import pandas
 import astropy.units as u
@@ -13,6 +13,7 @@ from astropy.time import Time
 from casacore.tables import table
 
 import dsautils.cnf as dsc
+import dsautils.dsa_syslog as dsl
 import dsautils.calstatus as cs
 import dsacalib.constants as ct
 import dsacalib.utils as du
@@ -22,8 +23,8 @@ from dsacalib.calib import combine_tables
 
 
 def calibrate_measurement_set(
-        msname: str, cal: "CalibratorSource", delay_bandpass_cal_prefix: str = "",
-        logger: "DsaSyslogger" = None, throw_exceptions: bool = True, **kwargs
+        msname: str, cal: du.CalibratorSource, delay_bandpass_cal_prefix: str = "",
+        logger: dsl.DsaSyslogger = None, throw_exceptions: bool = True, **kwargs
 ) -> int:
     r"""Calibrates the measurement set.
 
@@ -146,7 +147,7 @@ def calibrate_measurement_set(
     return status
 
 
-def quick_bfweightcal(msname: str, cal: "CalibratorSource" = None, **kwargs) -> int:
+def quick_bfweightcal(msname: str, cal: du.CalibratorSource = None, **kwargs) -> int:
     """Calibrate delays and gains, and generate bfweights."""
     if not cal:
         cal = get_cal_from_msname(msname)
@@ -177,7 +178,7 @@ def quick_bfweightcal(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
     combine_tables(msname, cal.name)
 
     with table(f"{msname}.ms") as tb:
-        caltime = Time((tb.TIME_CENTROID[tb.nrows()//2]*u.s).to(u.d), format='mjd')
+        caltime = Time((tb.TIME_CENTROID[tb.nrows() // 2] * u.s).to(u.d), format='mjd')
 
     write_beamformer_solutions(
         msname,
@@ -190,7 +191,7 @@ def quick_bfweightcal(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
     return int
 
 
-def quick_calibration(msname: str, cal: "CalibratorSource" = None, **kwargs) -> int:
+def quick_calibration(msname: str, cal: du.CalibratorSource = None, **kwargs) -> int:
     """Calibrate without resetting flags."""
     if not cal:
         cal = get_cal_from_msname(msname)
@@ -213,7 +214,7 @@ def quick_calibration(msname: str, cal: "CalibratorSource" = None, **kwargs) -> 
     return error
 
 
-def get_cal_from_msname(msname: str) -> "CalibratorSource":
+def get_cal_from_msname(msname: str) -> du.CalibratorSource:
     """Construct a CalibratorSource objct based on the msname.
 
     Assumes that the msname includes the calibrator source, and does
@@ -229,8 +230,8 @@ def get_cal_from_msname(msname: str) -> "CalibratorSource":
 
 
 def cal_in_datetime(
-        dt: str, transit_time: "Time", duration: "Quantity" = 5*u.min,
-        filelength: "Quantity" = 15*u.min
+        dt: str, transit_time: Time, duration: u.Quantity = 5 * u.min,
+        filelength: u.Quantity = 15 * u.min
 ) -> bool:
     """Check to see if a transit is in a given file.
 
@@ -273,8 +274,8 @@ def cal_in_datetime(
 
 
 def get_files_for_cal(
-        caltable: str, refcorr: str = "03", duration: "Quantity" = 5*u.min,
-        filelength: "Quantity" = 15*u.min, hdf5dir: str = "/mnt/data/dsa110/correlator/",
+        caltable: str, refcorr: str = "03", duration: u.Quantity = 5 * u.min,
+        filelength: u.Quantity = 15 * u.min, hdf5dir: str = "/mnt/data/dsa110/correlator/",
         date_specifier: str = "*"
 ) -> dict:
     """Returns a dictionary containing the filenames for each calibrator pass.

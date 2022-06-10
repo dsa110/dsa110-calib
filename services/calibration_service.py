@@ -19,7 +19,7 @@ import dsautils.dsa_syslog as dsl
 import dsautils.cnf as dsc
 
 import matplotlib
-matplotlib.use("Agg")  # pylint: disable=wrong-import-position
+matplotlib.use("Agg")  # noqa
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
@@ -29,10 +29,12 @@ from dsacalib.routines import get_files_for_cal, calibrate_measurement_set
 from dsacalib.ms_io import convert_calibrator_pass_to_ms, caltable_to_etcd
 from dsacalib.hdf5_io import extract_applied_delays
 from dsacalib.weights import (
-    write_beamformer_solutions, average_beamformer_solutions, filter_beamformer_solutions,
+    write_beamformer_solutions, average_beamformer_solutions,
+    filter_beamformer_solutions,
     get_good_solution, consistent_correlator
 )
-from dsacalib.plotting import summary_plot, plot_bandpass_phases, plot_beamformer_weights
+from dsacalib.plotting import (
+    summary_plot, plot_bandpass_phases, plot_beamformer_weights)
 
 warnings.filterwarnings("ignore")
 
@@ -46,6 +48,7 @@ LOGGER.app("dsacalib")
 TSLEEP = 60
 CALIB_Q = Queue()
 
+
 def calibrate_file(calname, flist):
     """Calibrate a calibrator pass."""
 
@@ -58,7 +61,8 @@ def calibrate_file(calname, flist):
 
     # Get the pointing declination from the file
     with h5py.File(first_true(flist), mode="r") as h5file:
-        pt_dec = h5file["Header"]["extra_keywords"]["phase_center_dec"][()]*u.rad
+        pt_dec = h5file["Header"]["extra_keywords"]["phase_center_dec"][()] * \
+            u.rad
 
     # Get the list of sources at the current pointing dec
     caltable = update_caltable(pt_dec)
@@ -149,7 +153,8 @@ def calibrate_file(calname, flist):
             throw=False)
 
     try:
-        applied_delays = extract_applied_delays(first_true(flist), config["antennas"])
+        applied_delays = extract_applied_delays(
+            first_true(flist), config["antennas"])
         # Write beamformer solutions for one source
         write_beamformer_solutions(
             msname,
@@ -200,7 +205,6 @@ def calibrate_file(calname, flist):
             f"{config['webplots']}/allpngs/{caltime}_averagedweights.png",
             remove_source_files=True)
 
-
         # Plot evolution of the phase over the day
         plot_bandpass_phases(
             beamformer_names,
@@ -227,13 +231,13 @@ def get_configuration():
     fringe_params = dsaconf.get("fringe")
 
     snap_start_time = Time(
-       ETCD.get_dict("/mon/snap/1/armed_mjd")["armed_mjd"], format="mjd")
+        ETCD.get_dict("/mon/snap/1/armed_mjd")["armed_mjd"], format="mjd")
 
     config = {
         "msdir": cal_params["msdir"],
-        "caltime": cal_params["caltime_minutes"]*u.min,
-        "filelength": fringe_params["filelength_minutes"]*u.min,
-        "hdf5dir":  cal_params["hdf5_dir"],
+        "caltime": cal_params["caltime_minutes"] * u.min,
+        "filelength": fringe_params["filelength_minutes"] * u.min,
+        "hdf5dir": cal_params["hdf5_dir"],
         "snap_start_time": snap_start_time,
         "antennas": list(corr_params["antenna_order"].values()),
         "antennas_not_in_bf": cal_params["antennas_not_in_bf"],
@@ -241,12 +245,12 @@ def get_configuration():
         "webplots": "/mnt/data/dsa110/webPLOTS/calibration/",
         "tempdir": (
             "/home/user/temp/" if socket.gethostname() == "dsa-storage"
-            else "/home/ubuntu/caldata/temp/" ),
+            else "/home/ubuntu/caldata/temp/"),
         "refant": (
             cal_params["refant"][0] if isinstance(cal_params["refant"], list)
             else cal_params["refant"]),
         "pols": corr_params["pols_voltage"],
-        "beamformer_dir" : cal_params["beamformer_dir"],
+        "beamformer_dir": cal_params["beamformer_dir"],
     }
     config["refcorr"] = f"{config['corr_list'][0]:02d}"
 
@@ -262,8 +266,8 @@ def generate_averaged_beamformer_solns(
     were restarted.
     """
 
-    if caltime-start_time > 24*u.h:
-        start_time = caltime - 24*u.h
+    if caltime - start_time > 24 * u.h:
+        start_time = caltime - 24 * u.h
 
     # Now we want to find all sources in the last 24 hours
     # start by updating our list with calibrators from the day before
@@ -275,7 +279,8 @@ def generate_averaged_beamformer_solns(
         return None, None
 
     try:
-        add_reference_bfname(beamformer_names, latest_solns, start_time, beamformer_dir)
+        add_reference_bfname(beamformer_names, latest_solns,
+                             start_time, beamformer_dir)
     except:
         print("could not get reference bname. continuing...")
 
@@ -319,8 +324,7 @@ def update_solution_dictionary(
         key = f"{antennas[ant]} {pols[idxpol[i]]}"
 
         latest_solns["cal_solutions"]["flagged_antennas"][key] = (
-            latest_solns["cal_solutions"]["flagged_antennas"].get(key, []) +
-            ["casa solutions flagged"])
+            latest_solns["cal_solutions"]["flagged_antennas"].get(key, []) + ["casa solutions flagged"])
 
     # Remove any empty keys in the flagged_antennas dictionary
     to_remove = []
@@ -336,19 +340,21 @@ def generate_summary_plot(date, msname, calname, antennas, tempdir, webplots):
 
     figure_path = f"{tempdir}/{date}_{calname}.pdf"
     with PdfPages(figure_path) as pdf:
-        for j in range(len(antennas)//10+1):
+        for j in range(len(antennas) // 10 + 1):
             fig = summary_plot(
                 msname,
                 calname,
                 2,
                 ["B", "A"],
-                antennas[j*10:(j+1)*10]
+                antennas[j * 10:(j + 1) * 10]
             )
             pdf.savefig(fig)
             plt.close(fig)
 
-    store_file(figure_path, f"{webplots}/allpngs/{date}_{calname}.pdf", remove_source_files=False)
-    store_file(figure_path, f"{webplots}/summary_current.pdf", remove_source_files=True)
+    store_file(
+        figure_path, f"{webplots}/allpngs/{date}_{calname}.pdf", remove_source_files=False)
+    store_file(
+        figure_path, f"{webplots}/summary_current.pdf", remove_source_files=True)
 
 
 def add_reference_bfname(beamformer_names, latest_solns, start_time, beamformer_dir):
@@ -361,8 +367,9 @@ def add_reference_bfname(beamformer_names, latest_solns, start_time, beamformer_
     if "bfname" in ref_bfweights["val"]:
         ref_bfname = ref_bfweights["val"]["bfname"]
     else:
-#        parse from name like "beamformer_weights_corr03_2022-03-18T04:40:15.dat"
-        ref_bfname = ref_bfweights["val"]["weights_files"].rstrip(".dat").split("_")[-1]
+        #        parse from name like "beamformer_weights_corr03_2022-03-18T04:40:15.dat"
+        ref_bfname = ref_bfweights["val"]["weights_files"].rstrip(
+            ".dat").split("_")[-1]
     print(f"Got reference bfname of {ref_bfname}. Checking solutions...")
 
     with open(
@@ -443,7 +450,7 @@ def watch_for_calibration():
         time.sleep(60)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     processes = {}
     processes["calibrate"] = Process(
         target=calibrate_file_manager,
@@ -460,10 +467,10 @@ if __name__=="__main__":
 
     try:
         while True:
-            assert processes["watch"].is_alive() # needs a timeout
-            assert processes["calibrate"].is_alive() # needs a timeout
+            assert processes["watch"].is_alive()  # needs a timeout
+            assert processes["calibrate"].is_alive()  # needs a timeout
             print(f"{CALIB_Q.qsize()} objects in calibration queue")
-            time.sleep(5*60)
+            time.sleep(5 * 60)
 
     except (KeyboardInterrupt, SystemExit, AssertionError):
         # Terminate non-daemon processes
