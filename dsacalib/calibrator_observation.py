@@ -7,12 +7,13 @@ import dsautils.cnf as dsc
 import dsacalib.calib as dc
 import dsacalib.flagging as df
 import dsacalib.plotting as dp
+import dsacalib.utils as du
 
 
 class CalibratorObservation:
     """A calibrator observation used to obtain beamformer and voltage calibration solutions."""
 
-    def __init__(self, msname: str, cal: "dsacalib.utils.src") -> None:
+    def __init__(self, msname: str, cal: du.CalibratorSource) -> None:
         """Initialize the calibrator observation, including settings for calibration.
 
         `msname` should exclude the ".ms" extension
@@ -146,6 +147,7 @@ class CalibratorObservation:
         _check_path(f"{self.table_prefix}_kcal")
         return error
 
+
 def get_configuration() -> dict:
     """Get the default configuration for calibration."""
     dsaconf = dsc.Conf()
@@ -153,8 +155,8 @@ def get_configuration() -> dict:
 
     config = {
         "refants": cal_params["refant"],
-        "bad_antennas" : [],
-        "bad_uvrange" : "2~50m",
+        "bad_antennas": [],
+        "bad_uvrange": "2~50m",
         "manual_flags": [],
         "reuse_flags": False}
 
