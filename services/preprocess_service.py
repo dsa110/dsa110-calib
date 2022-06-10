@@ -32,8 +32,8 @@ CAL_CONF = CONF.get('cal')
 MFS_CONF = CONF.get('fringe')
 CORRLIST = list(CORR_CONF['ch0'].keys())
 NCORR = len(CORRLIST)
-CALTIME = CAL_CONF['caltime_minutes']*u.min
-FILELENGTH = MFS_CONF['filelength_minutes']*u.min
+CALTIME = CAL_CONF['caltime_minutes'] * u.min
+FILELENGTH = MFS_CONF['filelength_minutes'] * u.min
 HDF5DIR = CAL_CONF['hdf5_dir']
 
 # Logger
@@ -57,7 +57,7 @@ MAX_ASSESS = 4
 
 # Maximum amount of time that gather_files will wait for all correlator files
 # to be gathered, in seconds
-MAX_WAIT = 5*60
+MAX_WAIT = 5 * 60
 
 # Time to sleep if a queue is empty before trying to get an item
 TSLEEP = 10
@@ -125,10 +125,10 @@ def gather_worker(inqueue, outqueue, corrlist=None):
     if not corrlist:
         corrlist = CORRLIST
     ncorr = len(corrlist)
-    filelist = [None]*ncorr
+    filelist = [None] * ncorr
     nfiles = 0
     # Times out after 15 minutes
-    end = time.time() + 60*15
+    end = time.time() + 60 * 15
     while nfiles < ncorr and time.time() < end:
         if not inqueue.empty():
             fname = inqueue.get()
@@ -153,8 +153,8 @@ def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=T
         The queue in which to place the gathered files (as a list).
     """
     gather_queues = [Queue(ncorr) for idx in range(max_assess)]
-    gather_names = [None]*max_assess
-    gather_processes = [None]*max_assess
+    gather_names = [None] * max_assess
+    gather_processes = [None] * max_assess
     nfiles_assessed = 0
     while True:
         if not inqueue.empty():
@@ -162,18 +162,18 @@ def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=T
                 fname = inqueue.get()
                 print(fname)
                 if not fname.split('/')[-1][:-7] in gather_names:
-                    gather_names[nfiles_assessed%max_assess] = \
+                    gather_names[nfiles_assessed % max_assess] = \
                         fname.split('/')[-1][:-7]
-                    gather_processes[nfiles_assessed%max_assess] = \
+                    gather_processes[nfiles_assessed % max_assess] = \
                         Process(
                             target=gather_worker,
                             args=(
-                                gather_queues[nfiles_assessed%max_assess],
+                                gather_queues[nfiles_assessed % max_assess],
                                 outqueue
                             ),
                         daemon=True
-                        )
-                    gather_processes[nfiles_assessed%max_assess].start()
+                    )
+                    gather_processes[nfiles_assessed % max_assess].start()
                     nfiles_assessed += 1
                 gather_queues[
                     gather_names.index(fname.split('/')[-1][:-7])
@@ -216,33 +216,33 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
                 datet = fname.split('/')[-1][:19]
                 tstart = Time(datet).sidereal_time(
                     'apparent',
-                    longitude=ct.OVRO_LON*u.rad
+                    longitude=ct.OVRO_LON * u.rad
                 )
-                tend = (Time(datet)+filelength).sidereal_time(
+                tend = (Time(datet) + filelength).sidereal_time(
                     'apparent',
-                    longitude=ct.OVRO_LON*u.rad
+                    longitude=ct.OVRO_LON * u.rad
                 )
-                a0 = (caltime*np.pi*u.rad/
-                      (ct.SECONDS_PER_SIDEREAL_DAY*u.s)).to_value(u.rad)
+                a0 = (caltime * np.pi * u.rad /
+                      (ct.SECONDS_PER_SIDEREAL_DAY * u.s)).to_value(u.rad)
                 with h5py.File(fname, mode='r') as h5file:
-                    pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value*u.rad
+                    pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value * u.rad
                 caltable = update_caltable(pt_dec)
                 calsources = pandas.read_csv(caltable, header=0)
                 for _index, row in calsources.iterrows():
                     if isinstance(row['ra'], str):
                         rowra = row['ra']
                     else:
-                        rowra = row['ra']*u.deg
+                        rowra = row['ra'] * u.deg
                     delta_lst_start = (
-                        tstart-Angle(rowra)
-                    ).to_value(u.rad)%(2*np.pi)
+                        tstart - Angle(rowra)
+                    ).to_value(u.rad) % (2 * np.pi)
                     if delta_lst_start > np.pi:
-                        delta_lst_start -= 2*np.pi
+                        delta_lst_start -= 2 * np.pi
                     delta_lst_end = (
-                        tend-Angle(rowra)
-                    ).to_value(u.rad)%(2*np.pi)
+                        tend - Angle(rowra)
+                    ).to_value(u.rad) % (2 * np.pi)
                     if delta_lst_end > np.pi:
-                        delta_lst_end -= 2*np.pi
+                        delta_lst_end -= 2 * np.pi
                     if delta_lst_start < a0 < delta_lst_end:
                         calname = row['source']
                         print(f"Calibrating {calname}")
@@ -259,7 +259,7 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
             time.sleep(TSLEEP)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
     processes = {
         'rsync': {
             'nthreads': 1,
@@ -299,7 +299,7 @@ if __name__=="__main__":
             args=(
                 GATHER_Q,
                 ASSESS_Q
-                )
+            )
         )]
         processes['gather']['processes'][0].start()
 
@@ -308,7 +308,7 @@ if __name__=="__main__":
             'task_fn': assess_file,
             'queue': ASSESS_Q,
             'outqueue': CALIB_Q,
-             'processes': []
+            'processes': []
         }
         processes['assess']['processes'] += [Process(
             target=assess_file,
