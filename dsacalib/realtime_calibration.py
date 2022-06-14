@@ -14,7 +14,7 @@ import astropy.units as u
 from astropy.time import Time
 import pandas
 
-import scipy # pylint: disable=unused-import
+import scipy  # pylint: disable=unused-import
 from casacore.tables import table
 
 import dsautils.calstatus as cs
@@ -71,15 +71,15 @@ class Flagger(PipelineComponent):
         super().__init__(logger, throw_exceptions)
         self.description = 'flagging'
         self.error_code = (
-            cs.FLAGGING_ERR |
-            cs.INV_GAINAMP_P1 |
-            cs.INV_GAINAMP_P2 |
-            cs.INV_GAINPHASE_P1 |
-            cs.INV_GAINPHASE_P2 |
-            cs.INV_DELAY_P1 |
-            cs.INV_DELAY_P2 |
-            cs.INV_GAINCALTIME |
-            cs.INV_DELAYCALTIME )
+            cs.FLAGGING_ERR
+            | cs.INV_GAINAMP_P1
+            | cs.INV_GAINAMP_P2
+            | cs.INV_GAINPHASE_P1
+            | cs.INV_GAINPHASE_P2
+            | cs.INV_DELAY_P1
+            | cs.INV_DELAY_P2
+            | cs.INV_GAINCALTIME
+            | cs.INV_DELAYCALTIME)
         self.nonfatal_error_code = cs.FLAGGING_ERR
 
     def target(self, calobs: "CalibratorObservation"):
@@ -87,20 +87,21 @@ class Flagger(PipelineComponent):
         error = calobs.set_flags()
         return error
 
+
 class DelayCalibrater(PipelineComponent):
     def __init__(self, logger: "DsaSyslogger", throw_exceptions: bool):
         super().__init__(logger, throw_exceptions)
         self.description = 'delay calibration'
         self.error_code = (
-            cs.DELAY_CAL_ERR |
-            cs.INV_GAINAMP_P1 |
-            cs.INV_GAINAMP_P2 |
-            cs.INV_GAINPHASE_P1 |
-            cs.INV_GAINPHASE_P2 |
-            cs.INV_DELAY_P1 |
-            cs.INV_DELAY_P2 |
-            cs.INV_GAINCALTIME |
-            cs.INV_DELAYCALTIME )
+            cs.DELAY_CAL_ERR
+            | cs.INV_GAINAMP_P1
+            | cs.INV_GAINAMP_P2
+            | cs.INV_GAINPHASE_P1
+            | cs.INV_GAINPHASE_P2
+            | cs.INV_DELAY_P1
+            | cs.INV_DELAY_P2
+            | cs.INV_GAINCALTIME
+            | cs.INV_DELAYCALTIME)
         self.nonfatal_error_code = cs.DELAY_CAL_ERR
 
     def target(self, calobs):
@@ -113,12 +114,12 @@ class BandpassGainCalibrater(PipelineComponent):
         super().__init__(logger, throw_exceptions)
         self.description = 'bandpass and gain calibration'
         self.error_code = (
-            cs.GAIN_BP_CAL_ERR |
-            cs.INV_GAINAMP_P1 |
-            cs.INV_GAINAMP_P2 |
-            cs.INV_GAINPHASE_P1 |
-            cs.INV_GAINPHASE_P2 |
-            cs.INV_GAINCALTIME)
+            cs.GAIN_BP_CAL_ERR
+            | cs.INV_GAINAMP_P1
+            | cs.INV_GAINAMP_P2
+            | cs.INV_GAINPHASE_P1
+            | cs.INV_GAINPHASE_P2
+            | cs.INV_GAINCALTIME)
         self.nonfatal_error_code = cs.GAIN_BP_CAL_ERR
 
     def target(self, calobs):
@@ -142,6 +143,7 @@ class BFWeightCreater(PipelineComponent):
         calobs.create_beamformer_weights()
         return 0
 
+
 class H5File:
     """An hdf5 file containing correlated data."""
 
@@ -151,7 +153,7 @@ class H5File:
         self.corrname = corrname
         self.remote_path = Path(remote_path)
         self.stem = self.remote_path.stem
-        self.local_path = self.h5path/{self.corrname}/f"{self.stem}.hdf5"
+        self.local_path = self.h5path / {self.corrname} / f"{self.stem}.hdf5"
 
     def copy(self):
         rsync_string = (
@@ -174,7 +176,7 @@ class Scan:
         h5file : H5File
             A h5file to be included in the scan.
         """
-        self.files = [None]*len(self.corr_list)
+        self.files = [None] * len(self.corr_list)
         self.nfiles = 0
 
         self.start_time = Time(h5file.stem)
@@ -200,8 +202,8 @@ class Scan:
         """Assess if the scan should be converted to a ms for calibration."""
         self.start_sidereal_time, self.end_sidereal_time = [
             (self.start_time + offset).sidereal_time(
-            'apparent', longitude=ct.OVRO_LON*u.rad)
-            for offset in 0*u.min, self.filelength]
+                'apparent', longitude=ct.OVRO_LON * u.rad)
+            for offset in [0 * u.min, self.filelength]]
 
         first_file = first_true(self.files)
         self.pt_dec = get_pointing_dec(first_file.local_path)
@@ -227,13 +229,13 @@ class Scan:
         """
         ras = calsources['ra']
         if not isinstance(ras[0], str):
-            ras = [ra*u.deg for ra in ras]
+            ras = [ra * u.deg for ra in ras]
 
         delta_lst_start = [
             sidereal_time_delta(self.start_sidereal_time, Angle(ra)) for ra in ras]
         delta_lst_end = [
             sidereal_time_delta(self.end_sidereal_time, Angle(ra)) for ra in ras]
-        
+
         source_index = delta_lst_start < self.cal_sidereal_span < delta_lst_end
         if True in source_index:
             return calsources.iloc[source_index.index(True)]
@@ -285,25 +287,26 @@ def calibrate_measurement_set(
 
     message = f"Beginning calibration of {msname}."
     logger.info(message)
-    
+
     status = 0
     calobs.reset_calibration()
 
     if not calobs.config['reuse_flags']:
         status |= flagger(calobs)
-           
+
     if not calobs.config['delay_bandpass_table_prefix']:
         status |= delaycal(calobs)
-    
+
     status |= bpgaincal(calobs)
 
     combine_tables(msname, f"{msname}_{cal.name}", calobs.config['delay_bandpass_table_prefix'])
     status |= bfgen(calobs)
-    
+
     message = f"Completed calibration of {msname} with status {cs.decode(status)}"
     logger.info(message)
 
     return status
+
 
 def sidereal_time_delta(time1: "Angle", time2: "Angle") -> float:
     """Get the sidereal rotation between two LSTs. (time1-time2)
@@ -318,9 +321,9 @@ def sidereal_time_delta(time1: "Angle", time2: "Angle") -> float:
     float
         The difference in the sidereal times, `time1` and `time2`, in radians.
     """
-    time_delta = (time1-time2).to_value(u.rad)%(2*np.pi)
+    time_delta = (time1 - time2).to_value(u.rad) % (2 * np.pi)
     if time_delta > np.pi:
-        time_delta -= 2*np.pi
+        time_delta -= 2 * np.pi
     return time_delta
 
 
@@ -340,18 +343,18 @@ def get_corr_list() -> List[str]:
 def get_filelength() -> "Quantity":
     """Return the filelength of the hdf5 files."""
     conf = cnf.Conf()
-    return conf.get('fringe')['filelength_minutes']*u.min
+    return conf.get('fringe')['filelength_minutes'] * u.min
 
 
 def get_cal_sidereal_span() -> float:
     """Return the sidereal span desired for the calibration pass, in radians."""
     conf = cnf.Conf()
-    caltime = conf.get('cal')['caltime_minutes']*u.min
-    return (caltime*np.pi*u.rad / (ct.SECONDS_PER_SIDEREAL_DAY*u.s)).to_value(u.rad)
+    caltime = conf.get('cal')['caltime_minutes'] * u.min
+    return (caltime * np.pi * u.rad / (ct.SECONDS_PER_SIDEREAL_DAY * u.s)).to_value(u.rad)
 
 
 def get_pointing_dec(filepath: Union[str, Path]) -> "Quantity":
     """Extract the pointing declination from an h5 file."""
     with h5py.File(str(filepath), mode='r') as h5file:
-        pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value*u.rad
+        pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value * u.rad
     return pt_dec
