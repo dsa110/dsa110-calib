@@ -1238,13 +1238,7 @@ def plot_current_beamformer_solutions(
 
 
 def plot_bandpass_phases(
-    beamformer_names,
-    antennas,
-    refant=24,
-    outname=None,
-    show=True,
-    msdir="/mnt/data/dsa110/calibration/",
-):
+        beamformer_names, msdir, antennas, refant=None, outname=None, show=True):
     r"""Plot the bandpass phase observed over multiple calibrators.
 
     Parameters:
@@ -1262,6 +1256,8 @@ def plot_bandpass_phases(
     show : boolean
         If set to ``False`` the plot is closed after being generated.
     """
+    if refant is None:
+        refant = antennas[0]
 
     # Parse cal name and date information from the beamformer names
     cals = []
@@ -1320,9 +1316,9 @@ def plot_bandpass_phases(
 
     # Plot the gains for each antenna
     ax = ax.flatten()
-    for i in np.arange(len(antennas)):
+    for i, ant in enumerate(antennas):
         ax[i].imshow(
-            np.angle(gains[:, antennas[i] - 1, :, 0] / gains[:, refant - 1, :, 0]),
+            np.angle(gains[:, ant - 1, :, 0] / gains[:, refant - 1, :, 0]),
             vmin=-np.pi,
             vmax=np.pi,
             aspect="auto",
@@ -1330,7 +1326,7 @@ def plot_bandpass_phases(
             interpolation="None",
             cmap=plt.get_cmap("RdBu"),
         )
-        ax[i].annotate(str(antennas[i]), (0, 1), xycoords="axes fraction")
+        ax[i].annotate(str(ant), (0, 1), xycoords="axes fraction")
         ax[i].set_xlabel("Frequency channel")
 
     if outname is not None:
@@ -1378,11 +1374,16 @@ def plot_beamformer_weights(
     ndarray
         The beamformer weights.
     """
+    antennas = np.array(antennas)
+    
     if pols is None:
         pols = ["B", "A"]
     assert len(antennas) == 64
     if antennas_to_plot is None:
         antennas_to_plot = antennas
+    else:
+        antennas_to_plot = np.array(antennas_to_plot)
+
     # Set shape of the figure
     nplots = 4
     nx = 5
@@ -1395,7 +1396,7 @@ def plot_beamformer_weights(
     for i, beamformer_name in enumerate(beamformer_names):
         for corridx, corr in enumerate(corrlist):
             with open(
-                    f"{gaindir}/beamformer_weights_corr{corr:02d}_{beamformer_name}.dat",
+                    f"{gaindir}/beamformer_weights_{corr}_{beamformer_name}.dat",
                     "rb",
             ) as f:
                 data = np.fromfile(f, "<f4")
