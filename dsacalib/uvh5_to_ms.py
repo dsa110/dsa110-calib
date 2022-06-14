@@ -14,7 +14,6 @@ from casacore.tables import addImagingColumns, table
 from pyuvdata import UVData
 
 from antpos.utils import get_itrf
-import dsautils.cnf as dsc
 import dsautils.dsa_syslog as dsl
 from dsamfs.fringestopping import calc_uvw_blt
 
@@ -24,14 +23,9 @@ from dsacalib.utils import Direction, generate_calibrator_source
 from dsacalib.fringestopping import amplitude_sky_model
 
 
-def get_refmjd() -> float:
-    conf = dsc.Conf()
-    return conf.get('fringe')['refmjd']
-
-
 def uvh5_to_ms(
-        fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
-        flux=None, fringestop=True, logger=None, refmjd=None
+        fname, msname, refmjd, ra=None, dec=None, dt=None, antenna_list=None,
+        flux=None, fringestop=True, logger=None
 ):
     """
     Converts a uvh5 data to a uvfits file.
@@ -63,10 +57,6 @@ def uvh5_to_ms(
     refmjd : float
         The mjd used in the fringestopper.
     """
-
-    if refmjd is None:
-        refmjd = get_refmjd()
-
     uvdata, pt_dec, ra, dec = load_uvh5_file(fname, antenna_list, dt, ra, dec)
 
     antenna_positions = set_antenna_positions(uvdata, logger)

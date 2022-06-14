@@ -10,18 +10,11 @@ import casatools as cc
 import matplotlib.pyplot as plt
 import numpy as np
 from casacore.tables import table
-from dsautils import cnf
 
+import dsacalib.utils as du
 from dsacalib.calib import apply_calibration_tables, apply_delay_bp_cal
 from dsacalib.fringestopping import amplitude_sky_model
 from dsacalib.ms_io import extract_vis_from_ms, get_antenna_gains, read_caltable
-
-
-def get_refant() -> int:
-    """Retrieve the first refant from cnf."""
-    myconf = cnf.Conf()
-    calparams = myconf.get("cal")
-    return calparams["refant"][0]
 
 
 def _gauss_offset(xvals, amp, mean, sigma, offset):
@@ -76,7 +69,7 @@ def remove_model(msname):
         tb.putcol("MODEL_DATA", np.ones(model.shape, model.dtype))
 
 
-def solve_gains(msname, calname, msname_delaycal, calname_delaycal, refant=None):
+def solve_gains(msname, calname, msname_delaycal, calname_delaycal, refant):
     """Solves for complex gains on 30s timescales.
 
     Parameters
@@ -91,9 +84,6 @@ def solve_gains(msname, calname, msname_delaycal, calname_delaycal, refant=None)
     calname_delaycal : str
         The name of the calibrator for `msname_delaycal`.
     """
-    if refant is None:
-        refant = get_refant()
-
     caltables = [
         {
             "table": f"{msname_delaycal}_{calname_delaycal}_kcal",
@@ -242,9 +232,9 @@ def get_autocorr_gains_off(
 
 
 def calculate_sefd(
-        msname: str, cal: "CalibratorSource", fmin: float = None, fmax: float = None,
+        msname: str, cal: du.CalibratorSource, refant, fmin: float = None, fmax: float = None,
         nfint: int = 1, showplots: bool = False, msname_delaycal: str = None,
-        calname_delaycal: str = None, repeat: bool = False, refant: int = None,
+        calname_delaycal: str = None, repeat: bool = False,
 ) -> tuple:
     r"""Calculates the SEFD from a measurement set.
 
@@ -298,8 +288,6 @@ def calculate_sefd(
     hwhms : float
         The hwhms of the calibrator transits in days.
     """
-    if refant is None:
-        refant = get_refant()
     if msname_delaycal is None:
         msname_delaycal = msname
     if calname_delaycal is None:

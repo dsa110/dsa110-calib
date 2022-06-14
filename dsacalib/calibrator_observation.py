@@ -1,8 +1,7 @@
 """Calibration routines for the DSA-110 with CASA."""
 import os
 import shutil
-
-import dsautils.cnf as dsc
+from typing import List
 
 import dsacalib.calib as dc
 import dsacalib.flagging as df
@@ -13,7 +12,7 @@ import dsacalib.utils as du
 class CalibratorObservation:
     """A calibrator observation used to obtain beamformer and voltage calibration solutions."""
 
-    def __init__(self, msname: str, cal: du.CalibratorSource) -> None:
+    def __init__(self, msname: str, cal: du.CalibratorSource, refants: List[str]) -> None:
         """Initialize the calibrator observation, including settings for calibration.
 
         `msname` should exclude the ".ms" extension
@@ -22,9 +21,11 @@ class CalibratorObservation:
         self.cal = cal
         self.table_prefix = f"{self.msname}_{self.cal.name}"
         self.config = get_configuration()
+        self.config["refants"] = refants
 
     def set_calibration_parameters(self, **kwargs) -> None:
         """Update default settings for calibration."""
+
         for key, arg in kwargs.items():
             if key not in self.config:
                 raise RuntimeError(
@@ -150,11 +151,8 @@ class CalibratorObservation:
 
 def get_configuration() -> dict:
     """Get the default configuration for calibration."""
-    dsaconf = dsc.Conf()
-    cal_params = dsaconf.get("cal")
-
     config = {
-        "refants": cal_params["refant"],
+        "refants": None,
         "bad_antennas": [],
         "bad_uvrange": "2~50m",
         "manual_flags": [],
