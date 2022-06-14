@@ -716,7 +716,7 @@ def combine_tables(
         msname: str, table_prefix: str, delay_bandpass_table_prefix: str = "",
         filter_phase: bool = True) -> None:
     """Combine gain, bandpass and delay tables into a single bandpass table."""
-    
+
     bandpass, flags = calculate_bandpass_from_all_tables(
         msname, table_prefix, delay_bandpass_table_prefix, filter_phase)
 

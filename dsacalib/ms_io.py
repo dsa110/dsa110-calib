@@ -31,7 +31,7 @@ from dsacalib import constants as ct
 
 
 def convert_calibrator_pass_to_ms(
-        cal, date, files, msdir, hdf5dir, antenna_list=None, logger=None, overwrite=True):
+        cal, date, files, msdir, hdf5dir, refmjd, antenna_list=None, logger=None, overwrite=True):
     r"""Converts hdf5 files near a calibrator pass to a CASA ms.
 
     Parameters
@@ -76,6 +76,7 @@ def convert_calibrator_pass_to_ms(
             uvh5_to_ms(
                 hdf5files,
                 msname,
+                refmjd,
                 ra=cal.ra,
                 dec=cal.dec,
                 flux=cal.flux,
@@ -109,6 +110,7 @@ def convert_calibrator_pass_to_ms(
                     uvh5_to_ms(
                         hdf5files,
                         f"{msdir}/{filename}",
+                        refmjd,
                         ra=cal.ra,
                         dec=cal.dec,
                         flux=cal.flux,
@@ -1049,52 +1051,51 @@ def get_antenna_gains(
         antenna_gains = antenna_gains[[ant1.index(int(ant) - 1) for ant in antennas], ...]
         return antenna_gains
 
-    else:
-        # Baseline-based solutions
-        output_shape = list(gains.shape)
-        output_shape[0] = len(antennas)
-        antenna_gains = np.zeros(tuple(output_shape), dtype=gains.dtype)
+    # Baseline-based solutions
+    output_shape = list(gains.shape)
+    output_shape[0] = len(antennas)
+    antenna_gains = np.zeros(tuple(output_shape), dtype=gains.dtype)
 
-        assert len(np.unique(np.concatenate((ant1, ant2)))) == 3, (
-            "Baseline-based only supported for trio of antennas")
+    assert len(np.unique(np.concatenate((ant1, ant2)))) == 3, (
+        "Baseline-based only supported for trio of antennas")
 
-        for i, ant in enumerate(antennas):
-            ant1idxs = np.where(ant1 == ant)[0]
-            ant2idxs = np.where(ant2 == ant)[0]
-            otheridx = np.where((ant1 != ant) & (ant2 != ant))[0][0]
-            # phase
-            sign = 1
-            idx_phase = np.where((ant1 == ant) & (ant2 == refant))[0]
-            if len(idx_phase) == 0:
-                idx_phase = np.where((ant2 == refant) & (ant1 == ant))[0]
-                assert len(idx_phase) == 1
-                sign = -1
-            # amplitude
-            if len(ant1idxs) == 2:
-                g01 = gains[ant1idxs[0]]
-                g20 = np.conjugate(gains[ant1idxs[1]])
-                if ant1[otheridx] == ant2[ant1idxs[1]]:
-                    g21 = gains[otheridx]
-                else:
-                    g21 = np.conjugate(gains[otheridx])
-            if len(ant1idxs) == 1:
-                g01 = gains[ant1idxs[0]]
-                g20 = gains[ant2idxs[0]]
-                if ant1[otheridx] == ant1[ant2idxs[0]]:
-                    g21 = gains[otheridx]
-                else:
-                    g21 = np.conjugate(gains[otheridx])
+    for i, ant in enumerate(antennas):
+        ant1idxs = np.where(ant1 == ant)[0]
+        ant2idxs = np.where(ant2 == ant)[0]
+        otheridx = np.where((ant1 != ant) & (ant2 != ant))[0][0]
+        # phase
+        sign = 1
+        idx_phase = np.where((ant1 == ant) & (ant2 == refant))[0]
+        if len(idx_phase) == 0:
+            idx_phase = np.where((ant2 == refant) & (ant1 == ant))[0]
+            assert len(idx_phase) == 1
+            sign = -1
+        # amplitude
+        if len(ant1idxs) == 2:
+            g01 = gains[ant1idxs[0]]
+            g20 = np.conjugate(gains[ant1idxs[1]])
+            if ant1[otheridx] == ant2[ant1idxs[1]]:
+                g21 = gains[otheridx]
             else:
-                g01 = np.conjugate(gains[ant2idxs[0]])
-                g20 = gains[ant2idxs[1]]
-                if ant1[otheridx] == ant1[ant2idxs[1]]:
-                    g21 = gains[otheridx]
-                else:
-                    g21 = np.conjugate(gains[otheridx])
-            antenna_gains[i] = (
-                np.sqrt(np.abs(g01 * g20 / g21))
-                * np.exp(sign * 1.0j * np.angle(gains[idx_phase]))
-            ) ** (-1)
+                g21 = np.conjugate(gains[otheridx])
+        if len(ant1idxs) == 1:
+            g01 = gains[ant1idxs[0]]
+            g20 = gains[ant2idxs[0]]
+            if ant1[otheridx] == ant1[ant2idxs[0]]:
+                g21 = gains[otheridx]
+            else:
+                g21 = np.conjugate(gains[otheridx])
+        else:
+            g01 = np.conjugate(gains[ant2idxs[0]])
+            g20 = gains[ant2idxs[1]]
+            if ant1[otheridx] == ant1[ant2idxs[1]]:
+                g21 = gains[otheridx]
+            else:
+                g21 = np.conjugate(gains[otheridx])
+        antenna_gains[i] = (
+            np.sqrt(np.abs(g01 * g20 / g21))
+            * np.exp(sign * 1.0j * np.angle(gains[idx_phase]))
+        ) ** (-1)
         return antenna_gains
 
 

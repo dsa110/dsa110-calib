@@ -149,7 +149,9 @@ def calibrate_measurement_set(
 
 
 def quick_bfweightcal(
-        msname: str, antennas: List[str], antennas_not_in_bf: List[str], corr_list: List[str],
+        msname: str, refants: List[str], antennas: List[str], antennas_not_in_bf: List[str],
+        corr_list: List[str], beamformer_dir: str, pols: List[str], nchan: int, nchan_spw: int,
+        bw_GHz: float, chan_ascending: bool, f0_GHz: float, ch0: dict, refmjd: float,
         cal: du.CalibratorSource = None, **kwargs) -> int:
     """Calibrate delays and gains, and generate bfweights."""
     if not cal:
@@ -158,7 +160,8 @@ def quick_bfweightcal(
     config = {
         "antennas": antennas,
         "antennas_not_in_bf": antennas_not_in_bf,
-        "corr_list": [int(cl.strip("corr")) for cl in corr_list],
+        "corr_list": corr_list,
+        "pols": pols
     }
 
     for key in ["reuse_flags"]:
@@ -167,7 +170,7 @@ def quick_bfweightcal(
                 f"Input arg {key} not compatible with quick_bfweightcal")
     kwargs["reuse_flags"] = True
 
-    calobs = CalibratorObservation(msname, cal)
+    calobs = CalibratorObservation(msname, cal, refants)
     calobs.set_calibration_parameters(**kwargs)
     calobs.reset_calibration()
     error = 0
@@ -181,22 +184,22 @@ def quick_bfweightcal(
         caltime = Time((tb.TIME_CENTROID[tb.nrows() // 2] * u.s).to(u.d), format='mjd')
 
     write_beamformer_solutions(
-        msname,
-        cal.name,
-        caltime,
-        config["antennas"],
-        applied_delays=None,
+        msname, cal.name, caltime, config["antennas"], applied_delays=None,
+        beamformer_dir=beamformer_dir, pols=config["pols"], corr_list=config["corr_list"],
+        nchan=nchan, nchan_spw=nchan_spw, bw_GHz=bw_GHz, chan_ascending=chan_ascending,
+        f0_GHz=f0_GHz, ch0=ch0, refmjd=refmjd,
         flagged_antennas=config["antennas_not_in_bf"])
 
     return int
 
 
-def quick_calibration(msname: str, cal: du.CalibratorSource = None, **kwargs) -> int:
+def quick_calibration(
+        msname: str, refants: List[str], cal: du.CalibratorSource = None, **kwargs) -> int:
     """Calibrate without resetting flags."""
     if not cal:
         cal = get_cal_from_msname(msname)
 
-    calobs = CalibratorObservation(msname, cal)
+    calobs = CalibratorObservation(msname, cal, refants)
 
     for key in ["reuse_flags"]:
         if key in kwargs and not kwargs[key]:
