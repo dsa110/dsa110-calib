@@ -112,7 +112,7 @@ def read_gains(bfnames, antennas, corr_list, beamformer_dir, selectants=None, pa
     for i, beamformer_name in enumerate(bfnames):
         for corridx, corr in enumerate(corr_list):
             with open(
-                    f"{path}/beamformer_weights_corr{corr:02d}_{beamformer_name}.dat",
+                    f"{path}/beamformer_weights_{corr}_{beamformer_name}.dat",
                     "rb",
             ) as f:
                 data = np.fromfile(f, "<f4")
