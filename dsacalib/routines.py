@@ -3,6 +3,7 @@
 Author: Dana Simard, dana.simard@astro.caltech.edu, 2020/06
 """
 import glob
+from typing import List
 
 import scipy  # noqa
 import numpy as np
@@ -12,7 +13,6 @@ from astropy.coordinates import Angle
 from astropy.time import Time
 from casacore.tables import table
 
-import dsautils.cnf as dsc
 import dsautils.dsa_syslog as dsl
 import dsautils.calstatus as cs
 import dsacalib.constants as ct
@@ -23,8 +23,9 @@ from dsacalib.calib import combine_tables
 
 
 def calibrate_measurement_set(
-        msname: str, cal: du.CalibratorSource, delay_bandpass_cal_prefix: str = "",
-        logger: dsl.DsaSyslogger = None, throw_exceptions: bool = True, **kwargs
+        msname: str, cal: du.CalibratorSource, refants: List[str],
+        delay_bandpass_cal_prefix: str = "", logger: dsl.DsaSyslogger = None,
+        throw_exceptions: bool = True, **kwargs
 ) -> int:
     r"""Calibrates the measurement set.
 
@@ -59,7 +60,7 @@ def calibrate_measurement_set(
     int
         A status code. Decode with dsautils.calstatus
     """
-    calobs = CalibratorObservation(msname, cal)
+    calobs = CalibratorObservation(msname, cal, refants)
     calobs.set_calibration_parameters(**kwargs)
 
     print("entered calibration")
@@ -147,18 +148,17 @@ def calibrate_measurement_set(
     return status
 
 
-def quick_bfweightcal(msname: str, cal: du.CalibratorSource = None, **kwargs) -> int:
+def quick_bfweightcal(
+        msname: str, antennas: List[str], antennas_not_in_bf: List[str], corr_list: List[str],
+        cal: du.CalibratorSource = None, **kwargs) -> int:
     """Calibrate delays and gains, and generate bfweights."""
     if not cal:
         cal = get_cal_from_msname(msname)
 
-    dsaconf = dsc.Conf()
-    corr_params = dsaconf.get("corr")
-    cal_params = dsaconf.get("cal")
     config = {
-        "antennas": list(corr_params["antenna_order"].values()),
-        "antennas_not_in_bf": cal_params["antennas_not_in_bf"],
-        "corr_list": [int(cl.strip("corr")) for cl in corr_params["ch0"].keys()],
+        "antennas": antennas,
+        "antennas_not_in_bf": antennas_not_in_bf,
+        "corr_list": [int(cl.strip("corr")) for cl in corr_list],
     }
 
     for key in ["reuse_flags"]:

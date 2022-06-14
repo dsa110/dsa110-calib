@@ -13,7 +13,6 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 from casacore.tables import table
-from dsautils import cnf
 
 import dsacalib.constants as ct
 from dsacalib.ms_io import extract_vis_from_ms, read_caltable, freq_GHz_from_ms
@@ -1122,9 +1121,9 @@ def plot_current_beamformer_solutions(
     calname,
     date,
     beamformer_name,
-    corrlist=np.arange(1, 16 + 1),
+    corrlist,
+    antennas,
     antennas_to_plot=None,
-    antennas=None,
     outname=None,
     show=True,
     gaindir="/home/user/beamformer_weights/",
@@ -1174,9 +1173,6 @@ def plot_current_beamformer_solutions(
         The full path to the directory in which the correlated hdf5 files are
         stored. Files were be searched for in `hdf5dir`/corr??/
     """
-    conf = cnf.Conf()
-    if antennas is None:
-        antennas = np.array(list(conf.get("corr")["antenna_order"].values))
     assert len(antennas) == 64
     if antennas_to_plot is None:
         antennas_to_plot = antennas
@@ -1267,7 +1263,6 @@ def plot_bandpass_phases(
         If set to ``False`` the plot is closed after being generated.
     """
 
-
     # Parse cal name and date information from the beamformer names
     cals = []
     transit_times = []
@@ -1346,9 +1341,9 @@ def plot_bandpass_phases(
 
 def plot_beamformer_weights(
     beamformer_names,
-    corrlist=np.arange(1, 16 + 1),
+    corrlist,
+    antennas,
     antennas_to_plot=None,
-    antennas=None,
     outname=None,
     pols=None,
     show=True,
@@ -1383,11 +1378,8 @@ def plot_beamformer_weights(
     ndarray
         The beamformer weights.
     """
-    conf = cnf.Conf()
     if pols is None:
         pols = ["B", "A"]
-    if antennas is None:
-        antennas = np.array(list(conf.get("corr")["antenna_order"].values()))
     assert len(antennas) == 64
     if antennas_to_plot is None:
         antennas_to_plot = antennas

@@ -5,6 +5,7 @@ import sys
 import warnings
 from multiprocessing import Process, Queue
 import time
+from functools import partial
 
 import pandas
 import h5py
@@ -15,26 +16,15 @@ import astropy.units as u
 
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
-from dsautils import cnf
 
 import dsacalib.constants as ct
+from dsacalib import config
 from dsacalib.preprocess import rsync_file, first_true
 from dsacalib.preprocess import update_caltable
 from dsacalib.utils import exception_logger
 
 # make sure warnings do not spam syslog
 warnings.filterwarnings("ignore")
-
-# TODO: Get these parameters from a function, rather tahn as defaults
-CONF = cnf.Conf()
-CORR_CONF = CONF.get('corr')
-CAL_CONF = CONF.get('cal')
-MFS_CONF = CONF.get('fringe')
-CORRLIST = list(CORR_CONF['ch0'].keys())
-NCORR = len(CORRLIST)
-CALTIME = CAL_CONF['caltime_minutes'] * u.min
-FILELENGTH = MFS_CONF['filelength_minutes'] * u.min
-HDF5DIR = CAL_CONF['hdf5_dir']
 
 # Logger
 LOGGER = dsl.DsaSyslogger()
@@ -62,8 +52,11 @@ MAX_WAIT = 5 * 60
 # Time to sleep if a queue is empty before trying to get an item
 TSLEEP = 10
 
+# Configuration
+CONFIG = config.Configuration()
 
-def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=HDF5DIR):
+
+def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=CONFIG.hdf5dir):
     """Populates the fscrunch and rsync queues using etcd.
 
     Etcd watch callback function.
@@ -123,7 +116,7 @@ def gather_worker(inqueue, outqueue, corrlist=None):
         The queue in which to place the gathered files (as a list).
     """
     if not corrlist:
-        corrlist = CORRLIST
+        corrlist = CONFIG.corr_list
     ncorr = len(corrlist)
     filelist = [None] * ncorr
     nfiles = 0
@@ -139,7 +132,7 @@ def gather_worker(inqueue, outqueue, corrlist=None):
     outqueue.put(filelist)
 
 
-def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=TSLEEP):
+def gather_files(inqueue, outqueue, ncorr=CONFIG.ncorr, max_assess=MAX_ASSESS, tsleep=TSLEEP):
     """Gather files from all correlators.
 
     Will wait for a maximum of 15 minutes from the time the first file is
@@ -189,7 +182,7 @@ def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=T
             time.sleep(tsleep)
 
 
-def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
+def assess_file(inqueue, outqueue, caltime=CONFIG.caltime, filelength=CONFIG.filelength):
     """Decides whether calibration is necessary.
 
     Sends a command to etcd using the monitor point /cmd/cal if the file should
@@ -222,8 +215,9 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
                     'apparent',
                     longitude=ct.OVRO_LON * u.rad
                 )
-                a0 = (caltime * np.pi * u.rad /
-                      (ct.SECONDS_PER_SIDEREAL_DAY * u.s)).to_value(u.rad)
+                a0 = (
+                    caltime * np.pi * u.rad
+                    / (ct.SECONDS_PER_SIDEREAL_DAY * u.s)).to_value(u.rad)
                 with h5py.File(fname, mode='r') as h5file:
                     pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value * u.rad
                 caltable = update_caltable(pt_dec)
@@ -263,7 +257,7 @@ if __name__ == "__main__":
     processes = {
         'rsync': {
             'nthreads': 1,
-            'task_fn': rsync_file,
+            'task_fn': partial(rsync_file, logger=LOGGER),
             'queue': RSYNC_Q,
             'outqueue': GATHER_Q,
             'processes': []

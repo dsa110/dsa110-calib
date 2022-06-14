@@ -3,7 +3,6 @@
 from typing import List
 import glob
 import os
-from collections import namedtuple
 from datetime import datetime, timedelta, timezone
 
 import astropy.units as u
@@ -12,56 +11,23 @@ import numpy as np
 import yaml
 from antpos.utils import get_itrf
 import scipy  # noqa
-from dsautils import cnf
 
 import dsacalib.constants as ct
 from dsacalib.fringestopping import calc_uvw
 from dsacalib.ms_io import get_antenna_gains, get_delays, read_caltable, freq_GHz_from_ms
 
 
-def get_refmjd() -> float:
-    """Get the reference mjd used in fringestopping."""
-    conf = cnf.Conf()
-    return conf.get("fringe")["refmjd"]
-
-
-ConfParams = namedtuple(
-    "Config", "antennas antennas_core antennas_not_in_bf refants pols corr_list refcorr "
-    "beamformer_dir")
-
-
-def get_config() -> ConfParams:
-    """Retrieve antenna parameters from cnf."""
-    conf = cnf.Conf()
-    corr_params = conf.get("corr")
-    cal_params = conf.get("cal")
-
-    antennas = np.array(list(corr_params["antenna_order"].values()))
-    antennas_core = [ant for ant in antennas if ant < 100]
-    antennas_not_in_bf = cal_params["antennas_not_in_bf"]
-    refants = cal_params["refant"]
-
-    pols = corr_params["pols_voltage"]
-
-    corr_list = list(corr_params["ch0"].keys())
-    refcorr = corr_list[0]
-    corr_list = [int(cl.strip("corr")) for cl in corr_list]
-
-    beamformer_dir = conf.get("cal")["beamformer_dir"]
-
-    return ConfParams(
-        antennas, antennas_core, antennas_not_in_bf, refants, pols, corr_list, refcorr,
-        beamformer_dir)
-
-
 def get_good_solution(
-    select=None, plot=False, threshold_ants=45, threshold_angle=10, selectcore=True
+        select=None, plot=False, threshold_ants=45, threshold_angle=10, selectcore=True,
+        antennas_core=None
 ):
     """Find good set of solutions and calculate average gains.
     TODO: go from good bfnames to average gains.
     """
-
-    config = get_config()
+    if selectcore and not antennas_core:
+        raise RuntimeError(
+            "Specified selection of weights should be done using core antennas but core antennas "
+            "not specified.")
 
     if select is None:
         today = datetime.now(timezone.utc)
@@ -82,7 +48,7 @@ def get_good_solution(
     times = [bfname.split("_")[1] for bfname in bfnames]
     times, bfnames = zip(*sorted(zip(times, bfnames), reverse=True))
     if selectcore:
-        gains = read_gains(bfnames, selectants=config.antennas_core)
+        gains = read_gains(bfnames, selectants=antennas_core)
     else:
         gains = read_gains(bfnames)
     good = find_good_solutions(
@@ -99,20 +65,18 @@ def get_good_solution(
     return [bfnames[gidx] for gidx in good]
 
 
-def get_bfnames(select=None):
+def get_bfnames(beamformer_dir, refcorr, select=None):
     """Run on dsa-storage to get file names for beamformer weight files.
 
     Returns list of calibrator-times that are used in data file name.
     """
-    config = get_config()
-
     # Use first corr to be robust against corr name changes
     fn_dat = glob.glob(
-        os.path.join(config.beamformer_dir, f"beamformer_weights*{config.refcorr}*.dat"))
+        os.path.join(beamformer_dir, f"beamformer_weights*{refcorr}*.dat"))
 
     bfnames = []
     for fn in fn_dat:
-        sp = fn.split(f"_{config.refcorr}_")
+        sp = fn.split(f"_{refcorr}_")
         if len(sp) > 1:
             if "_" in sp[1]:
                 bfnames.append(sp[1].rstrip(".dat"))
@@ -127,24 +91,23 @@ def get_bfnames(select=None):
     return bfnames
 
 
-def read_gains(bfnames, selectants=None, path=None):
+def read_gains(bfnames, antennas, corr_list, beamformer_dir, selectants=None, path=None):
     """Reads gain for each of the data files in bfnames.
     Returns gain array with same length as bfnames.
     path can overload the location of files assumed etcd value.
     """
-    config = get_config()
     if selectants is None:
-        selectants = config.antennas
+        selectants = antennas
 
     gains = np.zeros(
-        (len(bfnames), len(config.antennas), len(config.corr_list), 48, 2), dtype=np.complex
+        (len(bfnames), len(antennas), len(corr_list), 48, 2), dtype=np.complex
     )
 
     if path is None:
-        path = config.beamformer_dir
+        path = beamformer_dir
 
     for i, beamformer_name in enumerate(bfnames):
-        for corridx, corr in enumerate(config.corr_list):
+        for corridx, corr in enumerate(corr_list):
             with open(
                     f"{path}/beamformer_weights_corr{corr:02d}_{beamformer_name}.dat",
                     "rb",
@@ -152,8 +115,8 @@ def read_gains(bfnames, selectants=None, path=None):
                 data = np.fromfile(f, "<f4")
             temp = data[64:].reshape(64, 48, 2, 2)
             gains[i, :, corridx, :, :] = temp[..., 0] + 1.0j * temp[..., 1]
-    gains = gains.reshape((len(bfnames), len(config.antennas), len(config.corr_list) * 48, 2))
-    select = [config.antennas.tolist().index(i) for i in selectants]
+    gains = gains.reshape((len(bfnames), len(antennas), len(corr_list) * 48, 2))
+    select = [antennas.tolist().index(i) for i in selectants]
     print(f"Using {len(bfnames)} to get gain array of shape {gains.shape}.")
     return gains.take(select, axis=1)
 
@@ -161,6 +124,9 @@ def read_gains(bfnames, selectants=None, path=None):
 def find_good_solutions(
     bfnames,
     gains,
+    refant,
+    antennas,
+    antennas_core=None,
     threshold_ants=45,
     threshold_angle=10,
     mask_bothpols=True,
@@ -170,15 +136,16 @@ def find_good_solutions(
     """Given names and gain array, calc good set.
     Returns indices of bfnames argument that are good.
     """
-    config = get_config()
-
     if selectcore:
-        ants = config.antennas_core
+        if not antennas_core:
+            raise RuntimeError(
+                "selectcore specified but no core antennas passed with antennas_core")
+        ants = antennas_core
     else:
-        ants = config.antennas
+        ants = antennas
 
     try:
-        refant_ind = ants.index(int(config.refants[0]))
+        refant_ind = ants.index(int(refant))
     except:
         refant_ind = 0
         print(f"Using first listed antenna ({ants[0]}) as refant")
@@ -273,18 +240,22 @@ def find_good_solutions(
     return keep
 
 
-def show_gains(bfnames, gains, keep, selectcore=True, ret=False, show=True):
+def show_gains(
+        bfnames, gains, keep, refant, antennas, antennas_core, selectcore=True, ret=False,
+        show=True):
     """Given bfnames and gains, plot the good gains.
     Default uses mpl show. Optionally can return figure with ret=True.
     """
-    config = get_config()
     if selectcore:
-        ants = config.antennas_core
+        if not antennas_core:
+            raise RuntimeError(
+                "selectcore specified but no core antennas passed as antennas_core")
+        ants = antennas_core
     else:
-        ants = config.antennas
+        ants = antennas
 
     try:
-        refant_ind = ants.index(int(config.refants[0]))
+        refant_ind = ants.index(int(refant))
     except ValueError:
         refant_ind = 0
         print(f"Using first listed antenna ({ants[0]}) as refant")
@@ -320,7 +291,7 @@ def show_gains(bfnames, gains, keep, selectcore=True, ret=False, show=True):
         return fig
 
 
-def calc_eastings(antennas):
+def calc_eastings(antennas, refmjd):
     """Calculate the eastings (u).
 
     Generates them for baselines composed of antennas in `antennas`.
@@ -333,7 +304,7 @@ def calc_eastings(antennas):
         blen[i, 0] = antpos_df["x_m"].loc[ant] - antpos_df["x_m"].loc[24]
         blen[i, 1] = antpos_df["y_m"].loc[ant] - antpos_df["y_m"].loc[24]
         blen[i, 2] = antpos_df["z_m"].loc[ant] - antpos_df["z_m"].loc[24]
-    bu, _, _ = calc_uvw(blen, get_refmjd(), "HADEC", 0.0 * u.rad, 0.6 * u.rad)
+    bu, _, _ = calc_uvw(blen, refmjd, "HADEC", 0.0 * u.rad, 0.6 * u.rad)
     bu = bu.squeeze().astype(np.float32)
     return bu
 
@@ -354,10 +325,8 @@ def sort_beamformer_names(beamformer_names):
     return beamformer_names
 
 
-def filter_beamformer_solutions(beamformer_names, start_time):
+def filter_beamformer_solutions(beamformer_names, start_time, beamformer_dir):
     """Removes beamformer solutions inconsistent with the latest solution."""
-    config = get_config()
-    beamformer_dir = config.beamformer_dir
 
     if len(beamformer_names) == 0:
         return beamformer_names, None
@@ -423,7 +392,7 @@ def consistent_correlator(full_solns, full_latest_solns, start_time):
 
 
 def average_beamformer_solutions(
-    fnames, ttime, corridxs=None, tol=0.3
+    fnames, ttime, beamformer_dir, corridxs=None, tol=0.3
 ):
     """Averages written beamformer solutions.
 
@@ -446,9 +415,6 @@ def average_beamformer_solutions(
     antenna_flags_badsolns:
         Flags for antenna/polarization dimensions of gains.
     """
-    config = get_config()
-    beamformer_dir = config.beamformer_dir
-
     if corridxs is None:
         corridxs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
     gains = read_gains(fnames)
@@ -489,23 +455,22 @@ def average_beamformer_solutions(
     return written_files, antenna_flags_badsolns
 
 
-def set_freq_beamformer_weights(corr_list: List[int]):
+def set_freq_beamformer_weights(
+        corr_list: List[str], nchan: int, nchan_spw: int, bw_GHz: float, chan_ascending: bool,
+        f0_GHz: float, ch0: dict):
     """Set the frequency for the beamformer weights."""
     ncorr = len(corr_list)
     fweights = np.ones((ncorr, 48), dtype=np.float32)
 
-    conf = cnf.Conf()
-    corr_params = conf.get('corr')
-    nchan = corr_params["nchan"]
-    dfreq = corr_params["bw_GHz"] / nchan
-    if corr_params["chan_ascending"]:
-        fobs = corr_params["f0_GHz"] + np.arange(nchan) * dfreq
+    dfreq = bw_GHz / nchan
+    if chan_ascending:
+        fobs = f0_GHz + np.arange(nchan) * dfreq
     else:
-        fobs = corr_params["f0_GHz"] - np.arange(nchan) * dfreq
-    nchan_spw = corr_params["nchan_spw"]
+        fobs = f0_GHz - np.arange(nchan) * dfreq
+    nchan_spw = nchan_spw
 
-    for i, corr_id in enumerate(corr_list):
-        ch0 = corr_params["ch0"][f"corr{corr_id:02d}"]
+    for i, corr_name in enumerate(corr_list):
+        ch0 = ch0[corr_name]
         fobs_corr = fobs[ch0:ch0 + nchan_spw]
         fweights[i, :] = fobs_corr.reshape(fweights.shape[1], -1).mean(axis=1)
 
@@ -584,10 +549,10 @@ def write_beamformer_weights(
     weights[np.isnan(weights)] = 0.0
 
     filenames = []
-    for i, corr_idx in enumerate(corr_list):
+    for i, corrname in enumerate(corr_list):
         wcorr = weights[i, ...].view(np.float32).flatten()
         wcorr = np.concatenate([bu, wcorr], axis=0)
-        fname = f"beamformer_weights_corr{corr_idx:02d}"
+        fname = f"beamformer_weights_{corrname}"
         fname = f"{fname}_{calname}_{caltime.isot}"
         if os.path.exists(f"{beamformer_dir}/{fname}.dat"):
             os.unlink(f"{beamformer_dir}/{fname}.dat")
@@ -605,8 +570,10 @@ def write_beamformer_solutions(
     caltime,
     antennas,
     applied_delays,
+    beamformer_dir,
+    pols,
+    corr_list,
     flagged_antennas=None,
-    pols=None,
 ):
     """Writes beamformer solutions to disk.
 
@@ -637,11 +604,6 @@ def write_beamformer_solutions(
     pols : list
         The order of the polarizations.
     """
-    config = get_config()
-    beamformer_dir = config.beamformer_dir
-    pols = config.pols
-    corr_list = config.corr_list
-
     # Set the delays and flags for large delays
     beamformer_flags = {}
 
@@ -684,7 +646,7 @@ def write_beamformer_solutions(
             "source": calname,
             "caltime": float(caltime.mjd),
             "antenna_order": [int(ant) for ant in antennas],
-            "corr_order": [int(corr) for corr in corr_list],
+            "corr_order": [int(corr.strip("corr")) for corr in corr_list],
             "pol_order": ["B", "A"],
             "delays": [[int(delay[0] // 2), int(delay[1] // 2)] for delay in delays],
             "eastings": [float(easting) for easting in eastings],

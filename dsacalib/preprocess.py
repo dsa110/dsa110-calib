@@ -10,35 +10,12 @@ from collections import namedtuple
 
 import astropy.units as u
 from astropy.coordinates import Angle
-from dsautils import cnf
-import dsautils.dsa_syslog as dsl
 import numpy as np
 import pandas
 from pkg_resources import resource_exists, resource_filename
 from pyuvdata import UVData
 
 from dsacalib.fringestopping import pb_resp
-
-LOGGER = dsl.DsaSyslogger()
-LOGGER.subsystem("software")
-LOGGER.app("dsamfs")
-
-
-def get_nfreq() -> int:
-    """Retrieve the number of frequency channels to scrunch from cnf."""
-    conf = cnf.Conf()
-    mfs_conf = conf.get("fringe")
-    # parameters for freq scrunching
-    nfreq = mfs_conf["nfreq_scrunch"]
-    return nfreq
-
-
-def get_outrigger_delays() -> dict:
-    """Retrieve the outrigger delays from cnf."""
-    conf = cnf.Conf()
-    mfs_conf = conf.get("fringe")
-    outrigger_delays = mfs_conf["outrigger_delays"]
-    return outrigger_delays
 
 
 def first_true(iterable, default=False, pred=None):
@@ -64,7 +41,7 @@ def first_true(iterable, default=False, pred=None):
     return next(filter(pred, iterable), default)
 
 
-def rsync_file(rsync_string, remove_source_files=True):
+def rsync_file(rsync_string, remove_source_files=True, logger=None):
     """Rsyncs a file from the correlator machines to dsastorage.
 
     Parameters
@@ -86,18 +63,15 @@ def rsync_file(rsync_string, remove_source_files=True):
     ) as process:
         proc_stdout = str(process.communicate()[0].strip())
 
-    print(proc_stdout)
-    LOGGER.info(proc_stdout)
+    if logger:
+        logger.info(proc_stdout)
+
     fname = fname.split("/")[-1]
-    # if output.returncode != 0:
-    #    print(output)
     return f"{fdir}{fname}"
 
 
-def remove_outrigger_delays(UVhandler, outrigger_delays=None):
+def remove_outrigger_delays(UVhandler, outrigger_delays):
     """Remove outrigger delays from open UV object."""
-    if outrigger_delays is None:
-        outrigger_delays = get_outrigger_delays()
 
     if "applied_delays_ns" in UVhandler.extra_keywords.keys():
         applied_delays = (
@@ -130,7 +104,7 @@ def remove_outrigger_delays(UVhandler, outrigger_delays=None):
         )
 
 
-def fscrunch_file(fname):
+def fscrunch_file(fname, nfreq_scrunch):
     """Removes outrigger delays before averaging in frequency.
 
     Leaves file untouched if the number of frequency bins is not divisible
@@ -146,7 +120,7 @@ def fscrunch_file(fname):
     # print(fname)
     UV = UVData()
     UV.read_uvh5(fname, run_check_acceptability=False)
-    nint = UV.Nfreqs // get_nfreq()
+    nint = UV.Nfreqs // nfreq_scrunch
     if nint > 1 and UV.Nfreqs % nint == 0:
         remove_outrigger_delays(UV)
         # Scrunch in frequency by factor of nint
