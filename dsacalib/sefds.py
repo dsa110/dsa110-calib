@@ -146,7 +146,7 @@ def read_gains(msname, calname, msname_delaycal, calname_delaycal, antenna_order
     )
     bpass[flag] = np.nan
     gain = gain * bpass
-    antenna, gain = get_antenna_gains(gain, ant1, ant2)
+    antenna, gain = get_antenna_gains(gain, ant1, ant2, antenna_order)
     gain = 1 / gain
     antenna = list(antenna)
     idxs = [antenna.index(ant) for ant in antenna_order]

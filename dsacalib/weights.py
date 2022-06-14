@@ -18,8 +18,8 @@ from dsacalib.ms_io import get_antenna_gains, get_delays, read_caltable, freq_GH
 
 
 def get_good_solution(
-        select=None, plot=False, threshold_ants=45, threshold_angle=10, selectcore=True,
-        antennas_core=None
+        beamformer_dir, refcorr, antennas, corr_list, refant, select=None,
+        plot=False, threshold_ants=45, threshold_angle=10, selectcore=True, antennas_core=None
 ):
     """Find good set of solutions and calculate average gains.
     TODO: go from good bfnames to average gains.
@@ -37,30 +37,33 @@ def get_good_solution(
 
     print(f"Selecting for string {select}")
     if isinstance(select, str):
-        bfnames = get_bfnames(select=select)
+        bfnames = get_bfnames(beamformer_dir, refcorr, select=select)
     else:
-        bfnames = get_bfnames(select=select[0])
+        bfnames = get_bfnames(beamformer_dir, refcorr, select=select[0])
         if len(select) > 1:
             for sel in select[1:]:
-                bfnames += get_bfnames(select=sel)
+                bfnames += get_bfnames(beamformer_dir, refcorr, select=sel)
     if not bfnames:
         return bfnames
     times = [bfname.split("_")[1] for bfname in bfnames]
     times, bfnames = zip(*sorted(zip(times, bfnames), reverse=True))
     if selectcore:
-        gains = read_gains(bfnames, selectants=antennas_core)
+        gains = read_gains(bfnames, antennas, corr_list, beamformer_dir, selectants=antennas_core)
     else:
-        gains = read_gains(bfnames)
+        gains = read_gains(bfnames, antennas, corr_list, beamformer_dir)
     good = find_good_solutions(
         bfnames,
         gains,
+        refant,
+        antennas,
+        antennas_core=antennas_core,
         plot=plot,
         threshold_ants=threshold_ants,
         threshold_angle=threshold_angle,
         selectcore=selectcore,
     )
     if plot:
-        show_gains(bfnames, gains, good, selectcore=selectcore)
+        show_gains(bfnames, gains, good, refant, antennas, antennas_core, selectcore=selectcore)
 
     return [bfnames[gidx] for gidx in good]
 
@@ -392,7 +395,7 @@ def consistent_correlator(full_solns, full_latest_solns, start_time):
 
 
 def average_beamformer_solutions(
-    fnames, ttime, beamformer_dir, corridxs=None, tol=0.3
+        fnames, ttime, beamformer_dir, antennas, corr_list, refmjd, tol=0.3
 ):
     """Averages written beamformer solutions.
 
@@ -415,9 +418,7 @@ def average_beamformer_solutions(
     antenna_flags_badsolns:
         Flags for antenna/polarization dimensions of gains.
     """
-    if corridxs is None:
-        corridxs = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16]
-    gains = read_gains(fnames)
+    gains = read_gains(fnames, antennas, corr_list, beamformer_dir)
     print(gains.shape)
     antenna_flags = [None] * len(fnames)
     for i, fname in enumerate(fnames):
@@ -435,7 +436,7 @@ def average_beamformer_solutions(
                     tmp_antflags.append(antenna_order.index(antname))
         antenna_flags[i] = sorted(tmp_antflags)
         gains[i, antenna_flags[i], ...] = np.nan
-    eastings = calc_eastings(antenna_order)
+    eastings = calc_eastings(antenna_order, refmjd)
 
     gains = np.nanmean(gains, axis=0)
     fracflagged = np.sum(np.isnan(gains), axis=1) / (gains.shape[1])
@@ -445,8 +446,8 @@ def average_beamformer_solutions(
     print(gains.shape)
     written_files = []
     if eastings is not None:
-        for i, corr in enumerate(corridxs):
-            fnameout = f"beamformer_weights_corr{corr:02d}_{ttime.isot}"
+        for i, corr in enumerate(corr_list):
+            fnameout = f"beamformer_weights_{corr}_{ttime.isot}"
             wcorr = gains[:, i, ...].flatten()
             wcorr = np.concatenate([eastings, wcorr], axis=0)
             with open(f"{beamformer_dir}/{fnameout}.dat", "wb") as f:
@@ -467,7 +468,6 @@ def set_freq_beamformer_weights(
         fobs = f0_GHz + np.arange(nchan) * dfreq
     else:
         fobs = f0_GHz - np.arange(nchan) * dfreq
-    nchan_spw = nchan_spw
 
     for i, corr_name in enumerate(corr_list):
         ch0 = ch0[corr_name]
@@ -478,7 +478,8 @@ def set_freq_beamformer_weights(
 
 
 def write_beamformer_weights(
-    msname, calname, caltime, antennas, corr_list, beamformer_dir, antenna_flags, tol=0.3
+        msname, calname, caltime, antennas, corr_list, beamformer_dir, nchan, nchan_spw, bw_GHz,
+        chan_ascending, f0_GHz, ch0, refmjd, tol=0.3
 ):
     """Writes weights for the beamformer.
 
@@ -497,8 +498,6 @@ def write_beamformer_weights(
         and they are in the same order or the reverse order as in the ms. The
         bandwidth of each correlator is pulled from dsa110-meridian-fs package
         data.
-    antenna_flags : ndarray(bool)
-        Dimensions (antennas, pols). True where flagged, False otherwise.
     tol : float
         The fraction of data for a single antenna/pol flagged that the
         can be flagged in the beamformer. If more data than this is flagged as
@@ -519,8 +518,9 @@ def write_beamformer_weights(
     npol = 2
     nfreq = 48
 
-    fweights = set_freq_beamformer_weights(corr_list)
-    bu = calc_eastings(antennas)
+    fweights = set_freq_beamformer_weights(
+        corr_list, nchan, nchan_spw, bw_GHz, chan_ascending, f0_GHz, ch0)
+    bu = calc_eastings(antennas, refmjd)
 
     fobs = freq_GHz_from_ms(msname)
     fobs = fobs.reshape(fweights.size, -1).mean(axis=1)
@@ -565,16 +565,8 @@ def write_beamformer_weights(
 
 
 def write_beamformer_solutions(
-    msname,
-    calname,
-    caltime,
-    antennas,
-    applied_delays,
-    beamformer_dir,
-    pols,
-    corr_list,
-    flagged_antennas=None,
-):
+        msname, calname, caltime, antennas, applied_delays, beamformer_dir, pols, corr_list, nchan,
+        nchan_spw, bw_GHz, chan_ascending, f0_GHz, ch0, refmjd, flagged_antennas=None):
     """Writes beamformer solutions to disk.
 
     Parameters
@@ -632,7 +624,8 @@ def write_beamformer_solutions(
 
     caltime.precision = 0
     eastings, weights_files, flags_badsolns = write_beamformer_weights(
-        msname, calname, caltime, antennas, corr_list, beamformer_dir, flags)
+        msname, calname, caltime, antennas, corr_list, beamformer_dir, nchan, nchan_spw, bw_GHz,
+        chan_ascending, f0_GHz, ch0, refmjd)
 
     idxant, idxpol = np.nonzero(flags_badsolns)
     for i, ant in enumerate(idxant):

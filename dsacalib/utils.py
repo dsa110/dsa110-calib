@@ -83,9 +83,10 @@ def update_nvss():
 
 def calibrator_source_from_name(name):
     if NVSS is None:
-         update_nvss()
+        update_nvss()
     record = NVSS.loc[f"NVSS {name}"]
-    return generate_calibrator_source(name, record["ra"]*u.deg, record["dec"]*u.deg, record["flux_20_cm"]*1e-3)
+    return generate_calibrator_source(
+        name, record["ra"]*u.deg, record["dec"]*u.deg, record["flux_20_cm"]*1e-3)
 
 
 class Direction:

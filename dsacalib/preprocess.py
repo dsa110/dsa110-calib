@@ -104,7 +104,7 @@ def remove_outrigger_delays(UVhandler, outrigger_delays):
         )
 
 
-def fscrunch_file(fname, nfreq_scrunch):
+def fscrunch_file(fname, nfreq_scrunch, outrigger_delays):
     """Removes outrigger delays before averaging in frequency.
 
     Leaves file untouched if the number of frequency bins is not divisible
@@ -122,7 +122,7 @@ def fscrunch_file(fname, nfreq_scrunch):
     UV.read_uvh5(fname, run_check_acceptability=False)
     nint = UV.Nfreqs // nfreq_scrunch
     if nint > 1 and UV.Nfreqs % nint == 0:
-        remove_outrigger_delays(UV)
+        remove_outrigger_delays(UV, outrigger_delays)
         # Scrunch in frequency by factor of nint
         UV.frequency_average(n_chan_to_avg=nint)
         if os.path.exists(fname.replace(".hdf5", "_favg.hdf5")):

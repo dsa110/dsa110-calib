@@ -1,4 +1,4 @@
-import astropy.unit as u
+import astropy.units as u
 import numpy as np
 
 from dsautils import cnf
