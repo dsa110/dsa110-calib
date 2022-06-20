@@ -241,6 +241,7 @@ def gain_calibration(
 
     return error
 
+
 def bandpass_calibration(
         msname: str, sourcename: str, refant: str, caltables: List[dict],
         combine: str = "field,scan,obs", spwmap: List = None) -> int:
