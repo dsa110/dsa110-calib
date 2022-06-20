@@ -43,6 +43,7 @@ class Configuration:
         self.refmjd = mfs_params['refmjd']
         self.snap_start_time = Time(
             etcd.get_dict("/mon/snap/1/armed_mjd")['armed_mjd'], format="mjd")
+
         # Directories
         self.msdir = cal_params['msdir']
         self.beamformer_dir = cal_params['beamformer_dir']
@@ -53,6 +54,7 @@ class Configuration:
             else "/home/ubuntu/caldata/temp")
 
     def __repr__(self):
-        string_repr = "Configuration:\n" + "\n".join([f"{key}: {value}" for key, value in self.__dict__.items()])
+        string_repr = (
+            "Configuration:\n"
+            + "\n".join([f"{key}: {value}" for key, value in self.__dict__.items()]))
         return string_repr
-
