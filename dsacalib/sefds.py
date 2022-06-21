@@ -108,6 +108,7 @@ def solve_gains(msname, calname, msname_delaycal, calname_delaycal, refant=None)
     ]
     cb = cc.calibrater()
     cb.open(f"{msname}.ms")
+    cb.selectvis()
     apply_calibration_tables(cb, caltables)
     cb.setsolve(
         type="G",

@@ -64,6 +64,7 @@ def delay_calibration_worker(
     error = 0
     cb = cc.calibrater()
     error += not cb.open(f"{msname}.ms")
+    error += not cb.selectvis()
     error += not cb.setsolve(
         type="K",
         t=t,
@@ -201,13 +202,14 @@ def gain_calibration(
 
     # Gain calibration - amplitude
     cb = cc.calibrater()
-    error += cb.open(f"{msname}.ms")
+    error += not cb.open(f"{msname}.ms")
+    error += not cb.selectvis()
     error += apply_calibration_tables(cb, caltables)
-    error += cb.setsolve(
+    error += not cb.setsolve(
         type="G", combine=combine, table=f"{msname}_{sourcename}_gacal", refant=refant,
         apmode="a", t="inf")
-    error += cb.solve()
-    error += cb.close()
+    error += not cb.solve()
+    error += not cb.close()
 
     # Gain calibration - phase
     caltables += [
@@ -216,18 +218,20 @@ def gain_calibration(
             "type": "G",
             "spwmap": spwmap}]
     cb = cc.calibrater()
-    error += cb.open(f"{msname}.ms")
+    error += not cb.open(f"{msname}.ms")
+    error += not cb.selectvis()
     error += apply_calibration_tables(cb, caltables)
-    error += cb.setsolve(
+    error += not cb.setsolve(
         type="G", combine=combine, table=f"{msname}_{sourcename}_gpcal", refant=refant, apmode="p",
         t="inf")
-    error += cb.solve()
-    error += cb.close()
+    error += not cb.solve()
+    error += not cb.close()
 
     # Gain calibration - short timescales
     caltables = caltables_orig
     cb = cc.calibrater()
     error += not cb.open(f"{msname}.ms")
+    error += not cb.selectvis()
     error += apply_calibration_tables(cb, caltables)
     error += not cb.setsolve(
         type="G", combine=combine, table=f"{msname}_{sourcename}_2gcal", refant=refant,
@@ -270,13 +274,14 @@ def bandpass_calibration(
 
     # Amplitude
     cb = cc.calibrater()
-    error += cb.open(f"{msname}.ms")
+    error += not cb.open(f"{msname}.ms")
+    error += not cb.selectvis()
     error += apply_calibration_tables(cb, caltables)
-    error += cb.setsolve(
+    error += not cb.setsolve(
         type="B", combine=combine, table=f"{msname}_{sourcename}_bacal",
         refant=refant, apmode="a", t="inf", solnorm=True)
-    error += cb.solve()
-    error += cb.close()
+    error += not cb.solve()
+    error += not cb.close()
 
     # Phase
     caltables += [
@@ -285,13 +290,14 @@ def bandpass_calibration(
             "type": "B",
             "spwmap": spwmap}]
     cb = cc.calibrater()
-    error += cb.open(f"{msname}.ms")
+    error += not cb.open(f"{msname}.ms")
+    error += not cb.selectvis()
     error += apply_calibration_tables(cb, caltables)
-    error += cb.setsolve(
+    error += not cb.setsolve(
         type="B", combine=combine, table=f"{msname}_{sourcename}_bpcal",
         refant=refant, apmode="p", t="inf", solnorm=True)
-    error += cb.solve()
-    error += cb.close()
+    error += not cb.solve()
+    error += not cb.close()
 
     return error
 
@@ -527,6 +533,7 @@ def calibrate_gain(
     error = 0
     cb = cc.calibrater()
     error += not cb.open(f"{msname}.ms")
+    error += not cb.selectvis()
     error += apply_calibration_tables(cb, caltables)
     error += not cb.setsolve(
         type=bptype,
@@ -542,6 +549,7 @@ def calibrate_gain(
     ]
     cb = cc.calibrater()
     error += not cb.open(f"{msname}.ms")
+    error += not cb.selectvis()
     error += apply_calibration_tables(cb, caltables)
     error += not cb.setsolve(
         type=gtype,
@@ -556,6 +564,7 @@ def calibrate_gain(
     error += not cb.close()
     cb = cc.calibrater()
     error += not cb.open(f"{msname}.ms")
+    error += not cb.selectvis()
     caltables += [
         {
             "table": f"{msname}_{calname}_gpcal",
@@ -652,6 +661,7 @@ def calibrate_phases(
             if os.path.exists(f"{msname}.ms"):
                 cb = cc.calibrater()
                 cb.open(f"{msname}.ms")
+                cb.selectvis()
                 cb.setsolve(
                     type="B",
                     combine="field,scan,obs",
