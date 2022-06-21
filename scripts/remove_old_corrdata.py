@@ -3,8 +3,10 @@ import glob
 import tqdm
 import datetime
 
-corrdir = '/mnt/data/dsa110/correlator/'
-cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=15)
+from dsautils import cnf
+
+corrdir = cnf.Conf().get('cal')['hdf5_dir']
+cutoff = datetime.datetime.now(datetime.timezone.utc) - datetime.timedelta(days=7)
 cutoff = cutoff.strftime('%Y-%m-%d')
 print(f'Removing hdf5 files in {corrdir} from before {cutoff}')
 
@@ -15,5 +17,4 @@ for subdir in glob.glob(f'{corrdir}corr??'):
         file = files[i]
         date = file.split('/')[-1][:10]
         if date < cutoff:
-            # print(f'unlinking {file}')
             os.unlink(file)
