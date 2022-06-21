@@ -67,6 +67,3 @@ def test_bandpass_calibration():
     assert error == 0
     for calsuffix in ['bacal', 'bpcal']:
         assert os.path.exists(f"{MSNAME}_{SOURCENAME}_{calsuffix}")
-
-
-def test_apply_calibration():

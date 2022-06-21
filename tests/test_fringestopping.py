@@ -6,6 +6,7 @@ from antpos.utils import get_itrf
 from dsacalib.fringestopping import calc_uvw_interpolate, calc_uvw
 import dsacalib.constants as ct
 
+
 def test_calc_uvw_interpolate():
     ntimes = 100
     deltat = 2.*u.s/100.
@@ -19,7 +20,8 @@ def test_calc_uvw_interpolate():
     buvw2 = np.array(buvw2).T
     assert buvw2.shape == buvw.shape
     assert np.allclose(buvw2, buvw)
-    
+
+
 def get_blen(antennas: list) -> tuple:
     """Gets the baseline lengths for a subset of antennas.
 
