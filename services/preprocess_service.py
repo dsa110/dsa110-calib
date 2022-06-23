@@ -219,7 +219,7 @@ def assess_file(inqueue, outqueue, caltime=CONFIG.caltime, filelength=CONFIG.fil
                     caltime * np.pi * u.rad
                     / (ct.SECONDS_PER_SIDEREAL_DAY * u.s)).to_value(u.rad)
                 with h5py.File(fname, mode='r') as h5file:
-                    pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value * u.rad
+                    pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'][()] * u.rad
                 caltable = update_caltable(pt_dec)
                 calsources = pandas.read_csv(caltable, header=0)
                 for _index, row in calsources.iterrows():
