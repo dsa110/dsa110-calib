@@ -37,7 +37,6 @@ ETCD = ds.DsaStore()
 
 # FIFO Queues for rsync, freq scrunching, calibration
 FSCRUNCH_Q = Queue()
-RSYNC_Q = Queue()
 GATHER_Q = Queue()
 ASSESS_Q = Queue()
 CALIB_Q = Queue()
@@ -57,7 +56,7 @@ TSLEEP = 10
 CONFIG = config.Configuration()
 
 
-def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=CONFIG.hdf5dir, subband_def=CONFIG.ch0):
+def populate_queue(etcd_dict, queue=GATHER_Q, hdf5dir=CONFIG.hdf5dir, subband_def=CONFIG.ch0):
     """Populates the fscrunch and rsync queues using etcd.
 
     Etcd watch callback function.
@@ -66,18 +65,7 @@ def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=CONFIG.hdf5dir, subband_def
     val = etcd_dict['val']
     if cmd != 'rsync':
         return
-    try:
-        subband = list(subband_def.keys()).index(val['hostname'])
-    except ValueError:
-        LOGGER.error(
-            f"Hostname {val['hostname']} not in subband list. Appending filename with "
-            f"{val['hostname']} instead of subband name.")
-        subband = val['hostname']
-    output_stem, output_ext = os.splitext(f"{hdf5dir}/{val['filename']}")
-    output_path = f"{output_stem}_{subband}{output_ext}"
-
-    rsync_string = f"{val['hostname']}.sas.pvt:{val['filename']} {output_path}"
-    queue.put(rsync_string)
+    queue.put(val['filename'])
 
 
 def task_handler(task_fn, inqueue, outqueue=None):
@@ -263,32 +251,9 @@ def assess_file(inqueue, outqueue, caltime=CONFIG.caltime, filelength=CONFIG.fil
 
 
 if __name__ == "__main__":
-    processes = {
-        'rsync': {
-            'nthreads': 1,
-            'task_fn': partial(rsync_file, logger=LOGGER),
-            'queue': RSYNC_Q,
-            'outqueue': GATHER_Q,
-            'processes': []
-        },
-    }
     # Start etcd watch
     ETCD.add_watch('/cmd/cal', populate_queue)
-    # Start all threads
-    for name, pinfo in processes.items():
-        for i in range(pinfo['nthreads']):
-            pinfo['processes'] += [Process(
-                target=task_handler,
-                args=(
-                    pinfo['task_fn'],
-                    pinfo['queue'],
-                    pinfo['outqueue'],
-                ),
-                daemon=True
-            )]
-        for pinst in pinfo['processes']:
-            pinst.start()
-
+    processes = {}
     try:
         processes['gather'] = {
             'nthreads': 1,
