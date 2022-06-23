@@ -277,9 +277,8 @@ def cal_in_datetime(
 
 
 def get_files_for_cal(
-        caltable: str, refcorr: str = "03", duration: u.Quantity = 5 * u.min,
-        filelength: u.Quantity = 15 * u.min, hdf5dir: str = "/mnt/data/dsa110/correlator/",
-        date_specifier: str = "*"
+        caltable: str, hdf5dir, refsb: str = "sb01", duration: u.Quantity = 5 * u.min,
+        filelength: u.Quantity = 15 * u.min, date_specifier: str = "*"
 ) -> dict:
     """Returns a dictionary containing the filenames for each calibrator pass.
 
@@ -287,9 +286,9 @@ def get_files_for_cal(
     ----------
     caltable : str
         The path to the csv file containing calibrators of interest.
-    refcorr : str
-        The reference correlator to search for recent hdf5 files from. Searches
-        the directory `hdf5dir`/corr`refcorr`/
+    refsb : str
+        The reference subband to search for recent hdf5 files from. Searches
+        for files `hdf5dir`/*_`refsb`.hdf5
     duration : astropy quantity
         The duration around transit which you are interested in extracting, in
         minutes or seconds.
@@ -310,7 +309,7 @@ def get_files_for_cal(
         requested datesand calibrators.
     """
     calsources = pandas.read_csv(caltable, header=0)
-    files = sorted(glob.glob(f"{hdf5dir}/corr{refcorr}/{date_specifier}.hdf5"))
+    files = sorted(glob.glob(f"{hdf5dir}/{date_specifier}_{refsb}.hdf5"))
     datetimes = [f.split("/")[-1][:19] for f in files]
     if len(np.unique(datetimes)) != len(datetimes):
         print("Multiple files exist for the same time.")

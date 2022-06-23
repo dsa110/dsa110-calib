@@ -127,16 +127,8 @@ def fscrunch_file(fname, nfreq_scrunch, outrigger_delays):
         UV.frequency_average(n_chan_to_avg=nint)
         if os.path.exists(fname.replace(".hdf5", "_favg.hdf5")):
             os.remove(fname.replace(".hdf5", "_favg.hdf5"))
-        UV.write_uvh5(
-            fname.replace(".hdf5", "_favg.hdf5"), run_check_acceptability=False
-        )
-        # Move the original data to a new directory
-        corrname = re.findall(r"corr\d\d", fname)[0]
-        os.rename(
-            fname,
-            fname.replace(f"{corrname}", f"{corrname}/full_freq_resolution/"),
-        )
-        os.rename(fname.replace(".hdf5", "_favg.hdf5"), fname)
+        # Overwrite
+        UV.write_uvh5(fname, run_check_acceptability=False)
     return fname
 
 
