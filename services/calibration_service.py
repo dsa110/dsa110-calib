@@ -61,18 +61,17 @@ def calibrate_file(calname, flist, **kwargs):
 
     # Get the pointing declination from the file
     with h5py.File(first_true(flist), mode="r") as h5file:
-        pt_dec = h5file["Header"]["extra_keywords"]["phase_center_dec"][()] * \
-            u.rad
+        pt_dec = (
+            h5file["Header"]["extra_keywords"]["phase_center_dec"][()] * u.rad)
 
     # Get the list of sources at the current pointing dec
     caltable = update_caltable(pt_dec)
     # Find the ones that have files
     filenames = get_files_for_cal(
         caltable,
-        config.refcorr,
-        config.caltime,
-        config.filelength,
-        hdf5dir=config.hdf5dir,
+        config.hdf5dir,
+        duration=config.caltime,
+        filelength=config.filelength,
         date_specifier=date_specifier,
     )
     caltime = filenames[date][calname]["transit_time"]
@@ -160,7 +159,7 @@ def calibrate_file(calname, flist, **kwargs):
         # Write beamformer solutions for one source
         write_beamformer_solutions(
             msname, calname, caltime, config.antennas, applied_delays, config.beamformer_dir,
-            config.pols, config.corr_list, config.nchan, config.nchan_spw, config.bw_GHz,
+            config.pols, config.nchan, config.nchan_spw, config.bw_GHz,
             config.chan_ascending, config.f0_GHz, config.ch0, config.refmjd,
             flagged_antennas=config.antennas_not_in_bf)
     except Exception as exc:
@@ -171,7 +170,7 @@ def calibrate_file(calname, flist, **kwargs):
             throw=False)
 
     beamformer_solns, beamformer_names = generate_averaged_beamformer_solns(
-        config.snap_start_time, caltime, config.beamformer_dir, config.corr_list,
+        config.snap_start_time, caltime, config.beamformer_dir,
         config.antennas, config.pols, config.refants[0], config.refmjd)
 
     if beamformer_solns:
@@ -191,7 +190,7 @@ def calibrate_file(calname, flist, **kwargs):
         # Plot the beamformer solutions
         figure_prefix = f"{config.tempplots}/{caltime}"
         plot_beamformer_weights(
-            beamformer_names, config.corr_list, config.antennas,
+            beamformer_names, config.antennas, config.beamformer_dir,
             outname=figure_prefix, show=False)
         store_file(
             f"{figure_prefix}_averagedweights.png",
@@ -222,20 +221,20 @@ def calibrate_file(calname, flist, **kwargs):
 
 
 def generate_averaged_beamformer_solns(
-        start_time, caltime, beamformer_dir, corr_list, antennas, pols, refant, refmjd):
+        start_time: Time, caltime: Time, beamformer_dir: str, antennas: List[int], pols: List[str],
+        refant: int, refmjd: float, refsb: str = 'sb01'):
     """Generate an averaged beamformer solution.
 
     Uses only calibrator passes within the last 24 hours or since the snaps
     were restarted.
     """
-    refcorr = corr_list[0]
 
     if caltime - start_time > 24 * u.h:
         start_time = caltime - 24 * u.h
 
     # Now we want to find all sources in the last 24 hours
     # start by updating our list with calibrators from the day before
-    beamformer_names = get_good_solution(beamformer_dir, refcorr, antennas, corr_list, refant)
+    beamformer_names = get_good_solution(beamformer_dir, refsb, antennas, refant)
     beamformer_names, latest_solns = filter_beamformer_solutions(
         beamformer_names, start_time.mjd, beamformer_dir)
 
@@ -249,13 +248,7 @@ def generate_averaged_beamformer_solns(
         print("could not get reference bname. continuing...")
 
     averaged_files, avg_flags = average_beamformer_solutions(
-        beamformer_names,
-        caltime,
-        beamformer_dir,
-        antennas,
-        corr_list,
-        refmjd
-    )
+        beamformer_names, caltime, beamformer_dir, antennas, refmjd)
 
     update_solution_dictionary(
         latest_solns, beamformer_names, averaged_files, avg_flags, antennas, pols)
@@ -335,7 +328,7 @@ def add_reference_bfname(beamformer_names, latest_solns, start_time, beamformer_
     if "bfname" in ref_bfweights["val"]:
         ref_bfname = ref_bfweights["val"]["bfname"]
     else:
-        #        parse from name like "beamformer_weights_corr03_2022-03-18T04:40:15.dat"
+        # parse from name like "beamformer_weights_sb01_2022-03-18T04:40:15.dat"
         ref_bfname = ref_bfweights["val"]["weights_files"].rstrip(
             ".dat").split("_")[-1]
     print(f"Got reference bfname of {ref_bfname}. Checking solutions...")

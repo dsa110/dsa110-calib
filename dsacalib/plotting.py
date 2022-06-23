@@ -1337,13 +1337,15 @@ def plot_bandpass_phases(
 
 def plot_beamformer_weights(
     beamformer_names,
-    corrlist,
     antennas,
+    beamformer_dir,
     antennas_to_plot=None,
     outname=None,
     pols=None,
     show=True,
-    gaindir="/home/user/beamformer_weights/",
+    nsubbands: int = 16,
+    nchan_spw: int = 48,
+    npol: int = 2
 ):
     """Plot beamformer weights from a number of beamformer solutions.
 
@@ -1353,8 +1355,6 @@ def plot_beamformer_weights(
         The postfixes of the beamformer weight files to plot. Will open
         beamformer_weights_corr??_`beamformer_name`.dat for each item in
         beamformer_names.
-    corrlist : list(int)
-        The corrnode numbers.
     antennas_to_plot : list(int)
         The names of the antennas to plot. Defaults to `antennas`.
     antennas : list(int)
@@ -1391,18 +1391,18 @@ def plot_beamformer_weights(
     if len(antennas_to_plot) % nx != 0:
         ny += 1
     gains = np.zeros(
-        (len(beamformer_names), len(antennas), len(corrlist), 48, 2), dtype=np.complex
+        (len(beamformer_names), len(antennas), nsubbands, nchan_spw, npol), dtype=np.complex
     )
     for i, beamformer_name in enumerate(beamformer_names):
-        for corridx, corr in enumerate(corrlist):
+        for subband in range(nsubbands):
             with open(
-                    f"{gaindir}/beamformer_weights_{corr}_{beamformer_name}.dat",
+                    f"{beamformer_dir}/beamformer_weights_sb{subband:02d}_{beamformer_name}.dat",
                     "rb",
             ) as f:
                 data = np.fromfile(f, "<f4")
             temp = data[64:].reshape(64, 48, 2, 2)
-            gains[i, :, corridx, :, :] = temp[..., 0] + 1.0j * temp[..., 1]
-    gains = gains.reshape((len(beamformer_names), len(antennas), len(corrlist) * 48, 2))
+            gains[i, :, subband, :, :] = temp[..., 0] + 1.0j * temp[..., 1]
+    gains = gains.reshape((len(beamformer_names), len(antennas), nsubbands*nchan_spw, npol))
     gains = gains / gains[:, [0], :, :]
     # Phase, polarization B
     fig, ax = plt.subplots(

@@ -6,6 +6,7 @@ import warnings
 from multiprocessing import Process, Queue
 import time
 from functools import partial
+import os
 
 import pandas
 import h5py
@@ -56,19 +57,27 @@ TSLEEP = 10
 CONFIG = config.Configuration()
 
 
-def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=CONFIG.hdf5dir):
+def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=CONFIG.hdf5dir, subband_def=CONFIG.ch0):
     """Populates the fscrunch and rsync queues using etcd.
 
     Etcd watch callback function.
     """
     cmd = etcd_dict['cmd']
     val = etcd_dict['val']
-    if cmd == 'rsync':
-        rsync_string = (
-            f"{val['hostname']}.sas.pvt:{val['filename']} "
-            f"{hdf5dir}/{val['hostname']}/"
-        )
-        queue.put(rsync_string)
+    if cmd != 'rsync':
+        return
+    try:
+        subband = list(subband_def.keys()).index(val['hostname'])
+    except ValueError:
+        LOGGER.error(
+            f"Hostname {val['hostname']} not in subband list. Appending filename with "
+            f"{val['hostname']} instead of subband name.")
+        subband = val['hostname']
+    output_stem, output_ext = os.splitext(f"{hdf5dir}/{val['filename']}")
+    output_path = f"{output_stem}_{subband}{output_ext}"
+
+    rsync_string = f"{val['hostname']}.sas.pvt:{val['filename']} {output_path}"
+    queue.put(rsync_string)
 
 
 def task_handler(task_fn, inqueue, outqueue=None):
