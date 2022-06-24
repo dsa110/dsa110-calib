@@ -430,13 +430,15 @@ if __name__ == "__main__":
 
     try:
         while True:
-            assert processes["watch"].is_alive()  # needs a timeout
-            assert processes["calibrate"].is_alive()  # needs a timeout
+            assert processes["watch"].is_alive(), "Watch process has died"  # needs a timeout
+            assert processes["calibrate"].is_alive(), "Calibration process has died"  # needs a timeout
             print(f"{CALIB_Q.qsize()} objects in calibration queue")
             time.sleep(5 * 60)
 
-    except (KeyboardInterrupt, SystemExit, AssertionError):
+    except (KeyboardInterrupt, SystemExit, AssertionError) as exc:
         # Terminate non-daemon processes
+        print(f'Caught exception: {exc}')
+        print('Exiting calibration')
         processes["calibrate"].terminate()
         processes["calibrate"].join()
         sys.exit()
