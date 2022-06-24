@@ -98,7 +98,7 @@ def task_handler(task_fn, inqueue, outqueue=None):
             time.sleep(TSLEEP)
 
 
-def gather_worker(inqueue, outqueue, corrlist=None):
+def gather_worker(inqueue, outqueue, ncorr=CONFIG.ncorr):
     """Gather all files that match a filename.
 
     Will wait for a maximum of 15 minutes from the time the first file is
@@ -112,18 +112,14 @@ def gather_worker(inqueue, outqueue, corrlist=None):
     outqueue : multiprocessing.Queue instance
         The queue in which to place the gathered files (as a list).
     """
-    if not corrlist:
-        corrlist = CONFIG.corr_list
-    ncorr = len(corrlist)
-    filelist = [None] * ncorr
     nfiles = 0
+    filelist = []
     # Times out after 15 minutes
     end = time.time() + 60 * 15
     while nfiles < ncorr and time.time() < end:
         if not inqueue.empty():
             fname = inqueue.get()
-            corrid = fname.replace('//', '/').split('/')[5]
-            filelist[corrlist.index(corrid)] = fname
+            filelist.append(fname)
             nfiles += 1
         time.sleep(1)
     outqueue.put(filelist)
