@@ -4,11 +4,10 @@ import os
 import shutil
 import sys
 import socket
+from pathlib import Path
 import warnings
 from multiprocessing import Process, Queue
-import datetime
-import time
-import yaml
+
 
 import h5py
 import numpy as np
@@ -54,7 +53,7 @@ def calibrate_file(calname, flist, **kwargs):
 
     config = Configuration()
 
-    date = first_true(flist).split("/")[-1][:-14]
+    date = Path(first_true(flist)).stem.split("T")[0]
 
     msname = f"{config.msdir}/{date}_{calname}"
     date_specifier = f"{date}*"
