@@ -65,6 +65,7 @@ def populate_queue(etcd_dict, queue=GATHER_Q, hdf5dir=CONFIG.hdf5dir, subband_de
     val = etcd_dict['val']
     if cmd != 'rsync':
         return
+    time.sleep(30) # wait for the staged files to be moved to the correct directory
     queue.put(val['filename'])
 
 
