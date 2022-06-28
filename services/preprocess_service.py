@@ -200,6 +200,7 @@ def assess_file(inqueue, outqueue, caltime=CONFIG.caltime, filelength=CONFIG.fil
             try:
                 flist = inqueue.get()
                 fname = first_true(flist)
+                print(f"Assessing {len(flist)} files {fname}")
                 datet = fname.split('/')[-1][:19]
                 tstart = Time(datet).sidereal_time(
                     'apparent',
