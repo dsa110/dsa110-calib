@@ -148,22 +148,21 @@ def gather_files(inqueue, outqueue, ncorr=CONFIG.ncorr, max_assess=MAX_ASSESS, t
             try:
                 fname = inqueue.get()
                 print(fname)
-                if not fname.split('/')[-1][:-7] in gather_names:
-                    gather_names[nfiles_assessed % max_assess] = \
-                        fname.split('/')[-1][:-7]
-                    gather_processes[nfiles_assessed % max_assess] = \
-                        Process(
-                            target=gather_worker,
-                            args=(
-                                gather_queues[nfiles_assessed % max_assess],
-                                outqueue
-                            ),
-                        daemon=True
-                    )
+                basename = os.path.splitext(os.path.basename(fname))[0]
+                basename = basename.split('_')[0][:-2]
+                if not basename in gather_names:
+                    gather_names[nfiles_assessed % max_assess] = basename
+                    gather_processes[nfiles_assessed % max_assess] = Process(
+                        target=gather_worker,
+                        args=(
+                            gather_queues[nfiles_assessed % max_assess],
+                            outqueue
+                        ),
+                        daemon=True)
                     gather_processes[nfiles_assessed % max_assess].start()
                     nfiles_assessed += 1
                 gather_queues[
-                    gather_names.index(fname.split('/')[-1][:-7])
+                    gather_names.index(basename)
                 ].put(fname)
             except Exception as exc:
                 exception_logger(
