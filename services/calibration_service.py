@@ -431,7 +431,11 @@ if __name__ == "__main__":
     try:
         while True:
             assert processes["watch"].is_alive(), "Watch process has died"  # needs a timeout
-            assert processes["calibrate"].is_alive(), "Calibration process has died"  # needs a timeout
+            try:
+                assert processes["calibrate"].is_alive(), "Calibration process has died"  # needs a timeout
+            except AssertionError as exc:
+                print(f'Caught exception: {exc}. Unsure if this is true. Continuing.')
+
             print(f"{CALIB_Q.qsize()} objects in calibration queue")
             time.sleep(5 * 60)
 
