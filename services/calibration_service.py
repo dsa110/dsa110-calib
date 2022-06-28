@@ -173,7 +173,7 @@ def calibrate_file(calname, flist, **kwargs):
 
     beamformer_solns, beamformer_names = generate_averaged_beamformer_solns(
         config.snap_start_time, caltime, config.beamformer_dir,
-        config.antennas, config.pols, config.refants[0], config.refmjd)
+        config.antennas, config.antennas_core, config.pols, config.refants[0], config.refmjd)
 
     if beamformer_solns:
         with open(
@@ -223,7 +223,7 @@ def calibrate_file(calname, flist, **kwargs):
 
 
 def generate_averaged_beamformer_solns(
-        start_time: Time, caltime: Time, beamformer_dir: str, antennas: List[int], pols: List[str],
+        start_time: Time, caltime: Time, beamformer_dir: str, antennas: List[int], antennas_core: List[int], pols: List[str],
         refant: int, refmjd: float, refsb: str = 'sb01'):
     """Generate an averaged beamformer solution.
 
@@ -236,7 +236,7 @@ def generate_averaged_beamformer_solns(
 
     # Now we want to find all sources in the last 24 hours
     # start by updating our list with calibrators from the day before
-    beamformer_names = get_good_solution(beamformer_dir, refsb, antennas, refant)
+    beamformer_names = get_good_solution(beamformer_dir, refsb, antennas, refant, antennas_core=antennas_core)
     beamformer_names, latest_solns = filter_beamformer_solutions(
         beamformer_names, start_time.mjd, beamformer_dir)
 
