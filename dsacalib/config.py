@@ -51,7 +51,7 @@ class Configuration:
         self.webplots = "/mnt/data/dsa110/webPLOTS/calibration/"
         self.tempplots = (
             "/home/user/temp" if socket.gethostname() == "dsa-storage"
-            else "/home/ubuntu/caldata/temp")
+            else "/home/ubuntu/data/webPLOTS/calibration/")
 
     def __repr__(self):
         string_repr = (
