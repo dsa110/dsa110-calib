@@ -443,7 +443,6 @@ if __name__ == "__main__":
 
             print(f"{CALIB_Q.qsize()} objects in calibration queue")
             time.sleep(5 * 60)
-            print('Processes have died!')
 
     except (KeyboardInterrupt, SystemExit, AssertionError) as exc:
         # Terminate non-daemon processes
