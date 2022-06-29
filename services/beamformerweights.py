@@ -70,6 +70,7 @@ def update_beamformer_weights(etcd_dict):
             fnamearchive = f"{BFARCHIVEDIR}/beamformer_weights_sb{i:02d}_{tstamp.isot}.dat"
             fnameout = f"{corr}.sas.pvt:{WEIGHTFILE}"
             flagsout = f"{corr}.sas.pvt:{FLAGFILE}"
+            print(f"rsyncing {fname} to {fnameout}")
             rsync_file(
                 f"{fname} {fnameout}",
                 remove_source_files=False
