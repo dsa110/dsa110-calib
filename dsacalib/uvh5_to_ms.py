@@ -5,38 +5,27 @@ import shutil
 import os
 
 import numpy as np
-import scipy # pylint: disable=unused-import
+import scipy  # noqa
 import astropy.units as u
 import astropy.constants as c
-from astropy.utils import iers
+from astropy.time import Time
 from casatasks import importuvfits
 from casacore.tables import addImagingColumns, table
 from pyuvdata import UVData
 
 from antpos.utils import get_itrf
-from dsautils import dsa_store
-import dsautils.cnf as dsc
+import dsautils.dsa_syslog as dsl
 from dsamfs.fringestopping import calc_uvw_blt
 
 from dsacalib.fringestopping import calc_uvw_interpolate
 from dsacalib import constants as ct
-from dsacalib.utils import Direction, CalibratorSource
+from dsacalib.utils import Direction, generate_calibrator_source
 from dsacalib.fringestopping import amplitude_sky_model
-
-iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
-iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=wrong-import-position wrong-import-order ungrouped-imports
-
-de = dsa_store.DsaStore()
-
-CONF = dsc.Conf(use_etcd=True)
-CORR_PARAMS = CONF.get('corr')
-REFMJD = CONF.get('fringe')['refmjd']
 
 
 def uvh5_to_ms(
-        fname, msname, ra=None, dec=None, dt=None, antenna_list=None,
-        flux=None, fringestop=True, logger=None, refmjd=REFMJD
+        fname, msname, refmjd, ra=None, dec=None, dt=None, antenna_list=None,
+        flux=None, fringestop=True, logger=None
 ):
     """
     Converts a uvh5 data to a uvfits file.
@@ -68,7 +57,6 @@ def uvh5_to_ms(
     refmjd : float
         The mjd used in the fringestopper.
     """
-
     uvdata, pt_dec, ra, dec = load_uvh5_file(fname, antenna_list, dt, ra, dec)
 
     antenna_positions = set_antenna_positions(uvdata, logger)
@@ -92,14 +80,16 @@ def phase_visibilities(
     and the uvdata object is modified to indicate that it is phased.
     """
     blen = get_blen(uvdata)
-    lamb = c.c/(uvdata.freq_array*u.Hz)
+    lamb = c.c / (uvdata.freq_array * u.Hz)
     time = Time(uvdata.time_array, format='jd')
+
     if refmjd is None:
         refmjd = np.mean(time.mjd)
-    pt_dec = uvdata.extra_keywords['phase_center_dec']*u.rad
+
+    pt_dec = uvdata.extra_keywords['phase_center_dec'] * u.rad
     uvw_m = calc_uvw_blt(
         blen, np.tile(refmjd, (uvdata.Nbls)), 'HADEC',
-        np.zeros(uvdata.Nbls)*u.rad, np.tile(pt_dec, (uvdata.Nbls)))
+        np.zeros(uvdata.Nbls) * u.rad, np.tile(pt_dec, (uvdata.Nbls)))
 
     if fringestop:
         # Calculate uvw coordinates
@@ -114,10 +104,11 @@ def phase_visibilities(
             )
 
         # Fringestop and phase
+        # If needed, this could be done in chunks (in time) to save on memory
         phase_model = generate_phase_model_antbased(
             uvw, uvw_m, uvdata.Nbls, uvdata.Ntimes, lamb, uvdata.ant_1_array[:uvdata.Nbls],
             uvdata.ant_2_array[:uvdata.Nbls])
-        uvdata.data_array = uvdata.data_array/phase_model[..., np.newaxis]
+        uvdata.data_array = uvdata.data_array / phase_model[..., np.newaxis]
 
     else:
         uvw = calc_uvw_blt(
@@ -126,7 +117,7 @@ def phase_visibilities(
         phase_model = generate_phase_model_antbased(
             uvw, uvw_m, uvdata.Nbls, 1, lamb, uvdata.ant_1_array[:uvdata.Nbls],
             uvdata.ant_2_array[:uvdata.Nbls])
-        uvdata.data_array = uvdata.data_array/phase_model[..., np.newaxis]
+        uvdata.data_array = uvdata.data_array / phase_model[..., np.newaxis]
         uvw = np.tile(uvw.reshape((1, uvdata.Nbls, 3)),
                       (1, uvdata.Ntimes, 1)).reshape((uvdata.Nblts, 3))
 
@@ -136,22 +127,27 @@ def phase_visibilities(
     uvdata.phase_center_ra = phase_ra.to_value(u.rad)
     uvdata.phase_center_epoch = 2000.
     uvdata.phase_center_frame = 'icrs'
-    uvdata._set_app_coords_helper()
+    try:
+        uvdata._set_app_coords_helper()
+    except AttributeError:
+        pass
 
 
 def load_uvh5_file(
         fname: str,
-        antenna_list: list=None,
-        dt: "astropy.Quantity"=None,
-        phase_ra: "Quantity"=None,
-        phase_dec: "Quantity"=None,
-        phase_time: "Time"=None
-) -> "UVData":
+        antenna_list: list = None,
+        dt: u.Quantity = None,
+        phase_ra: u.Quantity = None,
+        phase_dec: u.Quantity = None,
+        phase_time: Time = None
+) -> UVData:
     """Load specific antennas and times for a uvh5 file.
 
     phase_ra and phase_dec are set here, but the uvh5 file is not phased.
     """
-    if (phase_ra is None and phase_dec is not None) or (phase_ra is not None and phase_dec is None):
+    if (
+            (phase_ra is None and phase_dec is not None)
+            or (phase_ra is not None and phase_dec is None)):
         raise RuntimeError(
             "Only one of phase_ra and phase_dec defined.  Please define both or neither."
         )
@@ -165,12 +161,12 @@ def load_uvh5_file(
     # Read in the data
     if antenna_list is not None:
         uvdata.read(fname, file_type='uvh5', antenna_names=antenna_list,
-                run_check_acceptability=False, strict_uvw_antpos_check=False)
+                    run_check_acceptability=False, strict_uvw_antpos_check=False)
     else:
         uvdata.read(fname, file_type='uvh5', run_check_acceptability=False,
-                strict_uvw_antpos_check=False)
+                    strict_uvw_antpos_check=False)
 
-    pt_dec = uvdata.extra_keywords['phase_center_dec']*u.rad
+    pt_dec = uvdata.extra_keywords['phase_center_dec'] * u.rad
 
     # Get pointing information
     if phase_ra is None:
@@ -182,8 +178,8 @@ def load_uvh5_file(
             pt_dec.to_value(u.rad),
             phase_time.mjd)
 
-        phase_ra = pointing.J2000()[0]*u.rad
-        phase_dec = pointing.J2000()[1]*u.rad
+        phase_ra = pointing.J2000()[0] * u.rad
+        phase_dec = pointing.J2000()[1] * u.rad
 
     if dt is not None:
         extract_times(uvdata, phase_ra, dt)
@@ -207,11 +203,11 @@ def extract_times(uvdata, ra, dt):
         The amount of data to extract, units seconds or equivalent.
     """
     lst_min = (
-        ra - (dt*2*np.pi*u.rad/(ct.SECONDS_PER_SIDEREAL_DAY*u.s))/2
-    ).to_value(u.rad)%(2*np.pi)
+        ra - (dt * 2 * np.pi * u.rad / (ct.SECONDS_PER_SIDEREAL_DAY * u.s)) / 2
+    ).to_value(u.rad) % (2 * np.pi)
     lst_max = (
-        ra + (dt*2*np.pi*u.rad/(ct.SECONDS_PER_SIDEREAL_DAY*u.s))/2
-    ).to_value(u.rad)%(2*np.pi)
+        ra + (dt * 2 * np.pi * u.rad / (ct.SECONDS_PER_SIDEREAL_DAY * u.s)) / 2
+    ).to_value(u.rad) % (2 * np.pi)
     if lst_min < lst_max:
         idx_to_extract = np.where(
             (uvdata.lst_array >= lst_min) & (uvdata.lst_array <= lst_max)
@@ -226,8 +222,8 @@ def extract_times(uvdata, ra, dt):
             f"with duration {dt} centered at RA {ra}."
         )
     idxmin = min(idx_to_extract)
-    idxmax = max(idx_to_extract)+1
-    assert (idxmax-idxmin)%uvdata.Nbls == 0
+    idxmax = max(idx_to_extract) + 1
+    assert (idxmax - idxmin) % uvdata.Nbls == 0
 
     uvdata.uvw_array = uvdata.uvw_array[idxmin:idxmax, ...]
     uvdata.data_array = uvdata.data_array[idxmin:idxmax, ...]
@@ -239,23 +235,23 @@ def extract_times(uvdata, ra, dt):
     uvdata.ant_2_array = uvdata.ant_2_array[idxmin:idxmax, ...]
     uvdata.baseline_array = uvdata.baseline_array[idxmin:idxmax, ...]
     uvdata.integration_time = uvdata.integration_time[idxmin:idxmax, ...]
-    uvdata.Nblts = int(idxmax-idxmin)
+    uvdata.Nblts = int(idxmax - idxmin)
     assert uvdata.data_array.shape[0] == uvdata.Nblts
-    uvdata.Ntimes = uvdata.Nblts//uvdata.Nbls
+    uvdata.Ntimes = uvdata.Nblts // uvdata.Nbls
 
 
-def set_antenna_positions(uvdata: "UVData", logger: "DsaSyslogger"=None) -> "np.ndarray":
+def set_antenna_positions(uvdata: UVData, logger: dsl.DsaSyslogger = None) -> np.ndarray:
     """Set and return the antenna positions.
 
     This should already be done by the writer but for some reason they
     are being converted to ICRS, so we set them using antpos here.
     """
     df_itrf = get_itrf(
-        latlon_center=(ct.OVRO_LAT*u.rad, ct.OVRO_LON*u.rad, ct.OVRO_ALT*u.m)
+        latlon_center=(ct.OVRO_LAT * u.rad, ct.OVRO_LON * u.rad, ct.OVRO_ALT * u.m)
     )
     if len(df_itrf['x_m']) != uvdata.antenna_positions.shape[0]:
-        message = 'Mismatch between antennas in current environment '+\
-            f'({len(df_itrf["x_m"])}) and correlator environment '+\
+        message = 'Mismatch between antennas in current environment ' +\
+            f'({len(df_itrf["x_m"])}) and correlator environment ' +\
             f'({uvdata.antenna_positions.shape[0]})'
         if logger is not None:
             logger.info(message)
@@ -265,7 +261,7 @@ def set_antenna_positions(uvdata: "UVData", logger: "DsaSyslogger"=None) -> "np.
         df_itrf['x_m'],
         df_itrf['y_m'],
         df_itrf['z_m']
-    ]).T-uvdata.telescope_location
+    ]).T - uvdata.telescope_location
     antenna_positions = uvdata.antenna_positions + uvdata.telescope_location
     return antenna_positions
 
@@ -298,11 +294,11 @@ def fix_descending_missing_freqs(uvdata: "UVData") -> None:
     # TODO: Need to update this for missing on either side as well
     uvdata.channel_width = np.abs(uvdata.channel_width)
     # Are there missing channels?
-    if not np.all(np.diff(freq)-uvdata.channel_width < 1e-5):
+    if not np.all(np.diff(freq) - uvdata.channel_width < 1e-5):
         # There are missing channels!
-        nfreq = int(np.rint(np.abs(freq[-1]-freq[0])/uvdata.channel_width+1))
-        freq_out = freq[0] + np.arange(nfreq)*uvdata.channel_width
-        existing_idxs = np.rint((freq-freq[0])/uvdata.channel_width).astype(int)
+        nfreq = int(np.rint(np.abs(freq[-1] - freq[0]) / uvdata.channel_width + 1))
+        freq_out = freq[0] + np.arange(nfreq) * uvdata.channel_width
+        existing_idxs = np.rint((freq - freq[0]) / uvdata.channel_width).astype(int)
         data_out = np.zeros((uvdata.Nblts, uvdata.Nspws, nfreq, uvdata.Npols),
                             dtype=uvdata.data_array.dtype)
         nsample_out = np.zeros((uvdata.Nblts, uvdata.Nspws, nfreq, uvdata.Npols),
@@ -348,14 +344,14 @@ def write_UV_to_ms(uvdata: "UVData", msname: "str", antenna_positions: "np.ndarr
     os.remove(f'{msname}.fits')
 
 
-def set_ms_model_column(msname: str, uvdata: "UVData", pt_dec: "Quantity", ra: "Quantity",
-                        dec: "Quantity", flux_Jy: float) -> None:
+def set_ms_model_column(msname: str, uvdata: "UVData", pt_dec: u.Quantity, ra: u.Quantity,
+                        dec: u.Quantity, flux_Jy: float) -> None:
     """Set the measurement model column."""
     if flux_Jy is not None:
-        fobs = uvdata.freq_array.squeeze()/1e9
+        fobs = uvdata.freq_array.squeeze() / 1e9
         lst = uvdata.lst_array
-        model = amplitude_sky_model(CalibratorSource('cal', ra, dec, flux_Jy),
-                                    lst, pt_dec, fobs)
+        source = generate_calibrator_source('cal', ra, dec, flux_Jy)
+        model = amplitude_sky_model(source, lst, pt_dec, fobs)
         model = np.tile(model[:, :, np.newaxis], (1, 1, uvdata.Npols))
     else:
         model = np.ones((uvdata.Nblts, uvdata.Nfreqs, uvdata.Npols), dtype=np.complex64)
@@ -369,10 +365,12 @@ def coordinates_differ(meridian, phase, tol=1e-7):
     """Determine if meridian and phase coordinates differ to within tol."""
     phase_ra, phase_dec = phase
     meridian_ra, meridian_dec = meridian
-    if (phase_ra is None or
-            np.abs(phase_ra.to_value(u.rad) - meridian_ra.to_value(u.rad)) < tol):
-        if (phase_dec is None or
-                np.abs(phase_dec.to_value(u.rad) - meridian_dec.to_value(u.rad)) < tol):
+    if (
+            phase_ra is None
+            or np.abs(phase_ra.to_value(u.rad) - meridian_ra.to_value(u.rad)) < tol):
+        if (
+                phase_dec is None
+                or np.abs(phase_dec.to_value(u.rad) - meridian_dec.to_value(u.rad)) < tol):
             return False
     return True
 
@@ -398,9 +396,9 @@ def generate_phase_model(uvw, uvw_m, nts, lamb):
     np.ndarray
         The phase model to apply.
     """
-    dw = (uvw[:, -1] - np.tile(uvw_m[np.newaxis, :, -1], (nts, 1, 1)).reshape(-1))*u.m
-    phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
-                         ).to_value(u.dimensionless_unscaled))
+    dw = (uvw[:, -1] - np.tile(uvw_m[np.newaxis, :, -1], (nts, 1, 1)).reshape(-1)) * u.m
+    phase_model = np.exp((2j * np.pi / lamb * dw[:, np.newaxis, np.newaxis]
+                          ).to_value(u.dimensionless_unscaled))
     return phase_model
 
 
@@ -427,21 +425,23 @@ def generate_phase_model_antbased(uvw, uvw_m, nbls, nts, lamb, ant1, ant2):
     """
     # Need ant1 and ant2 to be passed here
     # Need to check that this gets the correct refidxs
-    refant = ant1[0]
+    refant = 23  # ant1[0]
     refidxs = np.where(ant1 == refant)[0]
+
     antenna_order = list(ant2[refidxs])
+
     antenna_w_m = uvw_m[refidxs, -1]
     uvw_delays = uvw.reshape((nts, nbls, 3))
     antenna_w = uvw_delays[:, refidxs, -1]
-    antenna_dw = antenna_w-antenna_w_m[np.newaxis, :]
+    antenna_dw = antenna_w - antenna_w_m[np.newaxis, :]
     dw = np.zeros((nts, nbls))
     for i, a1 in enumerate(ant1):
         a2 = ant2[i]
         dw[:, i] = antenna_dw[:, antenna_order.index(a2)] - \
-                   antenna_dw[:, antenna_order.index(a1)]
-    dw = dw.reshape(-1)*u.m
-    phase_model = np.exp((2j*np.pi/lamb*dw[:, np.newaxis, np.newaxis]
-                         ).to_value(u.dimensionless_unscaled))
+            antenna_dw[:, antenna_order.index(a1)]
+    dw = dw.reshape(-1) * u.m
+    phase_model = np.exp((2j * np.pi / lamb * dw[:, np.newaxis, np.newaxis]
+                          ).to_value(u.dimensionless_unscaled))
     return phase_model
 
 
@@ -450,6 +450,6 @@ def get_meridian_coords(pt_dec, time_mjd):
     pointing = Direction(
         'HADEC', 0., pt_dec.to_value(u.rad), time_mjd)
     meridian_ra, meridian_dec = pointing.J2000()
-    meridian_ra = meridian_ra*u.rad
-    meridian_dec = meridian_dec*u.rad
+    meridian_ra = meridian_ra * u.rad
+    meridian_dec = meridian_dec * u.rad
     return meridian_ra, meridian_dec

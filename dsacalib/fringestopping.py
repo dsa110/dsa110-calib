@@ -492,7 +492,7 @@ def amplitude_sky_model(source, ant_ra, pt_dec, fobs, dish_dia=4.65, spind=0.7):
     """
     # Should add spectral index
     return (
-        source.I
+        source.flux
         * (fobs / 1.4) ** (-spind)
         * pb_resp(
             ant_ra,

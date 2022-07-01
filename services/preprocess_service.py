@@ -5,6 +5,8 @@ import sys
 import warnings
 from multiprocessing import Process, Queue
 import time
+from functools import partial
+import os
 
 import pandas
 import h5py
@@ -15,26 +17,15 @@ import astropy.units as u
 
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
-from dsautils import cnf
 
 import dsacalib.constants as ct
+from dsacalib import config
 from dsacalib.preprocess import rsync_file, first_true
 from dsacalib.preprocess import update_caltable
 from dsacalib.utils import exception_logger
 
 # make sure warnings do not spam syslog
 warnings.filterwarnings("ignore")
-
-# TODO: Get these parameters from a function, rather tahn as defaults
-CONF = cnf.Conf(use_etcd=True)
-CORR_CONF = CONF.get('corr')
-CAL_CONF = CONF.get('cal')
-MFS_CONF = CONF.get('fringe')
-CORRLIST = list(CORR_CONF['ch0'].keys())
-NCORR = len(CORRLIST)
-CALTIME = CAL_CONF['caltime_minutes']*u.min
-FILELENGTH = MFS_CONF['filelength_minutes']*u.min
-HDF5DIR = CAL_CONF['hdf5_dir']
 
 # Logger
 LOGGER = dsl.DsaSyslogger()
@@ -46,7 +37,6 @@ ETCD = ds.DsaStore()
 
 # FIFO Queues for rsync, freq scrunching, calibration
 FSCRUNCH_Q = Queue()
-RSYNC_Q = Queue()
 GATHER_Q = Queue()
 ASSESS_Q = Queue()
 CALIB_Q = Queue()
@@ -57,31 +47,27 @@ MAX_ASSESS = 4
 
 # Maximum amount of time that gather_files will wait for all correlator files
 # to be gathered, in seconds
-MAX_WAIT = 5*60
+MAX_WAIT = 5 * 60
 
 # Time to sleep if a queue is empty before trying to get an item
 TSLEEP = 10
 
-def _update_caltable_callback(etcd_dict):
-    """When the antennas are moved, make and read a new calibration table.
-    """
-    if etcd_dict['cmd'] == 'move':
-        pt_el = etcd_dict['val']*u.deg
-        update_caltable(pt_el)
+# Configuration
+CONFIG = config.Configuration()
 
-def populate_queue(etcd_dict, queue=RSYNC_Q, hdf5dir=HDF5DIR):
+
+def populate_queue(etcd_dict, queue=GATHER_Q, hdf5dir=CONFIG.hdf5dir, subband_def=CONFIG.ch0):
     """Populates the fscrunch and rsync queues using etcd.
 
     Etcd watch callback function.
     """
     cmd = etcd_dict['cmd']
     val = etcd_dict['val']
-    if cmd == 'rsync':
-        rsync_string = (
-            f"{val['hostname']}.sas.pvt:{val['filename']} "
-            f"{hdf5dir}/{val['hostname']}/"
-        )
-        queue.put(rsync_string)
+    if cmd != 'rsync':
+        return
+    time.sleep(30) # wait for the staged files to be moved to the correct directory
+    queue.put(val['filename'])
+
 
 def task_handler(task_fn, inqueue, outqueue=None):
     """Handles in and out queues of preprocessing tasks.
@@ -112,7 +98,8 @@ def task_handler(task_fn, inqueue, outqueue=None):
         else:
             time.sleep(TSLEEP)
 
-def gather_worker(inqueue, outqueue, corrlist=None):
+
+def gather_worker(inqueue, outqueue, ncorr=CONFIG.ncorr):
     """Gather all files that match a filename.
 
     Will wait for a maximum of 15 minutes from the time the first file is
@@ -126,23 +113,20 @@ def gather_worker(inqueue, outqueue, corrlist=None):
     outqueue : multiprocessing.Queue instance
         The queue in which to place the gathered files (as a list).
     """
-    if not corrlist:
-        corrlist = CORRLIST
-    ncorr = len(corrlist)
-    filelist = [None]*ncorr
     nfiles = 0
+    filelist = []
     # Times out after 15 minutes
-    end = time.time() + 60*15
+    end = time.time() + 60 * 15
     while nfiles < ncorr and time.time() < end:
         if not inqueue.empty():
             fname = inqueue.get()
-            corrid = fname.replace('//', '/').split('/')[5]
-            filelist[corrlist.index(corrid)] = fname
+            filelist.append(fname)
             nfiles += 1
         time.sleep(1)
     outqueue.put(filelist)
 
-def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=TSLEEP):
+
+def gather_files(inqueue, outqueue, ncorr=CONFIG.ncorr, max_assess=MAX_ASSESS, tsleep=TSLEEP):
     """Gather files from all correlators.
 
     Will wait for a maximum of 15 minutes from the time the first file is
@@ -156,30 +140,29 @@ def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=T
         The queue in which to place the gathered files (as a list).
     """
     gather_queues = [Queue(ncorr) for idx in range(max_assess)]
-    gather_names = [None]*max_assess
-    gather_processes = [None]*max_assess
+    gather_names = [None] * max_assess
+    gather_processes = [None] * max_assess
     nfiles_assessed = 0
     while True:
         if not inqueue.empty():
             try:
                 fname = inqueue.get()
                 print(fname)
-                if not fname.split('/')[-1][:-7] in gather_names:
-                    gather_names[nfiles_assessed%max_assess] = \
-                        fname.split('/')[-1][:-7]
-                    gather_processes[nfiles_assessed%max_assess] = \
-                        Process(
-                            target=gather_worker,
-                            args=(
-                                gather_queues[nfiles_assessed%max_assess],
-                                outqueue
-                            ),
-                        daemon=True
-                        )
-                    gather_processes[nfiles_assessed%max_assess].start()
+                basename = os.path.splitext(os.path.basename(fname))[0]
+                basename = basename.split('_')[0][:-2]
+                if not basename in gather_names:
+                    gather_names[nfiles_assessed % max_assess] = basename
+                    gather_processes[nfiles_assessed % max_assess] = Process(
+                        target=gather_worker,
+                        args=(
+                            gather_queues[nfiles_assessed % max_assess],
+                            outqueue
+                        ),
+                        daemon=True)
+                    gather_processes[nfiles_assessed % max_assess].start()
                     nfiles_assessed += 1
                 gather_queues[
-                    gather_names.index(fname.split('/')[-1][:-7])
+                    gather_names.index(basename)
                 ].put(fname)
             except Exception as exc:
                 exception_logger(
@@ -191,7 +174,8 @@ def gather_files(inqueue, outqueue, ncorr=NCORR, max_assess=MAX_ASSESS, tsleep=T
         else:
             time.sleep(tsleep)
 
-def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
+
+def assess_file(inqueue, outqueue, caltime=CONFIG.caltime, filelength=CONFIG.filelength):
     """Decides whether calibration is necessary.
 
     Sends a command to etcd using the monitor point /cmd/cal if the file should
@@ -209,45 +193,49 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
         a measurement set for calibration. Used to assess whether any part of
         the desired calibrator pass is in a given file.
     """
+    # TODO: also pass the prefix for the delay_bandpass_cal to calibration
     while True:
         if not inqueue.empty():
             try:
                 flist = inqueue.get()
                 fname = first_true(flist)
+                print(f"Assessing {len(flist)} files {fname}")
                 datet = fname.split('/')[-1][:19]
                 tstart = Time(datet).sidereal_time(
                     'apparent',
-                    longitude=ct.OVRO_LON*u.rad
+                    longitude=ct.OVRO_LON * u.rad
                 )
-                tend = (Time(datet)+filelength).sidereal_time(
+                tend = (Time(datet) + filelength).sidereal_time(
                     'apparent',
-                    longitude=ct.OVRO_LON*u.rad
+                    longitude=ct.OVRO_LON * u.rad
                 )
-                a0 = (caltime*np.pi*u.rad/
-                      (ct.SECONDS_PER_SIDEREAL_DAY*u.s)).to_value(u.rad)
+                a0 = (
+                    caltime * np.pi * u.rad
+                    / (ct.SECONDS_PER_SIDEREAL_DAY * u.s)).to_value(u.rad)
                 with h5py.File(fname, mode='r') as h5file:
-                    pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value*u.rad
+                    pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'][()] * u.rad
                 caltable = update_caltable(pt_dec)
                 calsources = pandas.read_csv(caltable, header=0)
                 for _index, row in calsources.iterrows():
                     if isinstance(row['ra'], str):
                         rowra = row['ra']
                     else:
-                        rowra = row['ra']*u.deg
+                        rowra = row['ra'] * u.deg
                     delta_lst_start = (
-                        tstart-Angle(rowra)
-                    ).to_value(u.rad)%(2*np.pi)
+                        tstart - Angle(rowra)
+                    ).to_value(u.rad) % (2 * np.pi)
                     if delta_lst_start > np.pi:
-                        delta_lst_start -= 2*np.pi
+                        delta_lst_start -= 2 * np.pi
                     delta_lst_end = (
-                        tend-Angle(rowra)
-                    ).to_value(u.rad)%(2*np.pi)
+                        tend - Angle(rowra)
+                    ).to_value(u.rad) % (2 * np.pi)
                     if delta_lst_end > np.pi:
-                        delta_lst_end -= 2*np.pi
+                        delta_lst_end -= 2 * np.pi
                     if delta_lst_start < a0 < delta_lst_end:
                         calname = row['source']
                         print(f"Calibrating {calname}")
                         outqueue.put((calname, flist))
+
             except Exception as exc:
                 exception_logger(
                     LOGGER,
@@ -258,40 +246,11 @@ def assess_file(inqueue, outqueue, caltime=CALTIME, filelength=FILELENGTH):
         else:
             time.sleep(TSLEEP)
 
-if __name__=="__main__":
-    processes = {
-        'rsync': {
-            'nthreads': 1,
-            'task_fn': rsync_file,
-            'queue': RSYNC_Q,
-            'outqueue': GATHER_Q, #FSCRUNCH_Q,
-            'processes': []
-        },
-        # 'fscrunch': {
-        #     'nthreads': 4,
-        #     'task_fn': fscrunch_file,
-        #     'queue': FSCRUNCH_Q,
-        #     'outqueue': GATHER_Q,
-        #     'processes': []
-        # },
-    }
+
+if __name__ == "__main__":
     # Start etcd watch
     ETCD.add_watch('/cmd/cal', populate_queue)
-    # Start all threads
-    for name, pinfo in processes.items():
-        for i in range(pinfo['nthreads']):
-            pinfo['processes'] += [Process(
-                target=task_handler,
-                args=(
-                    pinfo['task_fn'],
-                    pinfo['queue'],
-                    pinfo['outqueue'],
-                ),
-                daemon=True
-            )]
-        for pinst in pinfo['processes']:
-            pinst.start()
-
+    processes = {}
     try:
         processes['gather'] = {
             'nthreads': 1,
@@ -305,7 +264,7 @@ if __name__=="__main__":
             args=(
                 GATHER_Q,
                 ASSESS_Q
-                )
+            )
         )]
         processes['gather']['processes'][0].start()
 
@@ -314,7 +273,7 @@ if __name__=="__main__":
             'task_fn': assess_file,
             'queue': ASSESS_Q,
             'outqueue': CALIB_Q,
-             'processes': []
+            'processes': []
         }
         processes['assess']['processes'] += [Process(
             target=assess_file,
@@ -359,6 +318,7 @@ if __name__=="__main__":
                     }
                 )
             time.sleep(60)
+
     except (KeyboardInterrupt, SystemExit):
         processes['gather']['processes'][0].terminate()
         processes['gather']['processes'][0].join()

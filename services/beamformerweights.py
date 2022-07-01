@@ -22,11 +22,10 @@ LOGGER.app("dsacalib")
 # ETCD interface
 ETCD = ds.DsaStore()
 
-CONF = dsc.Conf(use_etcd=True)
+CONF = dsc.Conf()
 CORR_PARAMS = CONF.get('corr')
 CAL_PARAMS = CONF.get('cal')
 CORR_LIST = list(CORR_PARAMS['ch0'].keys())
-CORR_LIST = [int(cl.strip('corr')) for cl in CORR_LIST]
 
 ANTENNAS_PLOT = list(CORR_PARAMS['antenna_order'].values())
 ANTENNAS = ANTENNAS_PLOT
@@ -34,6 +33,7 @@ BFDIR = CAL_PARAMS['beamformer_dir']
 WEIGHTFILE = CAL_PARAMS['weightfile']
 FLAGFILE = CAL_PARAMS['flagfile']
 BFARCHIVEDIR = CAL_PARAMS['bfarchivedir']
+
 
 def update_beamformer_weights(etcd_dict):
     """Updates beamformer weights and antenna flags on core machines.
@@ -67,9 +67,10 @@ def update_beamformer_weights(etcd_dict):
             _ = yaml.dump(bfsolns, file)
         for i, corr in enumerate(CORR_LIST):
             fname = f"{BFDIR}/{bfsolns['weight_files'][i]}"
-            fnamearchive = f"{BFARCHIVEDIR}/beamformer_weights_corr{corr:02d}_{tstamp.isot}.dat"
-            fnameout = f"corr{corr:02d}.sas.pvt:{WEIGHTFILE}"
-            flagsout = f"corr{corr:02d}.sas.pvt:{FLAGFILE}"
+            fnamearchive = f"{BFARCHIVEDIR}/beamformer_weights_sb{i:02d}_{tstamp.isot}.dat"
+            fnameout = f"{corr}.sas.pvt:{WEIGHTFILE}"
+            flagsout = f"{corr}.sas.pvt:{FLAGFILE}"
+            print(f"rsyncing {fname} to {fnameout}")
             rsync_file(
                 f"{fname} {fnameout}",
                 remove_source_files=False
@@ -82,6 +83,7 @@ def update_beamformer_weights(etcd_dict):
         LOGGER.info(
             f"Updated beamformer weights using {bfsolns['weight_files']}"
         )
+
 
 if __name__ == "__main__":
     ETCD.add_watch('/mon/cal/bfweights', update_beamformer_weights)
