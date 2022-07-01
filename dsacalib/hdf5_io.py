@@ -12,7 +12,7 @@ import h5py
 
 import numpy as np
 from antpos.utils import get_baselines
-from astropy.time import Time  # noqa
+from astropy.time import Time
 
 from dsacalib import constants as ct
 

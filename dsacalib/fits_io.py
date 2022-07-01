@@ -13,10 +13,10 @@ Routines to interact w/ fits visibilities recorded by DSA-10.
 
 import warnings
 
+import numpy as np
 import astropy.io.fits as pf
 import astropy.units as u
-import numpy as np
-from astropy.time import Time  # noqa
+from astropy.time import Time
 
 from dsacalib import constants as ct
 from dsacalib.utils import get_autobl_indices

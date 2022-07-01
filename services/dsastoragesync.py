@@ -1,4 +1,4 @@
-"""A service to preprcocess hdf5 files before calibration.
+"""Sync files from other machines to dsastorage on change of /cmd/store key.
 """
 import datetime
 import warnings
