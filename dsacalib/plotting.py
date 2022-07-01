@@ -13,12 +13,9 @@ import h5py
 import matplotlib.pyplot as plt
 import numpy as np
 from casacore.tables import table
-from dsautils import cnf
 
 import dsacalib.constants as ct
-from dsacalib.ms_io import extract_vis_from_ms, read_caltable
-
-CONF = cnf.Conf(use_etcd=True)
+from dsacalib.ms_io import extract_vis_from_ms, read_caltable, freq_GHz_from_ms
 
 
 def plot_dyn_spec(
@@ -988,16 +985,17 @@ def summary_plot(msname, calname, npol, plabels, antennas):
     else:
         tplot = None
 
-    if os.path.exists(f"{msname}_{calname}_bcal"):
-        bpass, _tbpass, _flags, ant1, ant2 = read_caltable(
-            f"{msname}_{calname}_bcal", cparam=True
-        )
+    if os.path.exists(f"{msname}_{calname}_bacal") and os.path.exists(f"{msname}_{calname}_bpcal"):
+        bpass, _tbpass, _flags, ant1, ant2 = read_caltable(f"{msname}_{calname}_bacal", cparam=True)
+        bppass, *_ = read_caltable(f"{msname}_{calname}_bpcal", cparam=True)
+        bpass = bpass*bppass
+        del bppass
+
         bpass = bpass.squeeze(axis=1)
         bpass = bpass.reshape(bpass.shape[0], -1, bpass.shape[-1])
         npol = bpass.shape[-1]
 
-        with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
-            fobs = (np.array(tb.col("CHAN_FREQ")[:]) / 1e9).reshape(-1)
+        fobs = freq_GHz_from_ms(msname)
 
         if bpass.shape[1] != fobs.shape[0]:
             nint = fobs.shape[0] // bpass.shape[1]
@@ -1058,7 +1056,7 @@ def summary_plot(msname, calname, npol, plabels, antennas):
                     ls=lcyc[pidx],
                 )
         for i in range(ny):
-            if tplot:
+            if tplot is not None:
                 ax[i, 1, 1].set_xlim(tplot[0], tplot[-1])
                 ax[i, 2, 1].set_xlim(tplot[0], tplot[-1])
             ax[i, 2, 1].set_ylim(-np.pi / 10, np.pi / 10)
@@ -1123,9 +1121,9 @@ def plot_current_beamformer_solutions(
     calname,
     date,
     beamformer_name,
-    corrlist=np.arange(1, 16 + 1),
+    corrlist,
+    antennas,
     antennas_to_plot=None,
-    antennas=None,
     outname=None,
     show=True,
     gaindir="/home/user/beamformer_weights/",
@@ -1175,8 +1173,6 @@ def plot_current_beamformer_solutions(
         The full path to the directory in which the correlated hdf5 files are
         stored. Files were be searched for in `hdf5dir`/corr??/
     """
-    if antennas is None:
-        antennas = np.array(list(CONF.get("corr")["antenna_order"].values))
     assert len(antennas) == 64
     if antennas_to_plot is None:
         antennas_to_plot = antennas
@@ -1242,13 +1238,7 @@ def plot_current_beamformer_solutions(
 
 
 def plot_bandpass_phases(
-    beamformer_names,
-    antennas,
-    refant=24,
-    outname=None,
-    show=True,
-    msdir="/mnt/data/dsa110/calibration/",
-):
+        beamformer_names, msdir, antennas, refant=None, outname=None, show=True):
     r"""Plot the bandpass phase observed over multiple calibrators.
 
     Parameters:
@@ -1266,7 +1256,8 @@ def plot_bandpass_phases(
     show : boolean
         If set to ``False`` the plot is closed after being generated.
     """
-
+    if refant is None:
+        refant = antennas[0]
 
     # Parse cal name and date information from the beamformer names
     cals = []
@@ -1295,9 +1286,9 @@ def plot_bandpass_phases(
         calnames += [f"{date}_{cal}"]
         msname = f"{msdir}/{date}_{cal}"
 
-        bpcal_table = f"{msname}_{cal}_bpcal"
-        if os.path.exists(bpcal_table):
-            with table(bpcal_table) as tb:
+        bcal_table = f"{msname}_{cal}_bcal"
+        if os.path.exists(bcal_table):
+            with table(bcal_table) as tb:
                 gains[i] = np.array(tb.CPARAM[:])
             if gshape is None:
                 gshape = gains[i].shape
@@ -1325,9 +1316,9 @@ def plot_bandpass_phases(
 
     # Plot the gains for each antenna
     ax = ax.flatten()
-    for i in np.arange(len(antennas)):
+    for i, ant in enumerate(antennas):
         ax[i].imshow(
-            np.angle(gains[:, antennas[i] - 1, :, 0] / gains[:, refant - 1, :, 0]),
+            np.angle(gains[:, ant - 1, :, 0] / gains[:, refant - 1, :, 0]),
             vmin=-np.pi,
             vmax=np.pi,
             aspect="auto",
@@ -1335,7 +1326,7 @@ def plot_bandpass_phases(
             interpolation="None",
             cmap=plt.get_cmap("RdBu"),
         )
-        ax[i].annotate(str(antennas[i]), (0, 1), xycoords="axes fraction")
+        ax[i].annotate(str(ant), (0, 1), xycoords="axes fraction")
         ax[i].set_xlabel("Frequency channel")
 
     if outname is not None:
@@ -1346,13 +1337,15 @@ def plot_bandpass_phases(
 
 def plot_beamformer_weights(
     beamformer_names,
-    corrlist=np.arange(1, 16 + 1),
+    antennas,
+    beamformer_dir,
     antennas_to_plot=None,
-    antennas=None,
     outname=None,
     pols=None,
     show=True,
-    gaindir="/home/user/beamformer_weights/",
+    nsubbands: int = 16,
+    nchan_spw: int = 48,
+    npol: int = 2
 ):
     """Plot beamformer weights from a number of beamformer solutions.
 
@@ -1362,8 +1355,6 @@ def plot_beamformer_weights(
         The postfixes of the beamformer weight files to plot. Will open
         beamformer_weights_corr??_`beamformer_name`.dat for each item in
         beamformer_names.
-    corrlist : list(int)
-        The corrnode numbers.
     antennas_to_plot : list(int)
         The names of the antennas to plot. Defaults to `antennas`.
     antennas : list(int)
@@ -1383,13 +1374,16 @@ def plot_beamformer_weights(
     ndarray
         The beamformer weights.
     """
+    antennas = np.array(antennas)
+    
     if pols is None:
         pols = ["B", "A"]
-    if antennas is None:
-        antennas = np.array(list(CONF.get("corr")["antenna_order"].values()))
     assert len(antennas) == 64
     if antennas_to_plot is None:
         antennas_to_plot = antennas
+    else:
+        antennas_to_plot = np.array(antennas_to_plot)
+
     # Set shape of the figure
     nplots = 4
     nx = 5
@@ -1397,19 +1391,19 @@ def plot_beamformer_weights(
     if len(antennas_to_plot) % nx != 0:
         ny += 1
     gains = np.zeros(
-        (len(beamformer_names), len(antennas), len(corrlist), 48, 2), dtype=np.complex
+        (len(beamformer_names), len(antennas), nsubbands, nchan_spw, npol), dtype=np.complex
     )
     for i, beamformer_name in enumerate(beamformer_names):
-        for corridx, corr in enumerate(corrlist):
+        for subband in range(nsubbands):
             with open(
-                    f"{gaindir}/beamformer_weights_corr{corr:02d}_{beamformer_name}.dat",
+                    f"{beamformer_dir}/beamformer_weights_sb{subband:02d}_{beamformer_name}.dat",
                     "rb",
             ) as f:
                 data = np.fromfile(f, "<f4")
             temp = data[64:].reshape(64, 48, 2, 2)
-            gains[i, :, corridx, :, :] = temp[..., 0] + 1.0j * temp[..., 1]
-    gains = gains.reshape((len(beamformer_names), len(antennas), len(corrlist) * 48, 2))
-
+            gains[i, :, subband, :, :] = temp[..., 0] + 1.0j * temp[..., 1]
+    gains = gains.reshape((len(beamformer_names), len(antennas), nsubbands*nchan_spw, npol))
+    gains = gains / gains[:, [0], :, :]
     # Phase, polarization B
     fig, ax = plt.subplots(
         nplots * ny, nx, figsize=(6 * nx, 2.5 * ny * nplots), sharex=True, sharey=False
@@ -1419,7 +1413,7 @@ def plot_beamformer_weights(
     for nplot in range(nplots):
         polidx = nplot % 2
         angle = nplot // 2
-        axi = ax[ny * nplot : ny * (nplot + 1), :]
+        axi = ax[ny * nplot:ny * (nplot + 1), :]
         for axii in axi[:, 0]:
             axii.set_ylabel("phase (rad)" if angle else "amplitude (arb)")
         axi = axi.flatten()

@@ -13,13 +13,13 @@ import glob
 import os
 import shutil
 import traceback
+from typing import List
 
 import astropy.units as u
-import scipy # pylint: disable=unused-import
+from astropy.time import Time
+import scipy  # noqa
 import casatools as cc
-import dsautils.cnf as dsc
 import numpy as np
-from astropy.utils import iers
 from casacore.tables import table
 from casatasks import virtualconcat
 from dsautils import calstatus as cs
@@ -29,21 +29,9 @@ import dsacalib.utils as du
 from dsacalib.uvh5_to_ms import uvh5_to_ms
 from dsacalib import constants as ct
 
-iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
-iers.conf.auto_max_age = None
-from astropy.time import Time # pylint: disable=ungrouped-imports,wrong-import-order,wrong-import-position
-
-de = dsa_store.DsaStore()
-
-CONF = dsc.Conf(use_etcd=True)
-CORR_PARAMS = CONF.get('corr')
-REFMJD = CONF.get('fringe')['refmjd']
 
 def convert_calibrator_pass_to_ms(
-        cal, date, files, msdir='/mnt/data/dsa110/calibration/',
-        hdf5dir='/mnt/data/dsa110/correlator/', antenna_list=None,
-        logger=None, overwrite=True
-):
+        cal, date, files, msdir, hdf5dir, refmjd, antenna_list=None, logger=None, overwrite=True):
     r"""Converts hdf5 files near a calibrator pass to a CASA ms.
 
     Parameters
@@ -77,9 +65,10 @@ def convert_calibrator_pass_to_ms(
         try:
             reftime = Time(files[0])
             hdf5files = []
-            for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{files[0][:-4]}*.hdf5")):
-                filetime = Time(hdf5f[:-5].split("/")[-1])
-                if abs(filetime-reftime) < 1*u.min:
+            # TODO: improve this search so there are no edge cases
+            for hdf5f in sorted(glob.glob(f"{hdf5dir}/{files[0][:-6]}*.hdf5")):
+                filetime = Time(hdf5f[:-5].split("/")[-1].split('_')[0])
+                if abs(filetime - reftime) < 2.5 * u.min:
                     hdf5files += [hdf5f]
             assert len(hdf5files) < 17
             assert len(hdf5files) > 1
@@ -87,21 +76,20 @@ def convert_calibrator_pass_to_ms(
             uvh5_to_ms(
                 hdf5files,
                 msname,
+                refmjd,
                 ra=cal.ra,
                 dec=cal.dec,
-                flux=cal.I,
-                # dt=duration,
+                flux=cal.flux,
                 antenna_list=antenna_list,
                 logger=logger
             )
             message = f"Wrote {msname}.ms"
             if logger is not None:
                 logger.info(message)
-            #else:
             print(message)
         except (ValueError, IndexError) as exception:
             tbmsg = "".join(traceback.format_tb(exception.__traceback__))
-            message = f'No data for {date} transit on {cal.name}. '+\
+            message = f'No data for {date} transit on {cal.name}. ' +\
                 f'Error {type(exception).__name__}. Traceback: {tbmsg}'
             if logger is not None:
                 logger.info(message)
@@ -114,17 +102,18 @@ def convert_calibrator_pass_to_ms(
                 try:
                     reftime = Time(filename)
                     hdf5files = []
-                    for hdf5f in sorted(glob.glob(f"{hdf5dir}/corr??/{filename[:-4]}*.hdf5")):
-                        filetime = Time(hdf5f[:-5].split('/')[-1])
-                        if abs(filetime-reftime) < 1*u.min:
+                    for hdf5f in sorted(glob.glob(f"{hdf5dir}/{filename[:-6]}*.hdf5")):
+                        filetime = Time(hdf5f[:-5].split('/')[-1].split('_')[0])
+                        if abs(filetime - reftime) < 2.5 * u.min:
                             hdf5files += [hdf5f]
                     print(f"found {len(hdf5files)} hdf5files for {filename}")
                     uvh5_to_ms(
                         hdf5files,
                         f"{msdir}/{filename}",
+                        refmjd,
                         ra=cal.ra,
                         dec=cal.dec,
-                        flux=cal.I,
+                        flux=cal.flux,
                         antenna_list=antenna_list,
                         logger=logger
                     )
@@ -172,6 +161,7 @@ def convert_calibrator_pass_to_ms(
         if logger is not None:
             logger.info(message)
         print(message)
+
 
 def simulate_ms(
     ofile,
@@ -622,8 +612,7 @@ def extract_vis_from_ms(msname, data="data", swapaxes=True, metadataonly=False):
             flags = np.array(tb.FLAG[:])
         time = np.array(tb.TIME[:])
         spw = np.array(tb.DATA_DESC_ID[:])
-    with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
-        fobs = (np.array(tb.col("CHAN_FREQ")[:]) / 1e9).reshape(-1)
+    fobs = freq_GHz_from_ms(msname)
 
     baseline = 2048 * (ant1 + 1) + (ant2 + 1) + 2**16
 
@@ -645,6 +634,13 @@ def extract_vis_from_ms(msname, data="data", swapaxes=True, metadataonly=False):
         spw,
         orig_shape,
     )
+
+
+def freq_GHz_from_ms(msname: str) -> np.ndarray:
+    """Return the frequency in GHz in a ms."""
+    with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
+        fobs = (np.array(tb.col("CHAN_FREQ")[:]) / 1e9).reshape(-1)
+    return fobs
 
 
 def read_caltable(tablename, cparam=False, reshape=True):
@@ -794,8 +790,6 @@ def reshape_calibration_data(
             ant1 = ant1.reshape(nbl, nspw, ntime)[:, 0, 0]
             ant2 = ant2.reshape(nbl, nspw, ntime)[:, 0, 0]
             spw = spw.reshape(nbl, nspw, ntime)[0, :, 0]
-    
-            spw = spw.reshape(ntime, nspw, nbl)[0, :, 0]
 
     else:
         assert np.all(spw[: nbl * ntime] == spw[0])
@@ -831,8 +825,8 @@ def reshape_calibration_data(
 
     return time, vals, flags, ant1, ant2, spw, orig_shape
 
-def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
 
+def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
     r"""Copies calibration values from delay and gain tables to etcd.
 
     The dictionary passed to etcd should look like: {"ant_num": <i>,
@@ -859,6 +853,8 @@ def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
     logger : dsautils.dsa_syslog.DsaSyslogger() instance
         Logger to write messages too. If None, messages are printed.
     """
+    de = dsa_store.DsaStore()
+
     if pols is None:
         pols = ["B", "A"]
 
@@ -1019,8 +1015,10 @@ def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
         de.put_dict(f"/mon/cal/{antnum + 1}", dd)
 
 
-def get_antenna_gains(gains, ant1, ant2, refant=0):
-    """Calculates antenna gains, g_i, from CASA table of G_ij=g_i g_j*.
+def get_antenna_gains(
+        gains: np.ndarray, ant1: np.ndarray, ant2: np.ndarray, antennas: List[str], refant=0
+) -> np.ndarray:
+    """Calculates antenna gains, g_i, from CASA table of G_ij=1/(g_i g_j*) for `antennas`.
 
     Currently does not support baseline-based gains.
     Refant only used for baseline-based case.
@@ -1031,7 +1029,10 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
         The gains read in from the CASA gain table. 0th axis is baseline or
         antenna.
     ant1, ant2 : ndarray
-        The antenna pair for each entry along the 0th axis in gains.
+        The antenna pair for each entry along the 0th axis in gains.  Antennas are indexed starting
+        at 0.
+    antennas: List[str]
+        The antennas (names, starting at 1) for which to extract gains.
     refant : int
         The reference antenna index to use to get antenna gains from baseline
         gains.
@@ -1043,55 +1044,59 @@ def get_antenna_gains(gains, ant1, ant2, refant=0):
     antenna_gains : ndarray
         Gains for each antenna in `antennas`.
     """
-    antennas = np.unique(np.concatenate((ant1, ant2)))
+    if np.all(ant2 == ant2[0]):
+        # Antenna-based solutions already
+        ant1 = list(ant1)
+        antenna_gains = 1 / gains
+        antenna_gains = antenna_gains[[ant1.index(int(ant) - 1) for ant in antennas], ...]
+        return antenna_gains
+
+    # Baseline-based solutions
     output_shape = list(gains.shape)
     output_shape[0] = len(antennas)
     antenna_gains = np.zeros(tuple(output_shape), dtype=gains.dtype)
-    if np.all(ant2 == ant2[0]):
-        for i, ant in enumerate(antennas):
-            antenna_gains[i] = 1 / gains[ant1 == ant]
-    else:
-        assert len(antennas) == 3, (
-            "Baseline-based only supported for trio of" "antennas"
-        )
-        for i, ant in enumerate(antennas):
-            ant1idxs = np.where(ant1 == ant)[0]
-            ant2idxs = np.where(ant2 == ant)[0]
-            otheridx = np.where((ant1 != ant) & (ant2 != ant))[0][0]
-            # phase
-            sign = 1
-            idx_phase = np.where((ant1 == ant) & (ant2 == refant))[0]
-            if len(idx_phase) == 0:
-                idx_phase = np.where((ant2 == refant) & (ant1 == ant))[0]
-                assert len(idx_phase) == 1
-                sign = -1
-            # amplitude
-            if len(ant1idxs) == 2:
-                g01 = gains[ant1idxs[0]]
-                g20 = np.conjugate(gains[ant1idxs[1]])
-                if ant1[otheridx] == ant2[ant1idxs[1]]:
-                    g21 = gains[otheridx]
-                else:
-                    g21 = np.conjugate(gains[otheridx])
-            if len(ant1idxs) == 1:
-                g01 = gains[ant1idxs[0]]
-                g20 = gains[ant2idxs[0]]
-                if ant1[otheridx] == ant1[ant2idxs[0]]:
-                    g21 = gains[otheridx]
-                else:
-                    g21 = np.conjugate(gains[otheridx])
+
+    assert len(np.unique(np.concatenate((ant1, ant2)))) == 3, (
+        "Baseline-based only supported for trio of antennas")
+
+    for i, ant in enumerate(antennas):
+        ant1idxs = np.where(ant1 == ant)[0]
+        ant2idxs = np.where(ant2 == ant)[0]
+        otheridx = np.where((ant1 != ant) & (ant2 != ant))[0][0]
+        # phase
+        sign = 1
+        idx_phase = np.where((ant1 == ant) & (ant2 == refant))[0]
+        if len(idx_phase) == 0:
+            idx_phase = np.where((ant2 == refant) & (ant1 == ant))[0]
+            assert len(idx_phase) == 1
+            sign = -1
+        # amplitude
+        if len(ant1idxs) == 2:
+            g01 = gains[ant1idxs[0]]
+            g20 = np.conjugate(gains[ant1idxs[1]])
+            if ant1[otheridx] == ant2[ant1idxs[1]]:
+                g21 = gains[otheridx]
             else:
-                g01 = np.conjugate(gains[ant2idxs[0]])
-                g20 = gains[ant2idxs[1]]
-                if ant1[otheridx] == ant1[ant2idxs[1]]:
-                    g21 = gains[otheridx]
-                else:
-                    g21 = np.conjugate(gains[otheridx])
-            antenna_gains[i] = (
-                np.sqrt(np.abs(g01 * g20 / g21))
-                * np.exp(sign * 1.0j * np.angle(gains[idx_phase]))
-            ) ** (-1)
-    return antennas, antenna_gains
+                g21 = np.conjugate(gains[otheridx])
+        if len(ant1idxs) == 1:
+            g01 = gains[ant1idxs[0]]
+            g20 = gains[ant2idxs[0]]
+            if ant1[otheridx] == ant1[ant2idxs[0]]:
+                g21 = gains[otheridx]
+            else:
+                g21 = np.conjugate(gains[otheridx])
+        else:
+            g01 = np.conjugate(gains[ant2idxs[0]])
+            g20 = gains[ant2idxs[1]]
+            if ant1[otheridx] == ant1[ant2idxs[1]]:
+                g21 = gains[otheridx]
+            else:
+                g21 = np.conjugate(gains[otheridx])
+        antenna_gains[i] = (
+            np.sqrt(np.abs(g01 * g20 / g21))
+            * np.exp(sign * 1.0j * np.angle(gains[idx_phase]))
+        ) ** (-1)
+        return antenna_gains
 
 
 def get_delays(antennas, msname, calname, applied_delays):

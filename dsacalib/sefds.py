@@ -10,17 +10,11 @@ import casatools as cc
 import matplotlib.pyplot as plt
 import numpy as np
 from casacore.tables import table
-from dsautils import cnf
 
+import dsacalib.utils as du
 from dsacalib.calib import apply_calibration_tables, apply_delay_bp_cal
 from dsacalib.fringestopping import amplitude_sky_model
 from dsacalib.ms_io import extract_vis_from_ms, get_antenna_gains, read_caltable
-
-MYCONF = cnf.Conf(use_etcd=True)
-CALPARAMS = MYCONF.get("cal")
-CORRPARAMS = MYCONF.get("corr")
-REFANT = CALPARAMS["refant"][0]
-POLS = CORRPARAMS["pols_corr"]
 
 
 def _gauss_offset(xvals, amp, mean, sigma, offset):
@@ -75,7 +69,7 @@ def remove_model(msname):
         tb.putcol("MODEL_DATA", np.ones(model.shape, model.dtype))
 
 
-def solve_gains(msname, calname, msname_delaycal, calname_delaycal, refant=REFANT):
+def solve_gains(msname, calname, msname_delaycal, calname_delaycal, refant):
     """Solves for complex gains on 30s timescales.
 
     Parameters
@@ -104,6 +98,7 @@ def solve_gains(msname, calname, msname_delaycal, calname_delaycal, refant=REFAN
     ]
     cb = cc.calibrater()
     cb.open(f"{msname}.ms")
+    cb.selectvis()
     apply_calibration_tables(cb, caltables)
     cb.setsolve(
         type="G",
@@ -151,7 +146,7 @@ def read_gains(msname, calname, msname_delaycal, calname_delaycal, antenna_order
     )
     bpass[flag] = np.nan
     gain = gain * bpass
-    antenna, gain = get_antenna_gains(gain, ant1, ant2)
+    antenna, gain = get_antenna_gains(gain, ant1, ant2, antenna_order)
     gain = 1 / gain
     antenna = list(antenna)
     idxs = [antenna.index(ant) for ant in antenna_order]
@@ -237,17 +232,10 @@ def get_autocorr_gains_off(
 
 
 def calculate_sefd(
-    msname,
-    cal,
-    fmin=None,
-    fmax=None,
-    nfint=1,
-    showplots=False,
-    msname_delaycal=None,
-    calname_delaycal=None,
-    repeat=False,
-    refant=REFANT,
-):
+        msname: str, cal: du.CalibratorSource, refant, fmin: float = None, fmax: float = None,
+        nfint: int = 1, showplots: bool = False, msname_delaycal: str = None,
+        calname_delaycal: str = None, repeat: bool = False,
+) -> tuple:
     r"""Calculates the SEFD from a measurement set.
 
     The measurement set must have been calibrated against a model of ones and

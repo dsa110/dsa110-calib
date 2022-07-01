@@ -21,7 +21,9 @@ from antpos.utils import get_itrf
 from astropy.coordinates import Angle
 
 from dsacalib import constants as ct
+from dsacalib.preprocess import read_nvss_catalog
 
+NVSS = None
 
 CalibratorSource = namedtuple(
     "CalibratorSource", "name ra dec flux epoch direction pa maj_axis min_axis")
@@ -72,6 +74,19 @@ def generate_calibrator_source(
 
     return CalibratorSource(
         name, ra, dec, flux, epoch, direction, pa, maj_axis, min_axis)
+
+
+def update_nvss():
+    global NVSS
+    NVSS = read_nvss_catalog()
+
+
+def calibrator_source_from_name(name):
+    if NVSS is None:
+        update_nvss()
+    record = NVSS.loc[f"NVSS {name}"]
+    return generate_calibrator_source(
+        name, record["ra"]*u.deg, record["dec"]*u.deg, record["flux_20_cm"]*1e-3)
 
 
 class Direction:

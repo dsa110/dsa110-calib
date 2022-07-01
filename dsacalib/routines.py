@@ -3,37 +3,31 @@
 Author: Dana Simard, dana.simard@astro.caltech.edu, 2020/06
 """
 import glob
+from typing import List
 
-import scipy # pylint: disable=unused-import
-import dsautils.calstatus as cs
+import scipy  # noqa
 import numpy as np
 import pandas
 import astropy.units as u
 from astropy.coordinates import Angle
-from astropy.utils import iers
-import astropy.units as u
+from astropy.time import Time
 from casacore.tables import table
 
+import dsautils.dsa_syslog as dsl
+import dsautils.calstatus as cs
 import dsacalib.constants as ct
 import dsacalib.utils as du
 from dsacalib.calibrator_observation import CalibratorObservation
-
-iers.conf.iers_auto_url_mirror = ct.IERS_TABLE
-iers.conf.auto_max_age = None
-from astropy.time import Time  # pylint: disable=wrong-import-order,ungrouped-imports,wrong-import-position
+from dsacalib.weights import write_beamformer_solutions
+from dsacalib.calib import combine_tables
 
 
 def calibrate_measurement_set(
-        msname: str, cal: "CalibratorSource", logger: "DsaSyslogger" = None,
+        msname: str, cal: du.CalibratorSource, refants: List[str],
+        delay_bandpass_cal_prefix: str = "", logger: dsl.DsaSyslogger = None,
         throw_exceptions: bool = True, **kwargs
 ) -> int:
     r"""Calibrates the measurement set.
-
-    Calibration can be done with the aim of monitoring system health (set
-    `forsystemhealth=True`), obtaining beamformer weights (set
-    `forsystemhealth=False` and `keepdelays=False`), or obtaining delays (set
-    `forsystemhealth=False` and `keepdelays=True`, new beamformer weights will
-    be generated as well).
 
     Parameters
     ----------
@@ -54,27 +48,6 @@ def calibrate_measurement_set(
     bad_uvrange : str
         Baselines with lengths within bad_uvrange will be flagged before
         calibration. Must be a casa-understood string with units.
-    keepdelays : bool
-        Only used if `forsystemhealth` is False. If `keepdelays` is set to
-        False and `forsystemhealth` is set to False, then delays are integrated
-        into the bandpass solutions and the kcal table is set to all zeros. If
-        `keepdelays` is set to True and `forsystemhealth` is set to False, then
-        delays are kept at 2 nanosecond resolution.  If `forsystemhealth` is
-        set to True, delays are kept at full resolution regardless of the
-        keepdelays parameter. Defaults False.
-    forsystemhealth : bool
-        Set to True for full-resolution delay and bandpass solutions to use to
-        monitor system health, or to False to generate beamformer weights and
-        delays. Defaults False.
-    interp_thresh: float
-        Used if `forsystemhealth` is False, when smoothing bandpass gains.
-        The gain amplitudes and phases are fit using a polynomial after any
-        points more than interp_thresh*std away from the median-filtered trend
-        are flagged.
-    interp_polyorder : int
-        Used if `forsystemhealth` is False, when smoothing bandpass gains.
-        The gain amplitudes and phases are fit using a polynomial of order
-        interp_polyorder.
     blbased : boolean
         Set to True for baseline-based calibration, False for antenna-based
         calibration.
@@ -87,7 +60,7 @@ def calibrate_measurement_set(
     int
         A status code. Decode with dsautils.calstatus
     """
-    calobs = CalibratorObservation(msname, cal)
+    calobs = CalibratorObservation(msname, cal, refants)
     calobs.set_calibration_parameters(**kwargs)
 
     print("entered calibration")
@@ -119,24 +92,25 @@ def calibrate_measurement_set(
                 message = f"{error} non-fatal errors occured in flagging of {msname}."
                 du.warning_logger(logger, message)
 
-        print("delay cal")
-        calstring = "delay calibration"
-        current_error = (
-            cs.DELAY_CAL_ERR
-            | cs.INV_GAINAMP_P1
-            | cs.INV_GAINAMP_P2
-            | cs.INV_GAINPHASE_P1
-            | cs.INV_GAINPHASE_P2
-            | cs.INV_DELAY_P1
-            | cs.INV_DELAY_P2
-            | cs.INV_GAINCALTIME
-            | cs.INV_DELAYCALTIME
-        )
-        error = calobs.delay_calibration()
-        if error > 0:
-            status = cs.update(status, cs.DELAY_CAL_ERR)
-            message = f"{error} non-fatal errors occured in delay calibration of {msname}."
-            du.warning_logger(logger, message)
+        if not delay_bandpass_cal_prefix:
+            print("delay cal")
+            calstring = "delay calibration"
+            current_error = (
+                cs.DELAY_CAL_ERR
+                | cs.INV_GAINAMP_P1
+                | cs.INV_GAINAMP_P2
+                | cs.INV_GAINPHASE_P1
+                | cs.INV_GAINPHASE_P2
+                | cs.INV_DELAY_P1
+                | cs.INV_DELAY_P2
+                | cs.INV_GAINCALTIME
+                | cs.INV_DELAYCALTIME
+            )
+            error = calobs.delay_calibration()
+            if error > 0:
+                status = cs.update(status, cs.DELAY_CAL_ERR)
+                message = f"{error} non-fatal errors occured in delay calibration of {msname}."
+                du.warning_logger(logger, message)
 
         print("bandpass and gain cal")
         calstring = "bandpass and gain calibration"
@@ -148,11 +122,22 @@ def calibrate_measurement_set(
             | cs.INV_GAINPHASE_P2
             | cs.INV_GAINCALTIME
         )
-        error = calobs.bandpass_and_gain_cal()
+
+        if not delay_bandpass_cal_prefix:
+            error = calobs.bandpass_calibration()
+            error += calobs.gain_calibration()
+            error += calobs.bandpass_calibration()
+
+        else:
+            error = calobs.gain_calibration(delay_bandpass_cal_prefix)
+
         if error > 0:
-            status = cs.update(status, cs.DELAY_CAL_ERR)
-            message = f"{error} non-fatal errors occured in delay calibration of {msname}."
+            status = cs.update(status, cs.GAIN_BP_CAL_ERR)
+            message = f"{error} non-fatal errors occured in gain calibration of {msname}."
             du.warning_logger(logger, message)
+
+        current_error = cs.GAIN_BP_CAL_ERR
+        combine_tables(msname, f"{msname}_{cal.name}", delay_bandpass_cal_prefix)
 
     except Exception as exc:
         status = cs.update(status, current_error)
@@ -163,73 +148,78 @@ def calibrate_measurement_set(
     return status
 
 
-def quick_bfweightcal(msname: str, cal: "CalibratorSource" = None, **kwargs) -> int:
+def quick_bfweightcal(
+        msname: str, refants: List[str], antennas: List[str], antennas_not_in_bf: List[str],
+        corr_list: List[str], beamformer_dir: str, pols: List[str], nchan: int, nchan_spw: int,
+        bw_GHz: float, chan_ascending: bool, f0_GHz: float, ch0: dict, refmjd: float,
+        cal: du.CalibratorSource = None, **kwargs) -> int:
     """Calibrate delays and gains, and generate bfweights."""
     if not cal:
         cal = get_cal_from_msname(msname)
 
-    dsaconf = dsc.Conf(use_etcd=True)
-    corr_params = dsaconf.get("corr")
-    cal_params = dsaconf.get("cal")
     config = {
-        "antennas": list(corr_params["antenna_order"].values()),
-        "antennas_not_in_bf": cal_params["antennas_not_in_bf"],
-        "corr_list": [int(cl.strip("corr")) for cl in corr_params["ch0"].keys()],
+        "antennas": antennas,
+        "antennas_not_in_bf": antennas_not_in_bf,
+        "corr_list": corr_list,
+        "pols": pols
     }
-    
-    for key in ["forsystemhealth", "reuse_flags"]:
+
+    for key in ["reuse_flags"]:
         if key in kwargs:
             raise RuntimeError(
                 f"Input arg {key} not compatible with quick_bfweightcal")
-    kwargs["forsystemhealth"] = False
     kwargs["reuse_flags"] = True
 
-    calobs = CalibratorObservation(msname, cal)
+    calobs = CalibratorObservation(msname, cal, refants)
     calobs.set_calibration_parameters(**kwargs)
     calobs.reset_calibration()
     error = 0
     error += calobs.quick_delay_calibration()
-    error += calobs.bandpass_and_gain_cal()
-    
+    error += calobs.bandpass_calibration()
+    error += calobs.gain_calibration()
+    error += calobs.bandpass_calibration()
+    combine_tables(msname, cal.name)
+
     with table(f"{msname}.ms") as tb:
-        caltime = Time((tb.TIME_CENTROID[tb.nrows()//2]*u.s).to(u.d), format='mjd')
-    
+        caltime = Time((tb.TIME_CENTROID[tb.nrows() // 2] * u.s).to(u.d), format='mjd')
+
     write_beamformer_solutions(
-        msname,
-        calname,
-        caltime,
-        config["antennas"],
-        delays=None,
-        flagged_antennas=config["antennas_not_in_bf"],
-        corr_list=np.array(config["corr_list"]))
+        msname, cal.name, caltime, config["antennas"], applied_delays=None,
+        beamformer_dir=beamformer_dir, pols=config["pols"], corr_list=config["corr_list"],
+        nchan=nchan, nchan_spw=nchan_spw, bw_GHz=bw_GHz, chan_ascending=chan_ascending,
+        f0_GHz=f0_GHz, ch0=ch0, refmjd=refmjd,
+        flagged_antennas=config["antennas_not_in_bf"])
 
     return int
 
 
-def quick_calibration(msname: str, cal: "CalibratorSource" = None, **kwargs) -> int:
+def quick_calibration(
+        msname: str, refants: List[str], cal: du.CalibratorSource = None, **kwargs) -> int:
+    """Calibrate without resetting flags."""
     if not cal:
         cal = get_cal_from_msname(msname)
 
-    calobs = CalibratorObservation(msname, cal)
-    
-    for key in ["forsystemhealth", "reuse_flags"]:
+    calobs = CalibratorObservation(msname, cal, refants)
+
+    for key in ["reuse_flags"]:
         if key in kwargs and not kwargs[key]:
             raise RuntimeError(
                 f"Input arg {key}: {kwargs[key]} not compatible with quick_calibration")
-    kwargs["forsystemhealth"] = True
     kwargs["reuse_flags"] = True
     calobs.set_calibration_parameters(**kwargs)
     calobs.reset_calibration()
     error = 0
     error += calobs.quick_delay_calibration()
-    error += calobs.bandpass_and_gain_cal()
+    error += calobs.bandpass_calibration()
+    error += calobs.gain_calibration()
+    error += calobs.bandpass_calibration()
 
     return error
 
 
-def get_cal_from_msname(msname: str) -> "CalibratorSource":
+def get_cal_from_msname(msname: str) -> du.CalibratorSource:
     """Construct a CalibratorSource objct based on the msname.
-    
+
     Assumes that the msname includes the calibrator source, and does
     not include the suffix, for e.g., `/path/to/directory/{date}_{calname}`
     """
@@ -243,8 +233,8 @@ def get_cal_from_msname(msname: str) -> "CalibratorSource":
 
 
 def cal_in_datetime(
-        dt: str, transit_time: "Time", duration: "Quantity" = 5*u.min,
-        filelength: "Quantity" = 15*u.min
+        dt: str, transit_time: Time, duration: u.Quantity = 5 * u.min,
+        filelength: u.Quantity = 15 * u.min
 ) -> bool:
     """Check to see if a transit is in a given file.
 
@@ -287,9 +277,8 @@ def cal_in_datetime(
 
 
 def get_files_for_cal(
-        caltable: str, refcorr: str = "03", duration: "Quantity" = 5*u.min,
-        filelength: "Quantity" = 15*u.min, hdf5dir: str = "/mnt/data/dsa110/correlator/",
-        date_specifier: str = "*"
+        caltable: str, hdf5dir, refsb: str = "sb01", duration: u.Quantity = 5 * u.min,
+        filelength: u.Quantity = 15 * u.min, date_specifier: str = "*"
 ) -> dict:
     """Returns a dictionary containing the filenames for each calibrator pass.
 
@@ -297,9 +286,9 @@ def get_files_for_cal(
     ----------
     caltable : str
         The path to the csv file containing calibrators of interest.
-    refcorr : str
-        The reference correlator to search for recent hdf5 files from. Searches
-        the directory `hdf5dir`/corr`refcorr`/
+    refsb : str
+        The reference subband to search for recent hdf5 files from. Searches
+        for files `hdf5dir`/*_`refsb`.hdf5
     duration : astropy quantity
         The duration around transit which you are interested in extracting, in
         minutes or seconds.
@@ -320,7 +309,7 @@ def get_files_for_cal(
         requested datesand calibrators.
     """
     calsources = pandas.read_csv(caltable, header=0)
-    files = sorted(glob.glob(f"{hdf5dir}/corr{refcorr}/{date_specifier}.hdf5"))
+    files = sorted(glob.glob(f"{hdf5dir}/{date_specifier}_{refsb}.hdf5"))
     datetimes = [f.split("/")[-1][:19] for f in files]
     if len(np.unique(datetimes)) != len(datetimes):
         print("Multiple files exist for the same time.")

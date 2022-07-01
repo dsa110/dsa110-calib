@@ -1,18 +1,18 @@
 """Calibration routines for the DSA-110 with CASA."""
 import os
 import shutil
-
-import dsautils.cnf as dsc
+from typing import List
 
 import dsacalib.calib as dc
 import dsacalib.flagging as df
 import dsacalib.plotting as dp
+import dsacalib.utils as du
 
 
 class CalibratorObservation:
     """A calibrator observation used to obtain beamformer and voltage calibration solutions."""
 
-    def __init__(self, msname: str, cal: "dsacalib.utils.src") -> None:
+    def __init__(self, msname: str, cal: du.CalibratorSource, refants: List[str]) -> None:
         """Initialize the calibrator observation, including settings for calibration.
 
         `msname` should exclude the ".ms" extension
@@ -21,9 +21,11 @@ class CalibratorObservation:
         self.cal = cal
         self.table_prefix = f"{self.msname}_{self.cal.name}"
         self.config = get_configuration()
+        self.config["refants"] = refants
 
     def set_calibration_parameters(self, **kwargs) -> None:
         """Update default settings for calibration."""
+
         for key, arg in kwargs.items():
             if key not in self.config:
                 raise RuntimeError(
@@ -38,9 +40,7 @@ class CalibratorObservation:
         """Remove existing calibration tables."""
         tables_to_remove = [
             f"{self.table_prefix}_{ext}" for ext in [
-                "2kcal", "kcal", "bkcal", "gacal", "gpcal", "bcal",]]
-        if self.config["forsystemhealth"]:
-            tables_to_remove += [f"{self.table_prefix}_2gcal"]
+                "2kcal", "kcal", "gacal", "gpcal", "bcal", "2gcal"]]
 
         for path in tables_to_remove:
             if os.path.exists(path):
@@ -50,7 +50,8 @@ class CalibratorObservation:
         """Reset flags and set new flags."""
         df.reset_all_flags(self.msname)
         error = 0
-        error += df.flag_baselines(self.msname, uvrange=self.config["bad_uvrange"])
+        if self.config["bad_uvrange"]:
+            error += df.flag_baselines(self.msname, uvrange=self.config["bad_uvrange"])
         error += df.flag_zeros(self.msname)
 
         for ant in self.config["bad_antennas"]:
@@ -85,51 +86,76 @@ class CalibratorObservation:
         for ext in ["kcal", "2kcal"]:
             shutil.rmtree(f"{self.table_prefix}_{ext}")
         error += dc.delay_calibration(
-            self.msname, self.cal.name, refants=self.config["refants"],
-            t2=t2 if self.config["forsystemhealth"] else None)
+            self.msname, self.cal.name, refants=self.config["refants"], t2=t2)
         _check_path(f"{self.table_prefix}_kcal")
 
         return error
 
-    def bandpass_and_gain_cal(self, tbeam: str = "60s") -> int:
-        """Gain and bandpass calibration."""
-        error = dc.gain_calibration(
-            self.msname,
-            self.cal.name,
-            self.config['refants'][0],
-            blbased=False,
-            forsystemhealth=self.config["forsystemhealth"],
-            keepdelays=self.config["keepdelays"],
-            interp_thresh=1.5,
-            interp_polyorder=7,
-            tbeam=tbeam)
-        print(error)
-        dc.combine_bandpass_and_delay(self.table_prefix, self.config["forsystemhealth"])
+    def gain_calibration(self, delay_bandpass_cal_prefix: str = "", tbeam: str = "60s") -> int:
+        """Gain calibration."""
+        if not delay_bandpass_cal_prefix:
+            delay_bandpass_cal_prefix = self.table_prefix
 
+        caltables = [
+            {
+                "table": f"{delay_bandpass_cal_prefix}_kcal",
+                "type": "K",
+                "spwmap": [-1]}]
+        if os.path.exists(f"{delay_bandpass_cal_prefix}_bacal"):
+            caltables += [
+                {
+                    "table": f"{delay_bandpass_cal_prefix}_bacal",
+                    "type": "B",
+                    "spwmap": [-1]
+                },
+                {
+                    "table": f"{delay_bandpass_cal_prefix}_bpcal",
+                    "type": "B",
+                    "spwmap": [-1]}]
+        error = dc.gain_calibration(
+            self.msname, self.cal.name, self.config['refants'][0], caltables, tbeam=tbeam)
         return error
-    
+
+    def bandpass_calibration(self, delay_bandpass_cal_prefix: str = "") -> int:
+        """Bandpass calibration."""
+        if not delay_bandpass_cal_prefix:
+            delay_bandpass_cal_prefix = self.table_prefix
+
+        caltables = [
+            {
+                "table": f"{delay_bandpass_cal_prefix}_kcal",
+                "type": "K",
+                "spwmap": [-1]}]
+        if os.path.exists(f"{self.table_prefix}_gacal"):
+            caltables += [
+                {
+                    "table": f"{self.table_prefix}_gacal",
+                    "type": "G",
+                    "spwmap": [-1]},
+                {
+                    "table": f"{self.table_prefix}_gpcal",
+                    "type": "G",
+                    "spwmap": [-1]}]
+        error = dc.bandpass_calibration(
+            self.msname, self.cal.name, self.config['refants'][0], caltables)
+        return error
+
     def quick_delay_calibration(self) -> int:
+        """Calibrate delays after averaging entire observation."""
         error = 0
         error += dc.delay_calibration(
             self.msname, self.cal.name, refants=self.config["refants"])
         _check_path(f"{self.table_prefix}_kcal")
         return error
 
+
 def get_configuration() -> dict:
     """Get the default configuration for calibration."""
-    dsaconf = dsc.Conf(use_etcd=True)
-    cal_params = dsaconf.get("cal")
-
     config = {
-        "refants": cal_params["refant"],
-
-        "bad_antennas" : [],
-        "bad_uvrange" : "2~50m",
+        "refants": None,
+        "bad_antennas": [],
+        "bad_uvrange": "2~50m",
         "manual_flags": [],
-
-        "forsystemhealth": False,
-        "keepdelays": False,
-
         "reuse_flags": False}
 
     return config
