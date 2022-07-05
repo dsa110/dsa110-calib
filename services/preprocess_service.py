@@ -218,16 +218,16 @@ def assess_file(inqueue, outqueue, caltime=CONFIG.caltime, filelength=CONFIG.fil
                 calsources = pandas.read_csv(caltable, header=0)
                 for _index, row in calsources.iterrows():
                     if isinstance(row['ra'], str):
-                        rowra = row['ra']
+                        rowra = Angle(row['ra'])
                     else:
-                        rowra = row['ra'] * u.deg
+                        rowra = Angle(row['ra'] * u.deg)
                     delta_lst_start = (
-                        tstart - Angle(rowra)
+                        tstart - rowra
                     ).to_value(u.rad) % (2 * np.pi)
                     if delta_lst_start > np.pi:
                         delta_lst_start -= 2 * np.pi
                     delta_lst_end = (
-                        tend - Angle(rowra)
+                        tend - rowra
                     ).to_value(u.rad) % (2 * np.pi)
                     if delta_lst_end > np.pi:
                         delta_lst_end -= 2 * np.pi
@@ -235,6 +235,8 @@ def assess_file(inqueue, outqueue, caltime=CONFIG.caltime, filelength=CONFIG.fil
                         calname = row['source']
                         print(f"Calibrating {calname}")
                         outqueue.put((calname, flist))
+                    else:
+                        print(f"Not calibrating {row['source']} with ra {rowra} using lst {tstart}")
 
             except Exception as exc:
                 exception_logger(
