@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 from antpos.utils import get_itrf
-import scipy  # noqa
 
 import dsacalib.constants as ct
 from dsacalib.fringestopping import calc_uvw
@@ -162,7 +161,7 @@ def read_gains(
             temp = data[64:].reshape(64, 48, 2, 2)
             gains[i, :, subband, :, :] = temp[..., 0] + 1.0j * temp[..., 1]
     gains = gains.reshape((len(bfnames), len(antennas), nsubbands * 48, 2))
-    select = [antennas.tolist().index(i) for i in selectants]
+    select = [list(antennas).index(i) for i in selectants]
     print(f"Using {len(bfnames)} to get gain array of shape {gains.shape}.")
     return gains.take(select, axis=1)
 
