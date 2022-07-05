@@ -236,7 +236,7 @@ def assess_file(inqueue, outqueue, caltime=CONFIG.caltime, filelength=CONFIG.fil
                         print(f"Calibrating {calname}")
                         outqueue.put((calname, flist))
                     else:
-                        print(f"Not calibrating {row['source']} with ra {rowra} using lst {tstart}")
+                        print(f"Not calibrating {row['source']} with ra {rowra.to(u.deg)} using lst {tstart.to(u.deg)}")
 
             except Exception as exc:
                 exception_logger(
