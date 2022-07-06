@@ -18,6 +18,7 @@ import scipy  # pylint: disable=unused-import
 from casacore.tables import table
 
 import dsautils.calstatus as cs
+from dsautils.dsa_syslog import DsaSyslogger
 import dsacalib.utils as du
 import dsacalib.ms_io as dmsio
 import dsacalib.fits_io as dfio
@@ -162,13 +163,8 @@ class H5File:
 
 
 class Scan:
-    """A scan (multiple correlator hdf5 files that cover the same time)."""
 
-    corr_list = get_corr_list()
-    filelength = get_filelength()
-    cal_sidereal_span = get_cal_sidereal_span()
-
-    def __init__(self, h5file: H5File):
+    def __init__(self, h5files, source=None):
         """Instantiate the Scan.
 
         Parameters
@@ -178,14 +174,14 @@ class Scan:
         """
         self.files = [None] * len(self.corr_list)
         self.nfiles = 0
-
-        self.start_time = Time(h5file.stem)
-        self.add(h5file)
-
-        self.start_sidereal_time = None
-        self.end_sidereal_time = None
-        self.pt_dec = None
         self.source = None
+
+        self.start_time = Time(h5files[0].stem)
+        for h5file in h5files:
+            self.add(h5file)
+
+        self.corr_list = get_corr_list()
+        self.filelength = get_filelength()
 
     def add(self, h5file: H5File) -> None:
         """Add an hdf5file to the list of files in the scan.
@@ -197,6 +193,19 @@ class Scan:
         """
         self.files[self.corr_list.index(h5file.corrname)] = h5file
         self.nfiles += 1
+
+
+class CalibratorScan(Scan):
+    """A scan (multiple correlator hdf5 files that cover the same time)."""
+
+    def __init__(self, h5files: List[H5File]):
+
+        super().__init__(h5files)
+
+        self.cal_sidereal_span = get_cal_sidereal_span()
+        self.start_sidereal_time = None
+        self.end_sidereal_time = None
+        self.pt_dec = None
 
     def assess(self):
         """Assess if the scan should be converted to a ms for calibration."""
@@ -268,7 +277,7 @@ def convert_to_ms(scan: Scan, logger: "DsaSyslogger" = None) -> str:
         cal=filenames[date][calname]["cal"],
         date=date,
         files=filenames[date][calname]["files"],
-        msidr=msdir,
+        msdir=msdir,
         hdf5dir=hdf5dir,
         logger=logger)
 
