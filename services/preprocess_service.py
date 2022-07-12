@@ -69,7 +69,7 @@ def populate_queue(etcd_dict, queue=RSYNC_Q):
     queue.put(rsync_string)
 
 
-def task_handler(task_fn, inqueue, outqueue=None):
+def rsync_handler(inqueue, outqueue=None):
     """Handles in and out queues of preprocessing tasks.
 
     Parameters
@@ -85,7 +85,7 @@ def task_handler(task_fn, inqueue, outqueue=None):
         if not inqueue.empty():
             fname = inqueue.get()
             try:
-                fname = task_fn(fname)
+                fname = rsync_fo;e(fname)
                 if outqueue is not None:
                     outqueue.put(fname)
             except Exception as exc:
@@ -254,7 +254,7 @@ if __name__ == "__main__":
     ETCD.add_watch('/cmd/cal', populate_queue)
     processes = {
         'rsync': {
-            'task_fn': rsync_file,
+            'task_fn': rsync_handler,
             'queue': RSYNC_Q,
             'outqueue': GATHER_Q,
             'daemon': False,
