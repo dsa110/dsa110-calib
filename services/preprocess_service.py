@@ -65,7 +65,7 @@ def populate_queue(etcd_dict, queue=RSYNC_Q):
     val = etcd_dict['val']
     if cmd != 'rsync':
         return
-    rsync_string = f"{val['hostname']}:{val['filename']} {CONFIG.hdf5dir}/"
+    rsync_string = f"{val['hostname']}.sas.pvt:{val['filename']} {CONFIG.hdf5dir}/"
     queue.put(rsync_string)
 
 
@@ -85,7 +85,7 @@ def rsync_handler(inqueue, outqueue=None):
         if not inqueue.empty():
             fname = inqueue.get()
             try:
-                fname = rsync_file(fname)
+                fname = rsync_file(fname, logger=LOGGER)
                 if outqueue is not None:
                     outqueue.put(fname)
             except Exception as exc:
