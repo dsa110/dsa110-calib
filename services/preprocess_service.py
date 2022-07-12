@@ -36,7 +36,7 @@ LOGGER.app("dsacalib")
 ETCD = ds.DsaStore()
 
 # FIFO Queues for rsync, freq scrunching, calibration
-FSCRUNCH_Q = Queue()
+RSYNC_Q = Queue()
 GATHER_Q = Queue()
 ASSESS_Q = Queue()
 CALIB_Q = Queue()
@@ -56,7 +56,7 @@ TSLEEP = 10
 CONFIG = config.Configuration()
 
 
-def populate_queue(etcd_dict, queue=GATHER_Q, hdf5dir=CONFIG.hdf5dir, subband_def=CONFIG.ch0):
+def populate_queue(etcd_dict, queue=RSYNC_Q):
     """Populates the fscrunch and rsync queues using etcd.
 
     Etcd watch callback function.
@@ -65,8 +65,8 @@ def populate_queue(etcd_dict, queue=GATHER_Q, hdf5dir=CONFIG.hdf5dir, subband_de
     val = etcd_dict['val']
     if cmd != 'rsync':
         return
-    time.sleep(30) # wait for the staged files to be moved to the correct directory
-    queue.put(val['filename'])
+    rsync_string = f"{val['hostname']}:{val['filename']} {CONFIG.hdf5dir}/"
+    queue.put(rsync_string)
 
 
 def task_handler(task_fn, inqueue, outqueue=None):
@@ -252,40 +252,41 @@ def assess_file(inqueue, outqueue, caltime=CONFIG.caltime, filelength=CONFIG.fil
 if __name__ == "__main__":
     # Start etcd watch
     ETCD.add_watch('/cmd/cal', populate_queue)
-    processes = {}
-    try:
-        processes['gather'] = {
-            'nthreads': 1,
+    processes = {
+        'rsync': {
+            'task_fn': rsync_file,
+            'queue': RSYNC_Q,
+            'outqueue': GATHER_Q,
+            'daemon': False,
+            'process': None
+        },
+        'gather': {
             'task_fn': gather_files,
             'queue': GATHER_Q,
             'outqueue': ASSESS_Q,
-            'processes': []
-        }
-        processes['gather']['processes'] += [Process(
-            target=gather_files,
-            args=(
-                GATHER_Q,
-                ASSESS_Q
-            )
-        )]
-        processes['gather']['processes'][0].start()
-
-        processes['assess'] = {
-            'nthreads': 1,
+            'daemon': False,
+            'process': None
+        },
+        'assess': {
             'task_fn': assess_file,
             'queue': ASSESS_Q,
             'outqueue': CALIB_Q,
-            'processes': []
-        }
-        processes['assess']['processes'] += [Process(
-            target=assess_file,
-            args=(
-                ASSESS_Q,
-                CALIB_Q
-            ),
-            daemon=True
-        )]
-        processes['assess']['processes'][0].start()
+            'daemon': True,
+            'process': None
+        }}
+    try:
+
+        for key in ['rsync', 'gather']:
+            pdict = processes[key]
+            pdict['process'] = Process(
+                target=pdict['task_fn'],
+                args=(
+                    pdict['queue'],
+                    pdict['outqueue']
+                ),
+                daemon=pdict['daemon']
+            )
+        pdict['process'].start()
 
         while True:
             for name, pinfo in processes.items():
