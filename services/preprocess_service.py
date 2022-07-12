@@ -286,7 +286,7 @@ if __name__ == "__main__":
                 ),
                 daemon=pdict['daemon']
             )
-        pdict['process'].start()
+            pdict['process'].start()
 
         while True:
             for name, pinfo in processes.items():
