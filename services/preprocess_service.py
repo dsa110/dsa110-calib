@@ -276,7 +276,7 @@ if __name__ == "__main__":
         }}
     try:
 
-        for key in ['rsync', 'gather']:
+        for key in ['rsync', 'gather', 'assess']:
             pdict = processes[key]
             pdict['process'] = Process(
                 target=pdict['task_fn'],
