@@ -295,8 +295,7 @@ if __name__ == "__main__":
                     {
                         "queue_size": pinfo['queue'].qsize(),
                         "ntasks_alive": sum([
-                            pinst.is_alive() for pinst in
-                            pinfo['processes']
+                            pinfo['process'].is_alive()
                         ]),
                         "ntasks_total": pinfo['nthreads']
                     }
@@ -323,6 +322,6 @@ if __name__ == "__main__":
             time.sleep(60)
 
     except (KeyboardInterrupt, SystemExit):
-        processes['gather']['processes'][0].terminate()
-        processes['gather']['processes'][0].join()
+        processes['gather']['process'].terminate()
+        processes['gather']['process'].join()
         sys.exit()
