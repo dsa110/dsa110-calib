@@ -85,7 +85,7 @@ def rsync_handler(inqueue, outqueue=None):
         if not inqueue.empty():
             fname = inqueue.get()
             try:
-                fname = rsync_fo;e(fname)
+                fname = rsync_file(fname)
                 if outqueue is not None:
                     outqueue.put(fname)
             except Exception as exc:
