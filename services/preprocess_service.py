@@ -297,7 +297,6 @@ if __name__ == "__main__":
                         "ntasks_alive": sum([
                             pinfo['process'].is_alive()
                         ]),
-                        "ntasks_total": pinfo['nthreads']
                     }
                 )
             ETCD.put_dict(
