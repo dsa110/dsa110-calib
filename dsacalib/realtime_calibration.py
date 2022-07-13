@@ -1,173 +1,246 @@
-"""Calibration routine for DSA-110 calibration with CASA.
-
-Author: Dana Simard, dana.simard@astro.caltech.edu, 2020/06
-"""
-import shutil
-import os
-import glob
-from typing import List, Union
+"""Calibration service"""
+from typing import List, Tuple
 from pathlib import Path
+import os
 
+from astropy.time import Time
+import astropy.units as u
+from astropy.coordinates import Angle
+from dask.distributed import Future
 import h5py
 import numpy as np
-from astropy.coordinates import Angle
-import astropy.units as u
-from astropy.time import Time
 import pandas
+from dsautils import dsa_syslog
 
-import scipy  # pylint: disable=unused-import
-from casacore.tables import table
-import dsautils.calstatus as cs
-from dsautils.dsa_syslog import DsaSyslogger
-
-from dsacalib.calibrator_observation import CalibratorObservation
-import dsacalib.utils as du
+import dsacalib.constants as ct
+from dsacalib.utils import calibrator_source_from_name
+from dsacalib.ms_io import convert_calibrator_pass_to_ms
+from dsacalib.preprocess import rsync_file, first_true, update_caltable
 
 
-class PipelineComponent:
-    """A component of the real-time pipeline."""
+class H5File:
+    """An hdf5 file containing correlated data."""
 
-    def __init__(self, logger: DsaSyslogger, throw_exceptions: bool):
-        self.description = 'Pipeline component'
-        self.error_code = 0
-        self.nonfatal_error_code = 0
-        self.logger = logger
-        self.throw_exceptions = throw_exceptions
+    def __init__(self, local_path: str, corrname: str = None, remote_path: str = None):
+        self.corrname = corrname
+        self.remote_path  = Path(remote_path)
+        self.local_path = Path(local_path)
+        self.timestamp, self.subband = self.path.stem.split('_')
+        self.start_time = Time(self.timestamp)
+    
+    def copy(self):
+        rsync_string = (
+            f"{self.corrname}.sas.pvt:{self.remote_path} {self.local_path}")
+        rsync_file(rsync_string)
 
-    def target(self):
-        return 0
+    @property
+    def pointing_dec(self) -> u.Quantity:
+        """Extract the pointing declination from an h5 file."""
+        with h5py.File(str(self.path), mode='r') as h5file:
+            pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value * u.rad
+        return pt_dec
 
-    def __call__(self, status: int, *args) -> int:
-        """Handle fatal and nonfatal errors.
+    def check_for_source(self, calsources: pandas.DataFrame) -> pandas.DataFrame:
+        """Determine if there is any calibrator source of interest in the scan.
 
-        Return an updated status that reflects any errors that occurred in `target`.
+        Parameters
+        ----------
+        calsources : pandas.DataFrame
+            A dataframe containing sources at the pointing declination of the scan.
+
+        Returns
+        -------
+        pandas.DataFrame
+            The row of the data frame with the first source that is in the scan.  If no source is
+            found, `None` is returned.
         """
-        try:
-            error = self.target(*args)
+        ras = calsources['ra']
+        if not isinstance(ras[0], str):
+            ras = [ra * u.deg for ra in ras]
 
-        except Exception as exc:
-            status = cs.update(status, self.error_code)
-            du.exception_logger(self.logger, self.description, exc, self.throw_exceptions)
+        delta_lst_start = [
+            sidereal_time_delta(self.start_sidereal_time, Angle(ra)) for ra in ras]
+        delta_lst_end = [
+            sidereal_time_delta(self.end_sidereal_time, Angle(ra)) for ra in ras]
 
-        else:
-            if error > 0:
-                status = cs.update(status, self.nonfatal_error_code)
-                message = f'Non-fatal error occured in {self.description}'
-                du.warning_logger(self.logger, message)
-
-        return status
+        source_index = delta_lst_start < self.cal_sidereal_span < delta_lst_end
+        if True in source_index:
+            return calsources.iloc[source_index.index(True)]
 
 
-class Flagger(PipelineComponent):
-    """The ms flagger.  Flags baselines, zeros, bad antennas, and rfi."""
+class Scan:
+    """A scan of 16 files collected at the same time, each for a different subband."""
 
-    def __init__(self, logger: DsaSyslogger, throw_exceptions: bool):
-        """Describe Flagger and error code if fails."""
-        super().__init__(logger, throw_exceptions)
-        self.description = 'flagging'
-        self.error_code = (
-            cs.FLAGGING_ERR
-            | cs.INV_GAINAMP_P1
-            | cs.INV_GAINAMP_P2
-            | cs.INV_GAINPHASE_P1
-            | cs.INV_GAINPHASE_P2
-            | cs.INV_DELAY_P1
-            | cs.INV_DELAY_P2
-            | cs.INV_GAINCALTIME
-            | cs.INV_DELAYCALTIME)
-        self.nonfatal_error_code = cs.FLAGGING_ERR
+    def __init__(self, h5files: List[H5File], source=None, nsubbands=16):
+        """Instantiate the Scan.
 
-    def target(self, calobs: CalibratorObservation):
-        """Flag data in the measurement set."""
-        error = calobs.set_flags()
-        return error
+        Parameters
+        ----------
+        h5file : H5File
+            A h5file to be included in the scan.
+        """
+        self.files = [None] * len(nsubbands)
+        self.nfiles = 0
+        self.source = source
 
+        self.start_time = h5files[0].start_time
+        for h5file in h5files:
+            self.add(h5file)
 
-class DelayCalibrater(PipelineComponent):
-    def __init__(self, logger: DsaSyslogger, throw_exceptions: bool):
-        super().__init__(logger, throw_exceptions)
-        self.description = 'delay calibration'
-        self.error_code = (
-            cs.DELAY_CAL_ERR
-            | cs.INV_GAINAMP_P1
-            | cs.INV_GAINAMP_P2
-            | cs.INV_GAINPHASE_P1
-            | cs.INV_GAINPHASE_P2
-            | cs.INV_DELAY_P1
-            | cs.INV_DELAY_P2
-            | cs.INV_GAINCALTIME
-            | cs.INV_DELAYCALTIME)
-        self.nonfatal_error_code = cs.DELAY_CAL_ERR
+    def add(self, h5file: H5File) -> None:
+        """Add an hdf5file to the list of files in the scan.
 
-    def target(self, calobs):
-        error = calobs.delay_calibration()
-        return error
+        Parameters
+        ----------
+        h5file : H5file
+            The h5file to be added.
+        """
+        index = int(h5file.subband.strip('sb'))
+        self.files[index] = h5file
+        self.nfiles += 1
 
+    def convert_to_ms(self, msdir: str, logger: dsa_syslog.DsaSyslogger = None) -> str:
+        """Convert a scan to a measurement set.
 
-class BandpassGainCalibrater(PipelineComponent):
-    def __init__(self, logger: DsaSyslogger, throw_exceptions: bool):
-        super().__init__(logger, throw_exceptions)
-        self.description = 'bandpass and gain calibration'
-        self.error_code = (
-            cs.GAIN_BP_CAL_ERR
-            | cs.INV_GAINAMP_P1
-            | cs.INV_GAINAMP_P2
-            | cs.INV_GAINPHASE_P1
-            | cs.INV_GAINPHASE_P2
-            | cs.INV_GAINCALTIME)
-        self.nonfatal_error_code = cs.GAIN_BP_CAL_ERR
+        Parameters
+        ----------
+        scan : Scan
+            A scan containing part of the calibrator pass of interest.
+        logger : DsaSyslogger
+            The logging interface.  If `None`, messages are only printed.
+        """
+        date = self.start_time.strftime("%Y-%m-%d")
+        cal = calibrator_source_from_name(self.source['source'])
+        msname = f"{msdir}/{date}_{self.source}"
+        if os.path.exists(f"{msname}.ms"):
+            message = f"{msname}.ms already exists.  Not recreating."
+            if logger:
+                logger.info(message)
+            print(logger)
+            return msname, cal
 
-    def target(self, calobs):
-        if not calobs.config['delay_bandpass_table_prefix']:
-            error = calobs.bandpass_calibration()
-            error += calobs.gain_calibration()
-            error += calobs.bandpass_calibration()
+        file = first_true(self.files)
+        hdf5dir = file.parents[1]
+        filenames = [
+            (self.start_time - 5 * u.min).strftime("%Y-%m-%dT%H:%M:%S"),
+            self.start_time.strftime("%Y-%m-%dT%H:%M:%S")]
+        convert_calibrator_pass_to_ms(
+            cal=calibrator_source_from_name(cal.name),
+            date=date,
+            files=filenames,
+            msdir=msdir,
+            hdf5dir=hdf5dir,
+            logger=logger)
 
-        else:
-            error += calobs.gain_calibration()
-
-        return error
+        return msname, cal
 
 
-class BFWeightCreater(PipelineComponent):
-    def __init__(self, logger: "DsaSyslogger", throw_exceptions: bool):
-        super().__init__(logger, throw_exceptions)
-        self.description = 'beamformer weight creation'
+class ScanCache:
+    """Hold scans until they have collected all files."""
 
-    def target(self, calobs):
-        calobs.create_beamformer_weights()
-        return 0
+    def __init__(self, max_scans: int):
+        self.max_scans = max_scans
+        self.scans = [None]*max_scans
+        self.futures = [[] for i in range(max_scans)]
+        self.next_index = 0
+
+    def get_scan_from_file(self, h5file: H5File, copy_future: Future) -> Tuple[Scan, List[Future]]:
+        """Get the scan and corresponding copy futures for an h5file."""
+        for i, scan in enumerate(self.scans):
+            if scan is not None:
+                if abs(Time(h5file.stem) - scan.start_time) < 3 * u.min:
+                    scan.add(h5file)
+                    self.futures[i].append(copy_future)
+                    return scan, self.futures[i]
+
+        scan = CalibratorScan([h5file])
+        scan_futures = [copy_future]
+        self.scans[self.next_index] = scan
+        self.futures[self.next_index] = scan_futures
+        self.next_index = (self.next_index + 1) % self.max_scans
+        return scan, scan_futures
+
+    def remove(self, scan_to_remove: Scan):
+        """Remove references to a scan and corresponding copy futures from the cache."""
+        to_remove = None
+        for i, scan in enumerate(self.scans):
+            if scan.start_time == scan_to_remove.start_time:
+                to_remove = i
+
+        if to_remove:
+            self.scans[to_remove] = None
+            self.futures[to_remove] = None
 
 
-def calibrate_measurement_set(
-        msname: str, cal: CalibratorSource, scan: Scan = None,
-        logger: DsaSyslogger = None, throw_exceptions: bool = False, **kwargs) -> int:
-    calobs = CalibratorObservation(msname, cal, scan)
-    calobs.set_calibration_parameters(**kwargs)
-    flag = Flagger(logger, throw_exceptions)
-    delaycal = DelayCalibrater(logger, throw_exceptions)
-    bpgaincal = BandpassGainCalibrater(logger, throw_exceptions)
-    bfgen = BFWeightCreater(logger, throw_exceptions)
+class CalibratorScan(Scan):
+    """A scan (multiple correlator hdf5 files that cover the same time)."""
 
-    message = f"Beginning calibration of {msname}."
-    logger.info(message)
+    def __init__(self, h5files: List[H5File]):
 
-    status = 0
-    calobs.reset_calibration()
+        super().__init__(h5files)
 
-    if not calobs.config['reuse_flags']:
-        status |= flag(calobs)
+        self.start_sidereal_time = None
+        self.end_sidereal_time = None
+        self.pt_dec = None
+        self.scan_length = 5 * u.min
 
-    if not calobs.config['delay_bandpass_table_prefix']:
-        status |= delaycal(calobs)
+    def assess(self):
+        """Assess if the scan should be converted to a ms for calibration."""
+        self.start_sidereal_time, self.end_sidereal_time = [
+            (self.start_time + offset).sidereal_time(
+                'apparent', longitude=ct.OVRO_LON * u.rad)
+            for offset in [0 * u.min, self.scan_length]]
 
-    status |= bpgaincal(calobs)
+        first_file = first_true(self.files)
+        self.pt_dec = first_file.pointing_dec
 
-    combine_tables(msname, f"{msname}_{cal.name}", calobs.config['delay_bandpass_table_prefix'])
-    status |= bfgen(calobs)
+        caltable = update_caltable(self.pt_dec)
+        calsources = pandas.read_csv(caltable, header=0)
 
-    message = f"Completed calibration of {msname} with status {cs.decode(status)}"
-    logger.info(message)
+        self.source = self.check_for_source(calsources)
+    
+    def check_for_source(self, calsources: pandas.DataFrame) -> pandas.DataFrame:
+        """Determine if there is any calibrator source of interest is withing +/- 2.5 minutes of the start of the scan.
+    
+        Parameters
+        ----------
+        calsources : pandas.DataFrame
+            A dataframe containing sources at the pointing declination of the scan.
+        Returns
+        -------
+        pandas.DataFrame
+            The row of the data frame with the first source that is in the scan.  If no source is
+            found, `None` is returned.
+        """
+        ras = calsources['ra']
+        if not isinstance(ras[0], str):
+            ras = [ra * u.deg for ra in ras]
 
-    return status
+        delta_lst_start = [
+            sidereal_time_delta(self.start_sidereal_time, Angle(ra)) for ra in ras]
+        delta_lst_end = [
+            sidereal_time_delta(self.end_sidereal_time, Angle(ra)) for ra in ras]
+        delta_lst = delta_lst_end - delta_lst_start
 
+        source_index = abs(delta_lst_start) < delta_lst // 2
+        if True in source_index:
+            return calsources.iloc[source_index.index(True)]
+
+
+def sidereal_time_delta(time1: Angle, time2: Angle) -> float:
+    """Get the sidereal rotation between two LSTs. (time1-time2)
+
+    Parameters
+    ----------
+    time1, time2 : Angle
+        The LSTs to compare.
+
+    Returns
+    -------
+    float
+        The difference in the sidereal times, `time1` and `time2`, in radians.
+    """
+    time_delta = (time1 - time2).to_value(u.rad) % (2 * np.pi)
+    if time_delta > np.pi:
+        time_delta -= 2 * np.pi
+    return time_delta
