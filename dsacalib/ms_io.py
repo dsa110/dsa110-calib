@@ -1206,10 +1206,10 @@ def add_model_to_ms(
     m_dd = np.floor(m_dec).astype('int')
     m_dm = np.floor(60. * (m_dec - np.floor(m_dec))).astype('int')
     m_ds = 60. * (60. * (m_dec - np.floor(m_dec)) - 1. * m_dm)
-    m_flux = nvss_sources.loc[:, 'flux_20_cm']
-    m_maj = nvss_sources.loc[:, 'major_axis']
-    m_min = nvss_sources.loc[:, 'minor_axis']
-    m_pa = nvss_sources.loc[:, 'position_angle'] * np.pi / 180.
+    m_flux = nvss_sources['flux_20_cm']
+    m_maj = nvss_sources['major_axis']
+    m_min = nvss_sources['minor_axis']
+    m_pa = nvss_sources['position_angle'] * np.pi / 180.
 
     m_maj[np.isnan(m_pa)] = 0.
     m_min[np.isnan(m_pa)] = 0.
