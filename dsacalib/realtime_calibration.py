@@ -13,7 +13,7 @@ import pandas
 from dsautils import dsa_syslog
 
 import dsacalib.constants as ct
-from dsacalib.utils import calibrator_source_from_name
+from dsacalib.utils import generate_calibrator_source
 from dsacalib.ms_io import convert_calibrator_pass_to_ms
 from dsacalib.preprocess import rsync_file, first_true, update_caltable
 
@@ -21,24 +21,61 @@ from dsacalib.preprocess import rsync_file, first_true, update_caltable
 class H5File:
     """An hdf5 file containing correlated data."""
 
-    def __init__(self, local_path: str, corrname: str = None, remote_path: str = None):
-        self.corrname = corrname
-        self.remote_path  = Path(remote_path)
-        self.local_path = Path(local_path)
+    def __init__(self, local_path: str, hostname: str = None, remote_path: str = None):
+        self.hostname = hostname
+        if remote_path:
+            self.remote_path = Path(remote_path)
+        else:
+            self.remote_path = None
+        self.path = Path(local_path)
         self.timestamp, self.subband = self.path.stem.split('_')
         self.start_time = Time(self.timestamp)
     
     def copy(self):
+        assert self.hostname, "No hostname defined for remote file."
+        assert self.remote_path, "No path defined for remote file."
         rsync_string = (
-            f"{self.corrname}.sas.pvt:{self.remote_path} {self.local_path}")
+            f"{self.hostname}.sas.pvt:{self.remote_path} {self.path}")
         rsync_file(rsync_string)
 
     @property
     def pointing_dec(self) -> u.Quantity:
         """Extract the pointing declination from an h5 file."""
         with h5py.File(str(self.path), mode='r') as h5file:
-            pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'].value * u.rad
+            pt_dec = h5file['Header']['extra_keywords']['phase_center_dec'][()] * u.rad
         return pt_dec
+
+
+class Scan:
+    """A scan of 16 files collected at the same time, each for a different subband."""
+
+    def __init__(self, h5files: List[H5File], source=None, nsubbands=16):
+        """Instantiate the Scan.
+
+        Parameters
+        ----------
+        h5file : H5File
+            A h5file to be included in the scan.
+        """
+        self.files = [None] * nsubbands
+        self.nfiles = 0
+        self.source = source
+
+        self.start_time = h5files[0].start_time
+        for h5file in h5files:
+            self.add(h5file)
+
+    def add(self, h5file: H5File) -> None:
+        """Add an hdf5file to the list of files in the scan.
+
+        Parameters
+        ----------
+        h5file : H5file
+            The h5file to be added.
+        """
+        index = int(h5file.subband.strip('sb'))
+        self.files[index] = h5file
+        self.nfiles += 1
 
     def check_for_source(self, calsources: pandas.DataFrame) -> pandas.DataFrame:
         """Determine if there is any calibrator source of interest in the scan.
@@ -67,39 +104,7 @@ class H5File:
         if True in source_index:
             return calsources.iloc[source_index.index(True)]
 
-
-class Scan:
-    """A scan of 16 files collected at the same time, each for a different subband."""
-
-    def __init__(self, h5files: List[H5File], source=None, nsubbands=16):
-        """Instantiate the Scan.
-
-        Parameters
-        ----------
-        h5file : H5File
-            A h5file to be included in the scan.
-        """
-        self.files = [None] * len(nsubbands)
-        self.nfiles = 0
-        self.source = source
-
-        self.start_time = h5files[0].start_time
-        for h5file in h5files:
-            self.add(h5file)
-
-    def add(self, h5file: H5File) -> None:
-        """Add an hdf5file to the list of files in the scan.
-
-        Parameters
-        ----------
-        h5file : H5file
-            The h5file to be added.
-        """
-        index = int(h5file.subband.strip('sb'))
-        self.files[index] = h5file
-        self.nfiles += 1
-
-    def convert_to_ms(self, msdir: str, logger: dsa_syslog.DsaSyslogger = None) -> str:
+    def convert_to_ms(self, msdir: str, refmjd: float, logger: dsa_syslog.DsaSyslogger = None) -> str:
         """Convert a scan to a measurement set.
 
         Parameters
@@ -110,8 +115,9 @@ class Scan:
             The logging interface.  If `None`, messages are only printed.
         """
         date = self.start_time.strftime("%Y-%m-%d")
-        cal = calibrator_source_from_name(self.source['source'])
-        msname = f"{msdir}/{date}_{self.source}"
+        cal = generate_calibrator_source(
+            self.source['source'], self.source['ra']*u.deg, self.source['dec']*u.deg)
+        msname = f"{msdir}/{date}_{self.source['source']}"
         if os.path.exists(f"{msname}.ms"):
             message = f"{msname}.ms already exists.  Not recreating."
             if logger:
@@ -120,16 +126,17 @@ class Scan:
             return msname, cal
 
         file = first_true(self.files)
-        hdf5dir = file.parents[1]
+        hdf5dir = file.path.parents[0]
         filenames = [
             (self.start_time - 5 * u.min).strftime("%Y-%m-%dT%H:%M:%S"),
             self.start_time.strftime("%Y-%m-%dT%H:%M:%S")]
         convert_calibrator_pass_to_ms(
-            cal=calibrator_source_from_name(cal.name),
+            cal=cal,
             date=date,
             files=filenames,
             msdir=msdir,
             hdf5dir=hdf5dir,
+            refmjd=refmjd,
             logger=logger)
 
         return msname, cal
@@ -148,7 +155,7 @@ class ScanCache:
         """Get the scan and corresponding copy futures for an h5file."""
         for i, scan in enumerate(self.scans):
             if scan is not None:
-                if abs(Time(h5file.stem) - scan.start_time) < 3 * u.min:
+                if abs(h5file.start_time - scan.start_time) < 3 * u.min:
                     scan.add(h5file)
                     self.futures[i].append(copy_future)
                     return scan, self.futures[i]
@@ -164,10 +171,11 @@ class ScanCache:
         """Remove references to a scan and corresponding copy futures from the cache."""
         to_remove = None
         for i, scan in enumerate(self.scans):
-            if scan.start_time == scan_to_remove.start_time:
+            if scan is scan_to_remove:
                 to_remove = i
+                break
 
-        if to_remove:
+        if to_remove is not None:
             self.scans[to_remove] = None
             self.futures[to_remove] = None
 
