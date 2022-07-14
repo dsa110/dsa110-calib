@@ -2,6 +2,7 @@ from pathlib import Path
 from astropy.time import Time
 from astropy.units import Quantity
 from dsacalib.realtime_calibration import H5File, Scan, ScanCache
+from dsacalib.utils import CalibratorSource
 import dsacalib
 
 TEST_TIMESTAMP = '2022-07-13T17:15:26'
@@ -34,8 +35,28 @@ def test_Scan_check_for_source():
     pass
 
 
-def test_Scan_convert_to_ms():
-    pass
+def test_Scan_convert_to_ms(tmpdir):
+    config = Configuration()
+    refmjd = config.refmjd
+    
+    trigname = 'test'
+    caltime = Time(TEST_TIMESTAMP)
+    callst = caltime.sidereal_time('apparent', longitude=ct.OVRO_LON)
+    hdf5dir = Path(dsacalib.__path__[0])/"data/test"
+    h5files = [H5File(h5f) for h5f in sorted(list(hdf5dir.glob(f"{TEST_TIMESTAMP}*.hdf5")))]
+    calsource = {
+        'source': trigname,
+        'ra': callst.to_value(u.deg),
+        'dec': first_true(h5files).pointing_dec.to_value(u.deg)
+    }
+    scan = Scan(h5files, calsource)
+    
+    msname, cal = scan.convert_to_ms(hdf5dir, refmjd)
+    print(msname, cal)
+    assert (Path(tmpdir)/f"{caltime.strftime('%Y-%m-%d')}_test.ms").exists()
+    assert Path(msname) == Path(tmpdir)/f"{caltime.strftime('%Y-%m-%d')}_test"
+    assert isinstance(cal, CalibratorSource)
+    assert cal.name == 'test'
 
 
 def test_ScanCache():
