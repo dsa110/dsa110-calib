@@ -1153,7 +1153,7 @@ def get_delays(antennas, msname, calname, applied_delays):
 
 
 def add_model_to_ms(
-        msdata: str, flux_limit_mJy: float = 50., radius_limit_deg: float = 2.,
+        msname: str, flux_limit_mJy: float = 50., radius_limit_deg: float = 2.,
         complist_name: str = 'mycomplist.cl'):
     """Add NVSS components to model_data column (overwrite).
 
@@ -1173,6 +1173,7 @@ def add_model_to_ms(
         Tuple[pd.Series]
             ra, dec, flux of components.
     """
+    msdata = f"{msname}.ms"
     nvss_sources = read_nvss_catalog()
 
     # get ra and dec
