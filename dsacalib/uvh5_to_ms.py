@@ -5,11 +5,14 @@ import shutil
 import os
 
 import numpy as np
-import scipy  # noqa
 import astropy.units as u
 import astropy.constants as c
 from astropy.time import Time
+from astropy.coordinates import SkyCoord
+import scipy  # noqa
+import casatools as cc
 from casatasks import importuvfits
+from casatasks import ft as modelft
 from casacore.tables import addImagingColumns, table
 from pyuvdata import UVData
 
@@ -17,32 +20,11 @@ from antpos.utils import get_itrf
 import dsautils.dsa_syslog as dsl
 from dsamfs.fringestopping import calc_uvw_blt
 
+from dsacalib.preprocess import read_nvss_catalog
 from dsacalib.fringestopping import calc_uvw_interpolate
 from dsacalib import constants as ct
 from dsacalib.utils import Direction, generate_calibrator_source
 from dsacalib.fringestopping import amplitude_sky_model
-# from ms_io
-import glob
-import os
-import shutil
-import traceback
-from typing import List
-
-import astropy.units as u
-from astropy.time import Time
-from astropy.coordinates import SkyCoord
-from dsacalib.preprocess import read_nvss_catalog
-import scipy  # noqa
-import casatools as cc
-import numpy as np
-from casacore.tables import table
-from casatasks import virtualconcat
-from casatasks import ft as modelft
-from dsautils import calstatus as cs
-from dsautils import dsa_store
-
-import dsacalib.utils as du
-from dsacalib import constants as ct
 
 
 def uvh5_to_ms(
