@@ -30,7 +30,7 @@ class H5File:
         self.path = Path(local_path)
         self.timestamp, self.subband = self.path.stem.split('_')
         self.start_time = Time(self.timestamp)
-    
+
     def copy(self):
         assert self.hostname, "No hostname defined for remote file."
         assert self.remote_path, "No path defined for remote file."
@@ -206,10 +206,10 @@ class CalibratorScan(Scan):
         calsources = pandas.read_csv(caltable, header=0)
 
         self.source = self.check_for_source(calsources)
-    
+
     def check_for_source(self, calsources: pandas.DataFrame) -> pandas.DataFrame:
         """Determine if there is any calibrator source of interest is withing +/- 2.5 minutes of the start of the scan.
-    
+
         Parameters
         ----------
         calsources : pandas.DataFrame
