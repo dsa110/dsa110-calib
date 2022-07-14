@@ -19,17 +19,21 @@ from dsacalib.realtime_calibration import Scan, ScanCache, H5File
 class CalibrationManager:
     """Manage calibration of files in realtime in the realtime system."""
 
-    def __init__(self, msdir: str, h5dir: str, nsubbands: int, logger: dsa_syslog.DsaSyslogger = None):
+    def __init__(self, msdir: str, h5dir: str, refmjd: float, nsubbands: int, logger: dsa_syslog.DsaSyslogger = None):
         self.client = Client()
         self.scan_cache = ScanCache(max_scans=12)
         self.futures = []
         self.logger = logger
         self.msdir = msdir
         self.h5dir = h5dir
+        self.refmjd = refmjd
         self.nsubbands = nsubbands
 
-    def process_file(self, h5file: H5File):
+    def process_file(self, hostname: str, remote_path: str):
         """Process an H5File that is newly written on the corr nodes."""
+        local_path = Path(self.h5dir)/Path(filename).name
+        h5file = H5File(local_path, hostname, remote_path)
+        
         copy_future = self.client.submit(h5file.copy)
         scan, scan_futures = self.scan_cache.get_scan_from_file(h5file, copy_future)
 
@@ -49,7 +53,7 @@ class CalibrationManager:
     def calibrate_scan(self, scan: Scan):
         """Convert a scan to ms and calibrate it."""
         if scan.source is not None:
-            msname = scan.convert_to_ms(scan, self.msdir, self.logger)
+            msname = scan.convert_to_ms(scan, self.msdir, self.refmjd, self.logger)
             status = calibrate_measurement_set(msname, scan, self.logger)
         return status
 
@@ -111,6 +115,7 @@ class CalibrationManager:
 
     def __del__(self):
         self.client.cancel(self.futures)
+        self.client.close()
 
 
 def handle_etcd_triggers():
@@ -119,7 +124,7 @@ def handle_etcd_triggers():
     etcd = dsa_store.DsaStore()
     logger = dsa_syslog.DsaSyslogger()
     config = Configuration()
-    calmanager = CalibrationManager(config.msdir, config.hdf5dir, config.ncorr, logger) 
+    calmanager = CalibrationManager(config.msdir, config.hdf5dir, config.refmjd, config.ncorr, logger) 
 
     def etcd_callback(etcd_dict: dict):
         """Note that each callback is run in a new thread.
@@ -129,12 +134,10 @@ def handle_etcd_triggers():
         cmd = etcd_dict['cmd']
         val = etcd_dict['val']
         if cmd == 'rsync':
-            h5file = H5File(val['hostname'], val['filename'])
-            calmanager.process_file(h5file)
+            calmanager.process_file_request(val['hostname'], val['filename'])
         elif cmd == 'field':
-            trigname = val['trigname']
-            trigmjd = val['mjds']
-            calmanager.process_field_request(trigname, trigmjd)
+
+            calmanager.process_field_request(val['trigname'], val['mjds'])
     
     etcd.add_watch("/cmd/cal", etcd_callback)
 
