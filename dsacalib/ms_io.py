@@ -17,11 +17,14 @@ from typing import List
 
 import astropy.units as u
 from astropy.time import Time
+from astropy.coordinates import SkyCoord
+from dsacalib.preprocess import read_nvss_catalog
 import scipy  # noqa
 import casatools as cc
 import numpy as np
 from casacore.tables import table
 from casatasks import virtualconcat
+from casatasks import ft as modelft
 from dsautils import calstatus as cs
 from dsautils import dsa_store
 
@@ -103,7 +106,8 @@ def convert_calibrator_pass_to_ms(
                     reftime = Time(filename)
                     hdf5files = []
                     for hdf5f in sorted(glob.glob(f"{hdf5dir}/{filename[:-6]}*.hdf5")):
-                        filetime = Time(hdf5f[:-5].split('/')[-1].split('_')[0])
+                        filetime = Time(
+                            hdf5f[:-5].split('/')[-1].split('_')[0])
                         if abs(filetime - reftime) < 2.5 * u.min:
                             hdf5files += [hdf5f]
                     print(f"found {len(hdf5files)} hdf5files for {filename}")
@@ -397,7 +401,8 @@ def convert_to_ms(
     nints = np.zeros(nant, dtype=int)
     for i, an in enumerate(anum):
         nints[i] = np.sum(np.array(bname)[:, 0] == an)
-    nints, anum, xx, yy, zz = zip(*sorted(zip(nints, anum, xx, yy, zz), reverse=True))
+    nints, anum, xx, yy, zz = zip(
+        *sorted(zip(nints, anum, xx, yy, zz), reverse=True))
 
     # Check that the visibilities are ordered correctly by checking the order
     # of baselines in bname
@@ -503,7 +508,8 @@ def convert_to_ms(
     ms.close()
 
     assert (
-        np.abs(tstart_ms - (tstart_ms2 - tsamp * nint / ct.SECONDS_PER_DAY / 2)) < 1e-10
+        np.abs(tstart_ms - (tstart_ms2 - tsamp *
+               nint / ct.SECONDS_PER_DAY / 2)) < 1e-10
     ), "Data start time does not agree with MS start time"
 
     assert (
@@ -561,7 +567,8 @@ def get_visiblities_time(
                 elif datacolumn.upper() == "MODEL_DATA":
                     tmp = tb.MODEL_DATA[idx]
                 else:
-                    raise RuntimeError(f"No column {datacolumn} in {msname}.ms")
+                    raise RuntimeError(
+                        f"No column {datacolumn} in {msname}.ms")
             except IndexError:
                 vis[j, :, :] = np.nan
                 print(f"No data for tidx {tidx}, blidx {blidx}")
@@ -903,12 +910,12 @@ def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
         antenna_order_amps = np.zeros(0, dtype=np.int)
         status = cs.update(
             status,
-            cs.GAIN_TBL_ERR
-            | cs.INV_GAINAMP_P1
-            | cs.INV_GAINAMP_P2
-            | cs.INV_GAINPHASE_P1
-            | cs.INV_GAINPHASE_P2
-            | cs.INV_GAINCALTIME,
+            cs.GAIN_TBL_ERR |
+            cs.INV_GAINAMP_P1 |
+            cs.INV_GAINAMP_P2 |
+            cs.INV_GAINPHASE_P1 |
+            cs.INV_GAINPHASE_P2 |
+            cs.INV_GAINCALTIME,
         )
         du.exception_logger(logger, "caltable_to_etcd", exc, throw=False)
 
@@ -943,7 +950,8 @@ def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
         antenna_order_delays = np.zeros(0, dtype=np.int)
         du.exception_logger(logger, "caltable_to_etcd", exc, throw=False)
 
-    antenna_order = np.unique(np.array([antenna_order_amps, antenna_order_delays]))
+    antenna_order = np.unique(
+        np.array([antenna_order_amps, antenna_order_delays]))
 
     for antnum in antenna_order:
 
@@ -1048,7 +1056,8 @@ def get_antenna_gains(
         # Antenna-based solutions already
         ant1 = list(ant1)
         antenna_gains = 1 / gains
-        antenna_gains = antenna_gains[[ant1.index(int(ant) - 1) for ant in antennas], ...]
+        antenna_gains = antenna_gains[[ant1.index(
+            int(ant) - 1) for ant in antennas], ...]
         return antenna_gains
 
     # Baseline-based solutions
@@ -1093,8 +1102,8 @@ def get_antenna_gains(
             else:
                 g21 = np.conjugate(gains[otheridx])
         antenna_gains[i] = (
-            np.sqrt(np.abs(g01 * g20 / g21))
-            * np.exp(sign * 1.0j * np.angle(gains[idx_phase]))
+            np.sqrt(np.abs(g01 * g20 / g21)) *
+            np.exp(sign * 1.0j * np.angle(gains[idx_phase]))
         ) ** (-1)
         return antenna_gains
 
@@ -1141,3 +1150,99 @@ def get_delays(antennas, msname, calname, applied_delays):
     newdelays = np.rint(newdelays / 2) * 2
     # delays[flags] = 0
     return newdelays.astype(np.int), flags
+
+
+def add_model_to_ms(
+        msdata: str, flux_limit_mJy: float = 50., radius_limit_deg: float = 2.,
+        complist_name: str = 'mycomplist.cl'):
+    """Add NVSS components to model_data column (overwrite).
+
+    Parameters
+    ----------
+    msdata : str
+        path to measurement set [no default]
+    flux_limit_mJy : float
+        minimum flux density of model components [50 mJy]
+    radius_limit_deg : float
+        max radius of components from phase center [2 deg]
+    complist_name: str
+        path/name of component list file [mycomplist.cl]
+
+    Returns
+    -------
+        Tuple[pd.Series]
+            ra, dec, flux of components.
+    """
+    nvss_sources = read_nvss_catalog()
+
+    # get ra and dec
+    ms = cc.ms()
+    ms.open(msdata)
+    hdr = ms.summary()
+    ra_pt = hdr['field_0']['direction']['m0']['value'] * 180. / np.pi
+    if ra_pt < 0.:
+        ra_pt = 360. - ra_pt
+    dec_pt = hdr['field_0']['direction']['m1']['value'] * 180. / np.pi
+    ms.close()
+
+    # do cross match
+    ra = nvss_sources['ra']
+    dec = nvss_sources['dec']
+    nvss_coords = SkyCoord(ra, dec, frame='icrs', unit='deg')
+    pointing_coords = SkyCoord([ra_pt], [dec_pt], frame='icrs', unit='deg')
+    _, sep_2d, _ = nvss_coords.match_to_catalog_sky(pointing_coords)
+
+    # select sources from NVSS
+    flux = nvss_sources['flux_20_cm']
+    nvss_sources = (nvss_sources.iloc[np.where(
+        (sep_2d.deg < radius_limit_deg) & (flux > flux_limit_mJy))])
+
+    # extract columns, accounting for extended sources
+    m_ra = nvss_sources['ra']
+    m_h = np.floor(m_ra / 15.).astype('int')
+    m_m = np.floor(60. * (m_ra / 15. - np.floor(m_ra / 15.))).astype('int')
+    m_s = 60. * (60. * (m_ra / 15. - np.floor(m_ra / 15.)) - 1. * m_m)
+    m_dec = nvss_sources['dec']
+    m_dd = np.floor(m_dec).astype('int')
+    m_dm = np.floor(60. * (m_dec - np.floor(m_dec))).astype('int')
+    m_ds = 60. * (60. * (m_dec - np.floor(m_dec)) - 1. * m_dm)
+    m_flux = nvss_sources.loc[:, 'flux_20_cm']
+    m_maj = nvss_sources.loc[:, 'major_axis']
+    m_min = nvss_sources.loc[:, 'minor_axis']
+    m_pa = nvss_sources.loc[:, 'position_angle'] * np.pi / 180.
+
+    m_maj[np.isnan(m_pa)] = 0.
+    m_min[np.isnan(m_pa)] = 0.
+    m_min[m_maj < 30.] = 0.
+    m_pa[m_maj < 30.] = 0.
+    m_maj[m_maj < 30.] = 0.
+    m_pa[np.isnan(m_pa)] = 0.
+
+    # make component list
+    if os.path.exists(complist_name):
+        shutil.rmtree(complist_name)
+
+    a = cc.componentlist()
+    for i in np.arange(len(m_ra)):
+        direct = "J2000 %2dh%dm%.2fs +%dd%dm%.2fs" % (
+            m_h[i], m_m[i], m_s[i], m_dd[i], m_dm[i], m_ds[i])
+        if m_maj[i] == 0.:
+            a.addcomponent(
+                shape="Point", dir=direct, flux=m_flux[i] * 0.001,
+                fluxunit='Jy', freq='1.405GHz')
+        else:
+            majj = "%.1farcsec" % (m_maj[i])
+            minn = "%.1farcsec" % (m_min[i])
+            posang = "%.1fdeg" % (m_pa[i])
+            a.addcomponent(
+                shape="Gaussian", dir=direct, flux=m_flux[i] * 0.001,
+                fluxunit='Jy', freq='1.405GHz', majoraxis=majj, minoraxis=minn,
+                positionangle=posang)
+    a.rename(complist_name)
+    a.close()
+    print(f"Made component list {complist_name}")
+
+    # ft into model column
+    modelft(vis=msdata, complist=complist_name, spw='0', usescratch=True)
+
+    return m_ra, m_dec, m_flux
