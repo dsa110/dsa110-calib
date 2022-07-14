@@ -19,7 +19,7 @@ from dsacalib.realtime_calibration import Scan, ScanCache, H5File
 class CalibrationManager:
     """Manage calibration of files in realtime in the realtime system."""
 
-    def __init__(self, msdir: str, h5dir: str, refmjd: float, nsubbands: int, logger: dsa_syslog.DsaSyslogger = None):
+    def __init__(self, msdir: str, h5dir: str, refmjd: float, nsubbands: int, refants: List[str], logger: dsa_syslog.DsaSyslogger = None):
         self.client = Client()
         self.scan_cache = ScanCache(max_scans=12)
         self.futures = []
@@ -28,6 +28,7 @@ class CalibrationManager:
         self.h5dir = h5dir
         self.refmjd = refmjd
         self.nsubbands = nsubbands
+        self.refants = refants
 
     def process_file(self, hostname: str, remote_path: str):
         """Process an H5File that is newly written on the corr nodes."""
@@ -54,7 +55,7 @@ class CalibrationManager:
         """Convert a scan to ms and calibrate it."""
         if scan.source is not None:
             msname = scan.convert_to_ms(scan, self.msdir, self.refmjd, self.logger)
-            status = calibrate_measurement_set(msname, scan, self.logger)
+            status = calibrate_measurement_set(msname, scan.source, refants=self.refants, logger=self.logger)
         return status
 
     def process_field_request(self, trigname: str, trigmjd: float):
@@ -100,7 +101,7 @@ class CalibrationManager:
         scan = Scan(h5files, calsource)
 
         # Calibrate the scan
-        self.calibrate_scan(scan, self.msdir)
+        self.calibrate_scan(scan)
 
     def remove_done_futures(self):
         """Remove futures that are done from the list of futures.
@@ -124,7 +125,7 @@ def handle_etcd_triggers():
     etcd = dsa_store.DsaStore()
     logger = dsa_syslog.DsaSyslogger()
     config = Configuration()
-    calmanager = CalibrationManager(config.msdir, config.hdf5dir, config.refmjd, config.ncorr, logger) 
+    calmanager = CalibrationManager(config.msdir, config.hdf5dir, config.refmjd, config.ncorr, config.refants, logger) 
 
     def etcd_callback(etcd_dict: dict):
         """Note that each callback is run in a new thread.
