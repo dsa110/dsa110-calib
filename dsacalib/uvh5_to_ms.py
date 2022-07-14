@@ -21,6 +21,7 @@ from dsacalib.fringestopping import calc_uvw_interpolate
 from dsacalib import constants as ct
 from dsacalib.utils import Direction, generate_calibrator_source
 from dsacalib.fringestopping import amplitude_sky_model
+from dsacalib.ms_io import add_model_to_ms
 
 
 def uvh5_to_ms(
@@ -67,7 +68,7 @@ def uvh5_to_ms(
 
     write_UV_to_ms(uvdata, msname, antenna_positions)
 
-    set_ms_model_column(msname, uvdata, pt_dec, ra, dec, flux)
+    add_model_to_ms(msname)
 
 
 def phase_visibilities(
