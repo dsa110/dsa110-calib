@@ -12,14 +12,14 @@ import dsacalib.utils as du
 class CalibratorObservation:
     """A calibrator observation used to obtain beamformer and voltage calibration solutions."""
 
-    def __init__(self, msname: str, cal: du.CalibratorSource, refants: List[str]) -> None:
+    def __init__(self, msname: str, calname: str, refants: List[str]) -> None:
         """Initialize the calibrator observation, including settings for calibration.
 
         `msname` should exclude the ".ms" extension
         """
         self.msname = msname
-        self.cal = cal
-        self.table_prefix = f"{self.msname}_{self.cal.name}"
+        self.calname = calname
+        self.table_prefix = f"{self.msname}_{self.calname}"
         self.config = get_configuration()
         self.config["refants"] = refants
 
@@ -70,12 +70,12 @@ class CalibratorObservation:
 
         # Delay calibration on two timescales
         error += dc.delay_calibration(
-            self.msname, self.cal.name, refants=self.config["refants"], t2=t2)
+            self.msname, self.calname, refants=self.config["refants"], t2=t2)
         _check_path(f"{self.table_prefix}_kcal")
 
         # Compare delay calibration on the timescales to flag extra antennas
         _times, antenna_delays, kcorr, _ant_nos = dp.plot_antenna_delays(
-            self.msname, self.cal.name, show=False)
+            self.msname, self.calname, show=False)
         error += df.flag_antennas_using_delays(antenna_delays, kcorr, self.msname)
         try:
             _check_path(f"{self.table_prefix}_2kcal")
@@ -86,7 +86,7 @@ class CalibratorObservation:
         for ext in ["kcal", "2kcal"]:
             shutil.rmtree(f"{self.table_prefix}_{ext}")
         error += dc.delay_calibration(
-            self.msname, self.cal.name, refants=self.config["refants"], t2=t2)
+            self.msname, self.calname, refants=self.config["refants"], t2=t2)
         _check_path(f"{self.table_prefix}_kcal")
 
         return error
@@ -113,7 +113,7 @@ class CalibratorObservation:
                     "type": "B",
                     "spwmap": [-1]}]
         error = dc.gain_calibration(
-            self.msname, self.cal.name, self.config['refants'][0], caltables, tbeam=tbeam)
+            self.msname, self.calname, self.config['refants'][0], caltables, tbeam=tbeam)
         return error
 
     def bandpass_calibration(self, delay_bandpass_cal_prefix: str = "") -> int:
@@ -137,14 +137,14 @@ class CalibratorObservation:
                     "type": "G",
                     "spwmap": [-1]}]
         error = dc.bandpass_calibration(
-            self.msname, self.cal.name, self.config['refants'][0], caltables)
+            self.msname, self.calname, self.config['refants'][0], caltables)
         return error
 
     def quick_delay_calibration(self) -> int:
         """Calibrate delays after averaging entire observation."""
         error = 0
         error += dc.delay_calibration(
-            self.msname, self.cal.name, refants=self.config["refants"])
+            self.msname, self.calname, refants=self.config["refants"])
         _check_path(f"{self.table_prefix}_kcal")
         return error
 

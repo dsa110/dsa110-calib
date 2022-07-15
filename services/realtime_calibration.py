@@ -231,7 +231,7 @@ def calibrate_scan(scan: Scan, config: Configuration):
         config.msdir, config.refmjd, logger)
 
     status = calibrate_measurement_set(
-        msname, cal, refants=config.refants, logger=logger)
+        msname, cal.name, refants=config.refants, logger=logger)
 
     return msname, cal, status
 
