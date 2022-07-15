@@ -22,37 +22,44 @@ from dsacalib.hdf5_io import extract_applied_delays
 from dsacalib.weights import write_beamformer_solutions
 from dsacalib.ms_io import caltable_to_etcd
 
+SCHEDULER_IP = "10.41.0.104:8786"
+
 
 class CalibrationManager:
     """Manage calibration of files in realtime in the realtime system."""
 
-    def __init__(self, store: dsa_store.DsaStore):
+    def __init__(self):
         self.logger = dsa_syslog.DsaSyslogger()
         self.config = Configuration()
-        self.client = Client()
+        self.client = Client(SCHEDULER_IP)
         self.scan_cache = ScanCache(max_scans=12)
         self.futures = []
-        self.store = store
 
     def process_file(self, hostname: str, remote_path: str):
         """Process an H5File that is newly written on the corr nodes."""
         local_path = Path(self.config.hdf5dir) / Path(remote_path).name
         h5file = H5File(local_path, hostname, remote_path)
 
-        copy_future = self.client.submit(h5file.copy)
+        copy_future = self.client.submit(h5file.copy, resources={'MEMORY': 10e9})
         scan, scan_futures = self.scan_cache.get_scan_from_file(
             h5file, copy_future)
 
+        self.futures.append(copy_future)
+
         if scan.nfiles == 16:
             self.scan_cache.remove(scan)
-            self.futures.append(self.client.submit(
-                process_scan, scan, self.config, *scan_futures))
+            assess_future = self.client.submit(assess_scan, scan, *scan_futures,  resources={'MEMORY': 10e9})
+            process_future = self.client.submit(
+                process_scan, scan, self.config, assess_future,  resources={'MEMORY': 60e9})
+            self.futures.append(assess_future)
+            self.futures.append(process_future)
 
     def process_field_request(self, trigname: str, trigmjd: float):
         """Create and calibrate a field ms."""
         caltime = Time(trigmjd, format='mjd')
         print(f"Making field ms for {caltime.isot}")
-        self.client.submit(create_field_ms, caltime, trigname, self.config)
+        process_future = self.client.submit(create_field_ms, caltime, trigname, self.config, resources={'MEMORY': 60e9})
+        self.futures.append(process_future)
 
     def remove_done_futures(self):
         """Remove futures that are done from the list of futures.
@@ -68,6 +75,10 @@ class CalibrationManager:
     def __del__(self):
         self.client.cancel(self.futures)
         self.client.close()
+
+
+def assess_scan(scan, *futures):
+    scan.assess()
 
 
 def create_field_ms(caltime, calname, config):
@@ -115,7 +126,7 @@ def create_field_ms(caltime, calname, config):
 
     # Calibrate the scan
     print(f"Calibrating {caltime.isot}")
-    calibrate_scan(scan)
+    calibrate_scan(scan, config)
 
 
 def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
@@ -125,7 +136,7 @@ def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
     """
     store = dsa_store.DsaStore()
     logger = dsa_syslog.DsaSyslogger()
-    scan.assess()
+
     if scan.source is None:
         return
 
@@ -138,7 +149,7 @@ def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
         }
     )
 
-    msname, cal, calstatus = calibrate_scan(scan, config.msdir)
+    msname, cal, calstatus = calibrate_scan(scan, config)
 
     store.put_dict(
         "/mon/calibration",
@@ -208,17 +219,19 @@ def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
     )
 
 
-def calibrate_scan(self, scan: Scan):
+def calibrate_scan(scan: Scan, config: Configuration):
     """Convert a scan to ms and calibrate it."""
+    logger = dsa_syslog.DsaSyslogger()
+
     if scan.source is None:
         raise UndefinedcalError(
             f"No calibrator source defined for scan {scan.start_time.isot}")
 
     msname, cal = scan.convert_to_ms(
-        scan, self.config.msdir, self.config.refmjd, self.logger)
+        config.msdir, config.refmjd, logger)
 
     status = calibrate_measurement_set(
-        msname, cal, refants=self.config.refants, logger=self.logger)
+        msname, cal, refants=config.refants, logger=logger)
 
     return msname, cal, status
 
@@ -231,7 +244,7 @@ def handle_etcd_triggers():
     """Main process to handle etcd triggers under /cmd/cal"""
 
     store = dsa_store.DsaStore()
-    calmanager = CalibrationManager(store)
+    calmanager = CalibrationManager()
 
     def etcd_callback(etcd_dict: dict):
         """Note that each callback is run in a new thread.
