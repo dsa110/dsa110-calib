@@ -8,7 +8,7 @@ Author: Dana Simard, dana.simard@astro.caltech.edu, 10/2019
 """
 import os
 import shutil
-from typing import List, Tuple
+from typing import List, Tuple, Union
 from copy import deepcopy
 
 # Always import scipy before casatools
@@ -676,15 +676,19 @@ def calibrate_phases(
 
 
 def calculate_bandpass_from_all_tables(
-        msname: str, table_prefix: str, delay_bandpass_table_prefix: str = "",
+        msname: str, table_prefixes: Union[str, List[str]], delay_bandpass_table_prefix: str = "",
         filter_phase: bool = True) -> Tuple[np.ndarray]:
     """Combines gain, bandpass, and delay tables into a single bandpass.
 
     If `filter_phase` is set to `True`, then use savgol filter to smooth the bandpass phases,
     and channel flags are not propagated to the returned flags array.
     """
+    if not isinstance(table_prefixes, List):
+        table_prefixes = [table_prefixes]
+
     if not delay_bandpass_table_prefix:
-        delay_bandpass_table_prefix = table_prefix
+        delay_bandpass_table_prefix = table_prefixes[0]
+
     fobs = freq_GHz_from_ms(msname)
     fmean = np.mean(fobs)
 
@@ -693,21 +697,33 @@ def calculate_bandpass_from_all_tables(
         f"{delay_bandpass_table_prefix}_bacal", reshape=False, cparam=True)
     bpcal, _, bpflags, *_ = read_caltable(
         f"{delay_bandpass_table_prefix}_bpcal", reshape=False, cparam=True)
-    gacal, _, gaflags, *_ = read_caltable(f"{table_prefix}_gacal", reshape=False, cparam=True)
-    gpcal, _, gpflags, *_ = read_caltable(f"{table_prefix}_gpcal", reshape=False, cparam=True)
-
     if filter_phase:
         bpcal = (
             np.ones(bpcal.shape, bpcal.dtype) *
             np.exp(1j * savgol_filter(np.angle(bpcal), 11, 1, axis=1)))
 
-    flags = kflags | gaflags | gpflags
+    # This part needs to be generalized to multiple objects
+    gcal = np.zeros(kcal.shape, dtype=bpcal.dtype)
+    gcounts = np.zeros(kcal.shape, dtype=int)
+    for table_prefix in table_prefixes:
+        gacal_tmp, _, gaflags_tmp, *_ = read_caltable(f"{table_prefix}_gacal", reshape=False, cparam=True)
+        gpcal_tmp, _, gpflags_tmp, *_ = read_caltable(f"{table_prefix}_gpcal", reshape=False, cparam=True)
+
+        toadd = not (gpflags_tmp | gaflags_tmp)
+        gcal[toadd] += (gacal_tmp * gpcal_tmp)[toadd]
+        gcounts[toadd] += 1
+
+    gcal = gcal / gcounts
+    gflags = gcounts == 0
+    gcal[gflags] = 0
+
+    flags = kflags | gflags
     flags = np.tile(flags, (1, bpcal.shape[1], 1))
-    if filter_phase:
+    if not filter_phase:
         flags = flags | baflags | bpflags
 
     bandpass = (
-        bacal * bpcal * gacal * gpcal *
+        bacal * bpcal * gcal *
         np.exp(2j*np.pi * (fobs[:, np.newaxis] - fmean) * kcal))
 
     return bandpass, flags
