@@ -3,6 +3,7 @@ from typing import List, Tuple
 from pathlib import Path
 import os
 
+import yaml
 from astropy.time import Time
 import astropy.units as u
 from astropy.coordinates import Angle
@@ -16,6 +17,8 @@ import dsacalib.constants as ct
 from dsacalib.utils import generate_calibrator_source
 from dsacalib.ms_io import convert_calibrator_pass_to_ms
 from dsacalib.preprocess import rsync_file, first_true, update_caltable
+from dsacalib.weights import (
+    get_good_solution, filter_beamformer_solutions, average_beamformer_solutions, consistent_correlator)
 
 
 class H5File:
@@ -252,3 +255,103 @@ def sidereal_time_delta(time1: Angle, time2: Angle) -> float:
     if time_delta > np.pi:
         time_delta -= 2 * np.pi
     return time_delta
+
+
+def generate_averaged_beamformer_solns(
+        start_time: Time, caltime: Time, beamformer_dir: str, antennas: List[int], antennas_core: List[int],
+        pols: List[str], refant: int, refmjd: float, ref_bfweights: str, refsb: str = 'sb01'):
+    """Generate an averaged beamformer solution.
+
+    Uses only calibrator passes within the last 24 hours or since the snaps
+    were restarted.
+    """
+
+    if caltime - start_time > 24 * u.h:
+        start_time = caltime - 24 * u.h
+
+    # Now we want to find all sources in the last 24 hours
+    # start by updating our list with calibrators from the day before
+    beamformer_names = get_good_solution(beamformer_dir, refsb, antennas, refant, antennas_core=antennas_core)
+    beamformer_names, latest_solns = filter_beamformer_solutions(
+        beamformer_names, start_time.mjd, beamformer_dir)
+
+    if len(beamformer_names) == 0:
+        return None, None
+
+    try:
+        add_reference_bfname(ref_bfweights, beamformer_names, latest_solns,
+                             start_time, beamformer_dir)
+    except:
+        print("could not get reference bname. continuing...")
+
+    averaged_files, avg_flags = average_beamformer_solutions(
+        beamformer_names, caltime, beamformer_dir, antennas, refmjd)
+
+    update_solution_dictionary(
+        latest_solns, beamformer_names, averaged_files, avg_flags, antennas, pols)
+    latest_solns["cal_solutions"]["time"] = caltime.mjd
+    latest_solns["cal_solutions"]["bfname"] = caltime.isot
+
+    beamformer_names += [averaged_files[0].split("_")[-1].strip(".dat")]
+
+    return latest_solns, beamformer_names
+
+
+def update_solution_dictionary(
+        latest_solns, beamformer_names, averaged_files, avg_flags, antennas, pols
+):
+    """Update latest_solns to reflect the averaged beamformer weight parameters."""
+
+    latest_solns["cal_solutions"]["weight_files"] = averaged_files
+    latest_solns["cal_solutions"]["source"] = [
+        bf.split("_")[0] for bf in beamformer_names
+    ]
+    latest_solns["cal_solutions"]["caltime"] = [
+        float(Time(bf.split("_")[1]).mjd) for bf in beamformer_names
+    ]
+
+    # Remove the old bad casas solutions from flagged_antennas
+    for key, value in latest_solns["cal_solutions"]["flagged_antennas"].items():
+        if "casa solutions flagged" in value:
+            value = value.remove("casa solutions flagged")
+
+    # Flag new bad solutions
+    idxant, idxpol = np.nonzero(avg_flags)
+    for i, ant in enumerate(idxant):
+        key = f"{antennas[ant]} {pols[idxpol[i]]}"
+
+        latest_solns["cal_solutions"]["flagged_antennas"][key] = (
+            latest_solns["cal_solutions"]["flagged_antennas"].get(key, [])
+            + ["casa solutions flagged"])
+
+    # Remove any empty keys in the flagged_antennas dictionary
+    to_remove = []
+    for key, value in latest_solns["cal_solutions"]["flagged_antennas"].items():
+        if not value:
+            to_remove += [key]
+    for key in to_remove:
+        del latest_solns["cal_solutions"]["flagged_antennas"][key]
+
+
+def add_reference_bfname(ref_bfweights, beamformer_names, latest_solns, start_time, beamformer_dir):
+    """
+    If the setup of the current beamformer weights matches that of the latest file,
+    add the current weights to the beamformer_names list
+    """
+
+    if "bfname" in ref_bfweights["val"]:
+        ref_bfname = ref_bfweights["val"]["bfname"]
+    else:
+        # parse from name like "beamformer_weights_sb01_2022-03-18T04:40:15.dat"
+        ref_bfname = ref_bfweights["val"]["weights_files"].rstrip(
+            ".dat").split("_")[-1]
+    print(f"Got reference bfname of {ref_bfname}. Checking solutions...")
+
+    with open(
+            f"{beamformer_dir}/beamformer_weights_{ref_bfname}.yaml",
+            encoding="utf-8"
+    ) as f:
+        ref_solns = yaml.load(f, Loader=yaml.FullLoader)
+
+    if consistent_correlator(ref_solns, latest_solns, start_time.mjd):
+        beamformer_names.append(ref_bfname)

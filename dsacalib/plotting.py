@@ -11,6 +11,7 @@ import os
 import astropy.units as u
 import h5py
 import matplotlib.pyplot as plt
+from matplotlib.backends.backend_pdf import PdfPages
 import numpy as np
 from casacore.tables import table
 
@@ -869,7 +870,7 @@ def plot_autocorr(UV):
         sharey=True,
     )
     for j in range(len(autocorrs) // len(ccyc) + 1):
-        for i, ac in enumerate(autocorrs[len(ccyc) * j : len(ccyc) * (j + 1)]):
+        for i, ac in enumerate(autocorrs[len(ccyc) * j:len(ccyc) * (j + 1)]):
             ax[j].plot(
                 freq.squeeze() / 1e9,
                 np.abs(np.nanmean(vis[:, ac, ..., 0], axis=0)),
@@ -898,7 +899,7 @@ def plot_autocorr(UV):
         sharey=True,
     )
     for j in range(len(autocorrs) // len(ccyc) + 1):
-        for i, ac in enumerate(autocorrs[len(ccyc) * j : len(ccyc) * (j + 1)]):
+        for i, ac in enumerate(autocorrs[len(ccyc) * j:len(ccyc) * (j + 1)]):
             ax[j].plot(
                 (time - time[0]) * 24 * 60,
                 np.abs(vis[:, ac, ..., 0].mean(axis=1)),
@@ -1375,7 +1376,7 @@ def plot_beamformer_weights(
         The beamformer weights.
     """
     antennas = np.array(antennas)
-    
+
     if pols is None:
         pols = ["B", "A"]
     assert len(antennas) == 64
@@ -1441,3 +1442,20 @@ def plot_beamformer_weights(
         plt.close(fig)
 
     return gains
+
+
+def generate_summary_plot(date, msname, calname, antennas, tempdir, webplots):
+    """Generate a summary plot and put it in webplots."""
+
+    figure_path = f"{tempdir}/{date}_{calname}.pdf"
+    with PdfPages(figure_path) as pdf:
+        for j in range(len(antennas) // 10 + 1):
+            fig = summary_plot(
+                msname,
+                calname,
+                2,
+                ["B", "A"],
+                antennas[j * 10:(j + 1) * 10]
+            )
+            pdf.savefig(fig)
+            plt.close(fig)
