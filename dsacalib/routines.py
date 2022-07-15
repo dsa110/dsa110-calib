@@ -23,7 +23,7 @@ from dsacalib.calib import combine_tables
 
 
 def calibrate_measurement_set(
-        msname: str, cal: du.CalibratorSource, refants: List[str],
+        msname: str, calname: str, refants: List[str],
         delay_bandpass_cal_prefix: str = "", logger: dsl.DsaSyslogger = None,
         throw_exceptions: bool = True, **kwargs
 ) -> int:
@@ -60,7 +60,7 @@ def calibrate_measurement_set(
     int
         A status code. Decode with dsautils.calstatus
     """
-    calobs = CalibratorObservation(msname, cal, refants)
+    calobs = CalibratorObservation(msname, calname, refants)
     calobs.set_calibration_parameters(**kwargs)
 
     print("entered calibration")
@@ -137,7 +137,7 @@ def calibrate_measurement_set(
             du.warning_logger(logger, message)
 
         current_error = cs.GAIN_BP_CAL_ERR
-        combine_tables(msname, f"{msname}_{cal.name}", delay_bandpass_cal_prefix)
+        combine_tables(msname, f"{msname}_{calname}", delay_bandpass_cal_prefix)
 
     except Exception as exc:
         status = cs.update(status, current_error)
