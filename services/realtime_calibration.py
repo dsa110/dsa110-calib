@@ -26,18 +26,17 @@ from dsacalib.ms_io import caltable_to_etcd
 class CalibrationManager:
     """Manage calibration of files in realtime in the realtime system."""
 
-    def __init__(
-            self, config: Configuration, logger: dsa_syslog.DsaSyslogger, store: dsa_store.DsaStore):
+    def __init__(self, store: dsa_store.DsaStore):
+        self.logger = dsa_syslog.DsaSyslogger()
+        self.config = Configuration()
         self.client = Client()
         self.scan_cache = ScanCache(max_scans=12)
         self.futures = []
-        self.logger = logger
         self.store = store
-        self.config = config.copy()
 
     def process_file(self, hostname: str, remote_path: str):
         """Process an H5File that is newly written on the corr nodes."""
-        local_path = Path(self.h5dir) / Path(remote_path).name
+        local_path = Path(self.config.hdf5dir) / Path(remote_path).name
         h5file = H5File(local_path, hostname, remote_path)
 
         copy_future = self.client.submit(h5file.copy)
@@ -67,7 +66,7 @@ class CalibrationManager:
             }
         )
 
-        msname, cal, calstatus = self.calibrate_scan(scan, self.msdir)
+        msname, cal, calstatus = self.calibrate_scan(scan, self.config.msdir)
 
         self.store.put_dict(
             "/mon/calibration",
@@ -143,10 +142,10 @@ class CalibrationManager:
                 f"No calibrator source defined for scan {scan.start_time.isot}")
 
         msname, cal = scan.convert_to_ms(
-            scan, self.msdir, self.refmjd, self.logger)
+            scan, self.config.msdir, self.config.refmjd, self.logger)
 
         status = calibrate_measurement_set(
-            msname, cal, refants=self.refants, logger=self.logger)
+            msname, cal, refants=self.config.refants, logger=self.logger)
 
         return msname, cal, status
 
@@ -154,7 +153,7 @@ class CalibrationManager:
         """Create and calibrate a field ms."""
         caltime = Time(trigmjd, format='mjd')
         callst = caltime.sidereal_time('apparent', longitude=ct.OVRO_LON)
-        hdf5dir = Path(self.h5dir)
+        hdf5dir = Path(self.config.hdf5dir)
 
         # Check current time to see if trigmjd has passed yet.  If not, wait
         to_wait = (caltime - Time.now()).to_value(u.s)
@@ -219,10 +218,7 @@ def handle_etcd_triggers():
     """Main process to handle etcd triggers under /cmd/cal"""
 
     store = dsa_store.DsaStore()
-    logger = dsa_syslog.DsaSyslogger()
-    config = Configuration()
-    calmanager = CalibrationManager(
-        config.msdir, config.hdf5dir, config.refmjd, config.ncorr, config.refants, logger)
+    calmanager = CalibrationManager(store)
 
     def etcd_callback(etcd_dict: dict):
         """Note that each callback is run in a new thread.
@@ -232,9 +228,9 @@ def handle_etcd_triggers():
         cmd = etcd_dict['cmd']
         val = etcd_dict['val']
         if cmd == 'rsync':
-            calmanager.process_file_request(val['hostname'], val['filename'])
+            pass
+            #calmanager.process_file_request(val['hostname'], val['filename'])
         elif cmd == 'field':
-
             calmanager.process_field_request(val['trigname'], val['mjds'])
 
     store.add_watch("/cmd/cal", etcd_callback)
