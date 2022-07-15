@@ -215,8 +215,7 @@ def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
         config.msdir,
         config.antennas,
         outname=figure_prefix,
-        show=False
-    )
+        show=False)
 
 
 def calibrate_scan(scan: Scan, config: Configuration):
@@ -227,12 +226,27 @@ def calibrate_scan(scan: Scan, config: Configuration):
         raise UndefinedcalError(
             f"No calibrator source defined for scan {scan.start_time.isot}")
 
+    start = Time.now()
+    logger.info(f"Starting conversion to ms for {scan.start_time.isot} at {start.isot}")
+
     msname, cal = scan.convert_to_ms(
         config.msdir, config.refmjd, logger)
+
+    middle = Time.now()
+    elapsed_min = (middle - start).to_value(u.min)
+    logger.info(f"Conversion to ms for {scan.start_time.isot} completed after {elapsed_min} min")
+    logger.info(f"Starting calibration of ms for {scan.start_time.isot} at {middle.isot}")
 
     status = calibrate_measurement_set(
         msname, cal, refants=config.refants, logger=logger)
 
+    end = Time.now()
+    elapsed_min = (end - middle).to_value(u.min)
+    logger.info(f"Calibration of ms for {scan.start_time.isot} completed after {elapsed_min} min")
+
+    elapsed_min = (end - start).to_value(u.min)
+    logger.info(f"Processing of {scan.start_time.isot} completed after {elapsed_min} min")
+    
     return msname, cal, status
 
 
