@@ -216,7 +216,7 @@ def calibrate_scan(scan: Scan, config: Configuration):
             f"No calibrator source defined for scan {scan.start_time.isot}")
 
     msname, cal = scan.convert_to_ms(
-        scan, config.msdir, config.refmjd, logger)
+        config.msdir, config.refmjd, logger)
 
     status = calibrate_measurement_set(
         msname, cal, refants=config.refants, logger=logger)
