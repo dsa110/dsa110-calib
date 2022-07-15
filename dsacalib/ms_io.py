@@ -17,14 +17,11 @@ from typing import List
 
 import astropy.units as u
 from astropy.time import Time
-from astropy.coordinates import SkyCoord
-from dsacalib.preprocess import read_nvss_catalog
 import scipy  # noqa
 import casatools as cc
 import numpy as np
 from casacore.tables import table
 from casatasks import virtualconcat
-from casatasks import ft as modelft
 from dsautils import calstatus as cs
 from dsautils import dsa_store
 
@@ -168,28 +165,9 @@ def convert_calibrator_pass_to_ms(
 
 
 def simulate_ms(
-    ofile,
-    tname,
-    anum,
-    xx,
-    yy,
-    zz,
-    diam,
-    mount,
-    pos_obs,
-    spwname,
-    freq,
-    deltafreq,
-    freqresolution,
-    nchannels,
-    integrationtime,
-    obstm,
-    dt,
-    source,
-    stoptime,
-    autocorr,
-    fullpol,
-):
+        ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname, freq, deltafreq,
+        freqresolution, nchannels, integrationtime, obstm, dt, source, stoptime, 
+        autocorr, fullpol):
     """Simulates a measurement set with cross-correlations only.
 
     WARNING: Not simulating autocorrelations correctly regardless of inclusion
