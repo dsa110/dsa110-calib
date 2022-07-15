@@ -46,157 +46,13 @@ class CalibrationManager:
         if scan.nfiles == 16:
             self.scan_cache.remove(scan)
             self.futures.append(self.client.submit(
-                self.process_scan, scan, *scan_futures))
-
-    def process_scan(self, scan: Scan, *futures: List[Future]):
-        """Process a scan and calibrate it if it contains a source."
-
-        The list of futures is unused but is required to handle the dependencies on the availability of files.
-        """
-        scan.assess()
-        if scan.source is None:
-            return
-
-        self.store.put_dict(
-            "/mon/calibration",
-            {
-                "scan_time": scan.start_time.mjd,
-                "calibration_source": scan.source.source,
-                "status": -1
-            }
-        )
-
-        msname, cal, calstatus = self.calibrate_scan(scan, self.config.msdir)
-
-        self.store.put_dict(
-            "/mon/calibration",
-            {
-                "scan_time": scan.start_time.mjd,
-                "calibration_source": scan.source.source,
-                "status": calstatus
-            }
-        )
-
-        # Upload solutions to etcd
-        caltable_to_etcd(
-            msname, cal.name, scan.start_time.mjd, calstatus, logger=self.logger)
-
-        # Make summary plots
-        generate_summary_plot(
-            scan.start_time.strftime("%Y-%m-%d"), msname, cal.name, self.config.antennas, self.config.tempplots,
-            self.config.webplots)
-
-        # Make beamformer weights
-        applied_delays = extract_applied_delays(
-            first_true(scan.files).path, self.config.antennas)
-
-        # Write beamformer solutions for one source
-        caltime = Time(scan.start_time.isot, precision=0)
-        write_beamformer_solutions(
-            msname, cal.name, scan.start_time.mjd, self.config.antennas, applied_delays, self.config.beamformer_dir,
-            self.config.pols, self.config.nchan, self.config.nchan_spw, self.config.bw_GHz,
-            self.config.chan_ascending, self.config.f0_GHz, self.config.ch0, self.config.refmjd,
-            flagged_antennas=self.config.antennas_not_in_bf)
-
-        ref_bfweights = self.store.get_dict("/mon/cal/bfweights")
-        beamformer_solns, beamformer_names = generate_averaged_beamformer_solns(
-            self.config.snap_start_time, scan.start_time, self.config.beamformer_dir,
-            self.config.antennas, self.config.antennas_core, self.config.pols, self.config.refants[0],
-            self.config.refmjd, ref_bfweights)
-
-        if not beamformer_solns:
-            return
-
-        with open(
-                f"{self.config.beamformer_dir}/beamformer_weights_{caltime.isot}.yaml",
-                "w",
-                encoding="utf-8"
-        ) as file:
-            yaml.dump(beamformer_solns, file)
-
-        self.store.put_dict(
-            "/mon/cal/bfweights",
-            {
-                "cmd": "update_weights",
-                "val": beamformer_solns["cal_solutions"]})
-
-        # Plot the beamformer solutions
-        figure_prefix = f"{self.config.tempplots}/{caltime}"
-        plot_beamformer_weights(
-            beamformer_names, self.config.antennas, self.config.beamformer_dir,
-            outname=figure_prefix, show=False)
-
-        # Plot evolution of the phase over the day
-        plot_bandpass_phases(
-            beamformer_names,
-            self.config.msdir,
-            self.config.antennas,
-            outname=figure_prefix,
-            show=False
-        )
-
-    def calibrate_scan(self, scan: Scan):
-        """Convert a scan to ms and calibrate it."""
-        if scan.source is None:
-            raise UndefinedcalError(
-                f"No calibrator source defined for scan {scan.start_time.isot}")
-
-        msname, cal = scan.convert_to_ms(
-            scan, self.config.msdir, self.config.refmjd, self.logger)
-
-        status = calibrate_measurement_set(
-            msname, cal, refants=self.config.refants, logger=self.logger)
-
-        return msname, cal, status
+                process_scan, scan, self.config, *scan_futures))
 
     def process_field_request(self, trigname: str, trigmjd: float):
         """Create and calibrate a field ms."""
         caltime = Time(trigmjd, format='mjd')
         print(f"Making field ms for {caltime.isot}")
-        callst = caltime.sidereal_time('apparent', longitude=ct.OVRO_LON)
-        hdf5dir = Path(self.config.hdf5dir)
-
-        # Check current time to see if trigmjd has passed yet.  If not, wait
-        to_wait = (caltime - Time.now()).to_value(u.s)
-        if to_wait > 0:
-            print(f"Waiting {to_wait}s for {caltime.isot}")
-            time.sleep(to_wait)
-
-        # Check if correct files exists yet.  If not, wait with timeout of 10 minutes
-        thishour = caltime.strftime("%Y-%m-%dT%H")
-        lasthour = (caltime + 1 * u.h).strftime("%Y-%m-%dT%H")
-        nexthour = (caltime + 1 * u.h).strftime("%Y-%m-%dT%H")
-
-        # Get the list of H5Files
-        counter = 0
-        h5files = []
-        while counter < 10:
-            allfiles = chain(
-                hdf5dir.glob(f"{thishour}*.hdf5"),
-                hdf5dir.glob(f"{lasthour}*.hdf5"),
-                hdf5dir.glob(f"{nexthour}*.hdf5"))
-            for file in allfiles:
-                h5file = H5File(file)
-                if abs(h5file.start_time - caltime).to_value(u.min) < 2.5:
-                    if h5file not in h5files:
-                        h5files.append(h5file)
-            print(f"Found {len(h5files)} files for {caltime.isot}")
-            if len(h5files) >= self.config.ncorr:
-                break
-
-            time.sleep(60)
-
-        # Define the scan
-        calsource = {
-            'source': trigname,
-            'ra': callst.to_value(u.deg),
-            'dec': first_true(h5files).pointing_dec.to_value(u.deg)
-        }
-        scan = Scan(h5files, calsource)
-
-        # Calibrate the scan
-        print(f"Calibrating {caltime.isot}")
-        self.client.submit(self.calibrate_scan, scan)
+        self.client.submit(create_field_ms, caltime, trigname, self.config)
 
     def remove_done_futures(self):
         """Remove futures that are done from the list of futures.
@@ -212,6 +68,159 @@ class CalibrationManager:
     def __del__(self):
         self.client.cancel(self.futures)
         self.client.close()
+
+
+def create_field_ms(caltime, calname, config):
+    """Create a field measurement set."""
+    hdf5dir = Path(config.hdf5dir)
+    callst = caltime.sidereal_time('apparent', longitude=ct.OVRO_LON)
+
+    # Check current time to see if trigmjd has passed yet.  If not, wait
+    to_wait = (caltime - Time.now()).to_value(u.s)
+    if to_wait > 0:
+        print(f"Waiting {to_wait}s for {caltime.isot}")
+        time.sleep(to_wait)
+
+    # Check if correct files exists yet.  If not, wait with timeout of 10 minutes
+    thishour = caltime.strftime("%Y-%m-%dT%H")
+    lasthour = (caltime + 1 * u.h).strftime("%Y-%m-%dT%H")
+    nexthour = (caltime + 1 * u.h).strftime("%Y-%m-%dT%H")
+
+    # Get the list of H5Files
+    counter = 0
+    h5files = []
+    while counter < 10:
+        allfiles = chain(
+            hdf5dir.glob(f"{thishour}*.hdf5"),
+            hdf5dir.glob(f"{lasthour}*.hdf5"),
+            hdf5dir.glob(f"{nexthour}*.hdf5"))
+        for file in allfiles:
+            h5file = H5File(file)
+            if abs(h5file.start_time - caltime).to_value(u.min) < 2.5:
+                if h5file not in h5files:
+                    h5files.append(h5file)
+        print(f"Found {len(h5files)} files for {caltime.isot}")
+        if len(h5files) >= config.ncorr:
+            break
+
+        time.sleep(60)
+
+    # Define the scan
+    calsource = {
+        'source': calname,
+        'ra': callst.to_value(u.deg),
+        'dec': first_true(h5files).pointing_dec.to_value(u.deg)
+    }
+    scan = Scan(h5files, calsource)
+
+    # Calibrate the scan
+    print(f"Calibrating {caltime.isot}")
+    calibrate_scan(scan)
+
+
+def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
+    """Process a scan and calibrate it if it contains a source."
+
+    The list of futures is unused but is required to handle the dependencies on the availability of files.
+    """
+    store = dsa_store.DsaStore()
+    logger = dsa_syslog.DsaSyslogger()
+    scan.assess()
+    if scan.source is None:
+        return
+
+    store.put_dict(
+        "/mon/calibration",
+        {
+            "scan_time": scan.start_time.mjd,
+            "calibration_source": scan.source.source,
+            "status": -1
+        }
+    )
+
+    msname, cal, calstatus = calibrate_scan(scan, config.msdir)
+
+    store.put_dict(
+        "/mon/calibration",
+        {
+            "scan_time": scan.start_time.mjd,
+            "calibration_source": scan.source.source,
+            "status": calstatus
+        }
+    )
+
+    # Upload solutions to etcd
+    caltable_to_etcd(
+        msname, cal.name, scan.start_time.mjd, calstatus, logger=logger)
+
+    # Make summary plots
+    generate_summary_plot(
+        scan.start_time.strftime("%Y-%m-%d"), msname, cal.name, config.antennas, config.tempplots,
+        config.webplots)
+
+    # Make beamformer weights
+    applied_delays = extract_applied_delays(
+        first_true(scan.files).path, config.antennas)
+
+    # Write beamformer solutions for one source
+    caltime = Time(scan.start_time.isot, precision=0)
+    write_beamformer_solutions(
+        msname, cal.name, scan.start_time.mjd, config.antennas, applied_delays, config.beamformer_dir,
+        config.pols, config.nchan, config.nchan_spw, config.bw_GHz,
+        config.chan_ascending, config.f0_GHz, config.ch0, config.refmjd,
+        flagged_antennas=config.antennas_not_in_bf)
+
+    ref_bfweights = store.get_dict("/mon/cal/bfweights")
+    beamformer_solns, beamformer_names = generate_averaged_beamformer_solns(
+        config.snap_start_time, scan.start_time, config.beamformer_dir,
+        config.antennas, config.antennas_core, config.pols, config.refants[0],
+        config.refmjd, ref_bfweights)
+
+    if not beamformer_solns:
+        return
+
+    with open(
+            f"{config.beamformer_dir}/beamformer_weights_{caltime.isot}.yaml",
+            "w",
+            encoding="utf-8"
+    ) as file:
+        yaml.dump(beamformer_solns, file)
+
+    store.put_dict(
+        "/mon/cal/bfweights",
+        {
+            "cmd": "update_weights",
+            "val": beamformer_solns["cal_solutions"]})
+
+    # Plot the beamformer solutions
+    figure_prefix = f"{config.tempplots}/{caltime}"
+    plot_beamformer_weights(
+        beamformer_names, config.antennas, config.beamformer_dir,
+        outname=figure_prefix, show=False)
+
+    # Plot evolution of the phase over the day
+    plot_bandpass_phases(
+        beamformer_names,
+        config.msdir,
+        config.antennas,
+        outname=figure_prefix,
+        show=False
+    )
+
+
+def calibrate_scan(self, scan: Scan):
+    """Convert a scan to ms and calibrate it."""
+    if scan.source is None:
+        raise UndefinedcalError(
+            f"No calibrator source defined for scan {scan.start_time.isot}")
+
+    msname, cal = scan.convert_to_ms(
+        scan, self.config.msdir, self.config.refmjd, self.logger)
+
+    status = calibrate_measurement_set(
+        msname, cal, refants=self.config.refants, logger=self.logger)
+
+    return msname, cal, status
 
 
 class UndefinedcalError(RuntimeError):
@@ -233,7 +242,7 @@ def handle_etcd_triggers():
         val = etcd_dict['val']
         if cmd == 'rsync':
             pass
-            #calmanager.process_file_request(val['hostname'], val['filename'])
+            # calmanager.process_file_request(val['hostname'], val['filename'])
         elif cmd == 'field':
             calmanager.process_field_request(val['trigname'], val['mjds'])
 
