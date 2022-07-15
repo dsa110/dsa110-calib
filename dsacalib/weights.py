@@ -48,7 +48,8 @@ def get_good_solution(
     times = [bfname.split("_")[1] for bfname in bfnames]
     times, bfnames = zip(*sorted(zip(times, bfnames), reverse=True))
     if selectcore:
-        gains = read_gains(bfnames, antennas, beamformer_dir, selectants=antennas_core)
+        gains = read_gains(bfnames, antennas, beamformer_dir,
+                           selectants=antennas_core)
     else:
         gains = read_gains(bfnames, antennas, beamformer_dir)
     good = find_good_solutions(
@@ -63,7 +64,8 @@ def get_good_solution(
         selectcore=selectcore,
     )
     if plot:
-        show_gains(bfnames, gains, good, refant, antennas, antennas_core, selectcore=selectcore)
+        show_gains(bfnames, gains, good, refant, antennas,
+                   antennas_core, selectcore=selectcore)
 
     return [bfnames[gidx] for gidx in good]
 
@@ -83,7 +85,7 @@ def get_bfnames(beamformer_dir: str, refsb: str = "sb01", select: List[str] = No
         List of substrings of the beamformer weights to select.  For example,
         ["2022-06-01", "2022-06-02"] would select all weights with names containing
         those two dates.
-    
+
     Returns
     -------
     list of str
@@ -195,7 +197,8 @@ def find_good_solutions(
             for k in np.arange(len(bfnames)):
                 if gains[k, j, :, i].any():
                     #                    angle = np.angle(gains[k, j, :, i]/gains[0, j, :, i])
-                    angle = np.angle(gains[k, j, :, i] / gains[k, refant_ind, :, i])
+                    angle = np.angle(
+                        gains[k, j, :, i] / gains[k, refant_ind, :, i])
                     #                    angles[k] = angle
                     medgrad = np.median(np.gradient(angle))
                     grads[k, j, i] = medgrad
@@ -260,7 +263,8 @@ def find_good_solutions(
                 status_sol = "reject"
             else:
                 status_sol = "keep"
-            print(f"{bfnames[k]} has {bad.count(k)} bad relative gains => {status_sol}")
+            print(
+                f"{bfnames[k]} has {bad.count(k)} bad relative gains => {status_sol}")
 
     if plot:
         # visualize grads
@@ -302,16 +306,19 @@ def show_gains(
     ny = nants // nx
     if nants % nx > 0:
         ny += 1
-    fig, ax = plt.subplots(ny, nx, figsize=(3 * nx, 4 * ny), sharex=True, sharey=True)
+    fig, ax = plt.subplots(ny, nx, figsize=(
+        3 * nx, 4 * ny), sharex=True, sharey=True)
     ax[0, 0].set_yticks(np.arange(len(keep)))
 
     for axi in ax[0, :]:
-        axi.set_yticklabels([bfn for i, bfn in enumerate(bfnames) if i in keep])
+        axi.set_yticklabels(
+            [bfn for i, bfn in enumerate(bfnames) if i in keep])
     ax = ax.flatten()
 
     for i in np.arange(nants):
         ax[i].imshow(
-            np.angle(gains[:, i, :, 0] / gains[:, refant_ind, :, 0]).take(keep, axis=0),
+            np.angle(gains[:, i, :, 0] /
+                     gains[:, refant_ind, :, 0]).take(keep, axis=0),
             vmin=-np.pi,
             vmax=np.pi,
             aspect="auto",
@@ -334,7 +341,8 @@ def calc_eastings(antennas, refmjd):
     Generates them for baselines composed of antennas in `antennas`.
     """
     antpos_df = get_itrf(
-        latlon_center=(ct.OVRO_LAT * u.rad, ct.OVRO_LON * u.rad, ct.OVRO_ALT * u.m)
+        latlon_center=(ct.OVRO_LAT * u.rad, ct.OVRO_LON *
+                       u.rad, ct.OVRO_ALT * u.m)
     )
     blen = np.zeros((len(antennas), 3))
     for i, ant in enumerate(antennas):
@@ -417,11 +425,11 @@ def consistent_correlator(full_solns, full_latest_solns, start_time):
     latest_solns = pull_out_cal_solutions(full_latest_solns)
 
     if (
-            solns['antenna_order'] != latest_solns['antenna_order']
-            or solns['delays'] != latest_solns['delays']
-            or solns['eastings'] != latest_solns['eastings']
-            or solns['caltime'] < latest_solns['caltime'] - 1
-            or solns['caltime'] < start_time):
+            solns['antenna_order'] != latest_solns['antenna_order'] or
+            solns['delays'] != latest_solns['delays'] or
+            solns['eastings'] != latest_solns['eastings'] or
+            solns['caltime'] < latest_solns['caltime'] - 1 or
+            solns['caltime'] < start_time):
         return False
 
     return True
@@ -439,12 +447,12 @@ def average_beamformer_solutions(
         A time to use in the filename of the solutions, indicating when they
         were written or are useful. E.g. the transit time of the most recent
         source being averaged over.
-    beamformer_dir: 
+    beamformer_dir : str
         The directory where temporary beamformer solutions are stored.
     antennas : list
         The order of the antennas in the beamformer solutions.
     refmjd : float
-        The reference mjd used in the beamformer solutions.    
+        The reference mjd used in the beamformer solutions.
     tol : float
         The percentage of weights for a given antenna that can be flagged
         before the entire antenna is flagged.
@@ -468,7 +476,8 @@ def average_beamformer_solutions(
         tmp_antflags = []
         filepath = f"{beamformer_dir}/beamformer_weights_{fname}.yaml"
         with open(filepath, encoding="utf-8") as f:
-            calibration_params = yaml.load(f, Loader=yaml.FullLoader)["cal_solutions"]
+            calibration_params = yaml.load(f, Loader=yaml.FullLoader)[
+                "cal_solutions"]
             antenna_order = calibration_params["antenna_order"]
             for key in calibration_params["flagged_antennas"]:
                 if (
@@ -485,7 +494,8 @@ def average_beamformer_solutions(
     fracflagged = np.sum(np.isnan(gains), axis=1) / (gains.shape[1])
     antenna_flags_badsolns = fracflagged > tol
     gains[np.isnan(gains)] = 0.0
-    gains = gains.astype(np.complex64).view(np.float32).reshape(nants, nsubbands, nchanspw, npol, 2)
+    gains = gains.astype(np.complex64).view(
+        np.float32).reshape(nants, nsubbands, nchanspw, npol, 2)
     print(gains.shape)
     written_files = []
     if eastings is not None:
@@ -514,7 +524,8 @@ def set_freq_beamformer_weights(
 
     for sbnum, ch0 in enumerate(ch0dict.values()):
         fobs_corr = fobs[ch0:ch0 + nchan_spw]
-        fweights[sbnum, :] = fobs_corr.reshape(fweights.shape[1], -1).mean(axis=1)
+        fweights[sbnum, :] = fobs_corr.reshape(
+            fweights.shape[1], -1).mean(axis=1)
 
     return fweights
 
@@ -564,7 +575,8 @@ def write_beamformer_weights(
     if f_reversed:
         assert np.allclose(fobs[::-1], fweights.ravel())
 
-    gains, _time, flags, ant1, ant2 = read_caltable(f"{msname}_{calname}_bcal", cparam=True)
+    gains, _time, flags, ant1, ant2 = read_caltable(
+        f"{msname}_{calname}_bcal", cparam=True)
     gains[flags] = np.nan
     gains = get_antenna_gains(gains, ant1, ant2, antennas)
     assert gains.shape[0] == nant
