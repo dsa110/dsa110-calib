@@ -152,12 +152,14 @@ class CalibrationManager:
     def process_field_request(self, trigname: str, trigmjd: float):
         """Create and calibrate a field ms."""
         caltime = Time(trigmjd, format='mjd')
+        print(f"Making field ms for {caltime.isot}")
         callst = caltime.sidereal_time('apparent', longitude=ct.OVRO_LON)
         hdf5dir = Path(self.config.hdf5dir)
 
         # Check current time to see if trigmjd has passed yet.  If not, wait
         to_wait = (caltime - Time.now()).to_value(u.s)
         if to_wait > 0:
+            print(f"Waiting {to_wait}s for {caltime.isot}")
             time.sleep(to_wait)
 
         # Check if correct files exists yet.  If not, wait with timeout of 10 minutes
@@ -170,15 +172,16 @@ class CalibrationManager:
         h5files = []
         while counter < 10:
             allfiles = chain(
-                hdf5dir.glob(f"{thishour}.hdf5"),
-                hdf5dir.glob(f"{lasthour}.hdf5"),
-                hdf5dir.glob(f"{nexthour}.hdf5"))
+                hdf5dir.glob(f"{thishour}*.hdf5"),
+                hdf5dir.glob(f"{lasthour}*.hdf5"),
+                hdf5dir.glob(f"{nexthour}*.hdf5"))
             for file in allfiles:
                 h5file = H5File(file)
                 if abs(h5file.start_time - caltime).to_value(u.min) < 2.5:
                     if h5file not in h5files:
                         h5files.append(h5file)
-            if len(h5files) >= self.nsubbands:
+            print(f"Found {len(h5files)} files for {caltime.isot}")
+            if len(h5files) >= self.config.ncorr:
                 break
 
             time.sleep(60)
@@ -192,7 +195,8 @@ class CalibrationManager:
         scan = Scan(h5files, calsource)
 
         # Calibrate the scan
-        self.calibrate_scan(scan)
+        print(f"Calibrating {caltime.isot}")
+        self.client.submit(self.calibrate_scan, scan)
 
     def remove_done_futures(self):
         """Remove futures that are done from the list of futures.
@@ -237,6 +241,7 @@ def handle_etcd_triggers():
 
     while True:
         calmanager.remove_done_futures()
+        print(f"{len(calmanager.futures)} tasks underway")
         time.sleep(60)
 
 
