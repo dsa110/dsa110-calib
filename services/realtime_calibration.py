@@ -26,13 +26,12 @@ from dsacalib.ms_io import caltable_to_etcd
 class CalibrationManager:
     """Manage calibration of files in realtime in the realtime system."""
 
-    def __init__(self, store: dsa_store.DsaStore):
+    def __init__(self):
         self.logger = dsa_syslog.DsaSyslogger()
         self.config = Configuration()
         self.client = Client()
         self.scan_cache = ScanCache(max_scans=12)
         self.futures = []
-        self.store = store
 
     def process_file(self, hostname: str, remote_path: str):
         """Process an H5File that is newly written on the corr nodes."""
@@ -115,7 +114,7 @@ def create_field_ms(caltime, calname, config):
 
     # Calibrate the scan
     print(f"Calibrating {caltime.isot}")
-    calibrate_scan(scan)
+    calibrate_scan(scan, config)
 
 
 def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
@@ -138,7 +137,7 @@ def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
         }
     )
 
-    msname, cal, calstatus = calibrate_scan(scan, config.msdir)
+    msname, cal, calstatus = calibrate_scan(scan, config)
 
     store.put_dict(
         "/mon/calibration",
@@ -208,17 +207,19 @@ def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
     )
 
 
-def calibrate_scan(self, scan: Scan):
+def calibrate_scan(scan: Scan, config: Configuration):
     """Convert a scan to ms and calibrate it."""
+    logger = dsa_syslog.DsaSyslogger()
+
     if scan.source is None:
         raise UndefinedcalError(
             f"No calibrator source defined for scan {scan.start_time.isot}")
 
     msname, cal = scan.convert_to_ms(
-        scan, self.config.msdir, self.config.refmjd, self.logger)
+        scan, config.msdir, config.refmjd, logger)
 
     status = calibrate_measurement_set(
-        msname, cal, refants=self.config.refants, logger=self.logger)
+        msname, cal, refants=config.refants, logger=logger)
 
     return msname, cal, status
 
@@ -231,7 +232,7 @@ def handle_etcd_triggers():
     """Main process to handle etcd triggers under /cmd/cal"""
 
     store = dsa_store.DsaStore()
-    calmanager = CalibrationManager(store)
+    calmanager = CalibrationManager()
 
     def etcd_callback(etcd_dict: dict):
         """Note that each callback is run in a new thread.
