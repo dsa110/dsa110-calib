@@ -680,7 +680,7 @@ def write_beamformer_solutions(
     calibration_dictionary = {
         "cal_solutions": {
             "delay_bandpass_prefix": delay_bandpass_prefix,
-            "gain_prefix": [gain_prefix],
+            "source": gain_prefix.rsplit('_', 1)[1],
             "caltime": float(caltime.mjd),
             "antenna_order": [int(ant) for ant in config.antennas],
             "pol_order": ["B", "A"],
