@@ -19,6 +19,7 @@ from dsacalib.ms_io import convert_calibrator_pass_to_ms
 from dsacalib.preprocess import rsync_file, first_true, update_caltable
 from dsacalib.weights import (
     get_good_solution, filter_beamformer_solutions, average_beamformer_solutions, consistent_correlator)
+from dsacalib.config import Configuration
 
 
 class H5File:
@@ -258,37 +259,37 @@ def sidereal_time_delta(time1: Angle, time2: Angle) -> float:
 
 
 def generate_averaged_beamformer_solns(
-        start_time: Time, caltime: Time, beamformer_dir: str, antennas: List[int], antennas_core: List[int],
-        pols: List[str], refant: int, refmjd: float, ref_bfweights: str, refsb: str = 'sb01'):
+        caltime: Time, config: Configuration, ref_bfweights: str, refsb: str = 'sb00'):
     """Generate an averaged beamformer solution.
 
     Uses only calibrator passes within the last 24 hours or since the snaps
     were restarted.
     """
 
-    if caltime - start_time > 24 * u.h:
+    if caltime - config.start_time > 24 * u.h:
         start_time = caltime - 24 * u.h
 
     # Now we want to find all sources in the last 24 hours
     # start by updating our list with calibrators from the day before
-    beamformer_names = get_good_solution(beamformer_dir, refsb, antennas, refant, antennas_core=antennas_core)
+    beamformer_names = get_good_solution(
+        config.beamformer_dir, refsb, config.antennas, config.refants[0], antennas_core=config.antennas_core)
     beamformer_names, latest_solns = filter_beamformer_solutions(
-        beamformer_names, start_time.mjd, beamformer_dir)
+        beamformer_names, start_time.mjd, config.beamformer_dir)
 
     if len(beamformer_names) == 0:
         return None, None
 
     try:
         add_reference_bfname(ref_bfweights, beamformer_names, latest_solns,
-                             start_time, beamformer_dir)
+                             start_time, config.beamformer_dir)
     except:
         print("could not get reference bname. continuing...")
 
     averaged_files, avg_flags = average_beamformer_solutions(
-        beamformer_names, caltime, beamformer_dir, antennas, refmjd)
+        beamformer_names, caltime, config.beamformer_dir, config.antennas, config)
 
     update_solution_dictionary(
-        latest_solns, beamformer_names, averaged_files, avg_flags, antennas, pols)
+        latest_solns, beamformer_names, averaged_files, avg_flags, config.antennas, config.pols)
     latest_solns["cal_solutions"]["time"] = caltime.mjd
     latest_solns["cal_solutions"]["bfname"] = caltime.isot
 

@@ -676,7 +676,7 @@ def calibrate_phases(
 
 
 def calculate_bandpass_from_all_tables(
-        msname: str, table_prefixes: Union[str, List[str]], delay_bandpass_table_prefix: str = "",
+        table_prefixes: Union[str, List[str]], delay_bandpass_table_prefix: str = "",
         filter_phase: bool = True) -> Tuple[np.ndarray]:
     """Combines gain, bandpass, and delay tables into a single bandpass.
 
@@ -689,6 +689,7 @@ def calculate_bandpass_from_all_tables(
     if not delay_bandpass_table_prefix:
         delay_bandpass_table_prefix = table_prefixes[0]
 
+    msname = delay_bandpass_table_prefix.rsplit('_')[0]
     fobs = freq_GHz_from_ms(msname)
     fmean = np.mean(fobs)
 
@@ -730,12 +731,12 @@ def calculate_bandpass_from_all_tables(
 
 
 def combine_tables(
-        msname: str, table_prefix: str, delay_bandpass_table_prefix: str = "",
+        table_prefix: str, delay_bandpass_table_prefix: str = "",
         filter_phase: bool = True) -> None:
     """Combine gain, bandpass and delay tables into a single bandpass table."""
 
-    bandpass, flags = calculate_bandpass_from_all_tables(
-        msname, table_prefix, delay_bandpass_table_prefix, filter_phase)
+    bandpass, flags, *_ = calculate_bandpass_from_all_tables(
+        table_prefix, delay_bandpass_table_prefix, filter_phase)
 
     if not os.path.exists(f"{table_prefix}_bcal"):
         tablecopy(f"{table_prefix}_bpcal", f"{table_prefix}_bcal")

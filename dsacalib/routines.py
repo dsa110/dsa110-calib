@@ -137,7 +137,7 @@ def calibrate_measurement_set(
             du.warning_logger(logger, message)
 
         current_error = cs.GAIN_BP_CAL_ERR
-        combine_tables(msname, f"{msname}_{calname}", delay_bandpass_cal_prefix)
+        combine_tables(f"{msname}_{calname}", delay_bandpass_cal_prefix)
 
     except Exception as exc:
         status = cs.update(status, current_error)
@@ -178,7 +178,7 @@ def quick_bfweightcal(
     error += calobs.bandpass_calibration()
     error += calobs.gain_calibration()
     error += calobs.bandpass_calibration()
-    combine_tables(msname, cal.name)
+    combine_tables(f"{msname}_{cal.name}")
 
     with table(f"{msname}.ms") as tb:
         caltime = Time((tb.TIME_CENTROID[tb.nrows() // 2] * u.s).to(u.d), format='mjd')

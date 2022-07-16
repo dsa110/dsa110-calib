@@ -182,10 +182,7 @@ def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
         flagged_antennas=config.antennas_not_in_bf)
 
     ref_bfweights = store.get_dict("/mon/cal/bfweights")
-    beamformer_solns, beamformer_names = generate_averaged_beamformer_solns(
-        config.snap_start_time, scan.start_time, config.beamformer_dir,
-        config.antennas, config.antennas_core, config.pols, config.refants[0],
-        config.refmjd, ref_bfweights)
+    beamformer_solns, beamformer_names = generate_averaged_beamformer_solns(scan.start_time, config, ref_bfweights)
 
     if not beamformer_solns:
         return

@@ -1086,7 +1086,7 @@ def get_antenna_gains(
         return antenna_gains
 
 
-def get_delays(antennas, msname, calname, applied_delays):
+def get_delays(antennas, caltable_prefix, applied_delays):
     r"""Returns the delays to be set in the correlator.
 
     Based on the calibrated delays and the currently applied delays.
@@ -1095,10 +1095,8 @@ def get_delays(antennas, msname, calname, applied_delays):
     ----------
     antennas : list
         The antennas to get delays for.
-    msname : str
-        The path to the measurement set containing the calibrator pass.
-    calname : str
-        The name of the calibrator. Will open `msname`\_`calname`\_kcal.
+    caltable_prefix: str
+        Will open `caltable_prefix`\_kcal to load the delays.
     applied_delays : ndarray
         The currently applied delays for every antenna/polarization, in ns.
         Dimensions (antenna, pol).
@@ -1113,12 +1111,11 @@ def get_delays(antennas, msname, calname, applied_delays):
         In this case, the delay should be set to 0. Dimensions (antenna, pol).
     """
     delays, _time, flags, ant1, _ant2 = read_caltable(
-        f"{msname}_{calname}_kcal"
+        f"{caltable_prefix}_kcal"
     )
     delays = delays.squeeze()
     flags = flags.squeeze()
     print(f"delays: {delays.shape}".format(delays.shape))
-    # delays[flags] = np.nan
     ant1 = list(ant1)
     idx = [ant1.index(ant - 1) for ant in antennas]
     delays = delays[idx]
@@ -1126,5 +1123,4 @@ def get_delays(antennas, msname, calname, applied_delays):
     newdelays = applied_delays - delays
     newdelays = newdelays - np.nanmin(newdelays)
     newdelays = np.rint(newdelays / 2) * 2
-    # delays[flags] = 0
     return newdelays.astype(np.int), flags
