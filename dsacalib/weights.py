@@ -491,7 +491,7 @@ def average_beamformer_solutions(
     if eastings is not None:
         for subband in range(nsubbands):
             fnameout = f"beamformer_weights_sb{subband:02d}_{ttime.isot}"
-            wcorr = gains[:, i, ...].flatten()
+            wcorr = gains[:, subband, ...].flatten()
             wcorr = np.concatenate([eastings, wcorr], axis=0)
             with open(f"{beamformer_dir}/{fnameout}.dat", "wb") as f:
                 f.write(bytes(wcorr))
