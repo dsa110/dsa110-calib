@@ -108,7 +108,8 @@ class Scan:
         if True in source_index:
             return calsources.iloc[source_index.index(True)]
 
-    def convert_to_ms(self, msdir: str, refmjd: float, logger: dsa_syslog.DsaSyslogger = None) -> str:
+    def convert_to_ms(
+            self, msdir: str, refmjd: float, simplemodel: bool = True, logger: dsa_syslog.DsaSyslogger = None) -> str:
         """Convert a scan to a measurement set.
 
         Parameters

@@ -3,6 +3,7 @@ Create a measurement set from a uvh5 file.
 """
 import shutil
 import os
+from dsacalib.ms_io import freq_GHz_from_ms
 
 import numpy as np
 import astropy.units as u
@@ -23,7 +24,7 @@ from dsamfs.fringestopping import calc_uvw_blt
 from dsacalib.preprocess import read_nvss_catalog
 from dsacalib.fringestopping import calc_uvw_interpolate
 from dsacalib import constants as ct
-from dsacalib.utils import Direction, generate_calibrator_source
+from dsacalib.utils import Direction, calibrator_source_from_name
 from dsacalib.fringestopping import amplitude_sky_model
 
 
@@ -61,7 +62,7 @@ def uvh5_to_ms(
     refmjd : float
         The mjd used in the fringestopper.
     """
-    uvdata, pt_dec, ra, dec = load_uvh5_file(fname, antenna_list, dt, ra, dec)
+    uvdata, _pt_dec, ra, dec = load_uvh5_file(fname, antenna_list, dt, ra, dec)
 
     antenna_positions = set_antenna_positions(uvdata, logger)
 
@@ -70,8 +71,6 @@ def uvh5_to_ms(
     fix_descending_missing_freqs(uvdata)
 
     write_UV_to_ms(uvdata, msname, antenna_positions)
-
-    add_model_to_ms(msname)
 
 
 def phase_visibilities(
@@ -348,118 +347,23 @@ def write_UV_to_ms(uvdata: "UVData", msname: "str", antenna_positions: "np.ndarr
     os.remove(f'{msname}.fits')
 
 
-def set_ms_model_column(msname: str, uvdata: "UVData", pt_dec: u.Quantity, ra: u.Quantity,
-                        dec: u.Quantity, flux_Jy: float) -> None:
+def add_single_source_model_to_ms(
+        msname: str, calname: str, h5file: "H5File") -> None:
     """Set the measurement model column."""
-    if flux_Jy is not None:
-        fobs = uvdata.freq_array.squeeze() / 1e9
-        lst = uvdata.lst_array
-        source = generate_calibrator_source('cal', ra, dec, flux_Jy)
-        model = amplitude_sky_model(source, lst, pt_dec, fobs)
-        model = np.tile(model[:, :, np.newaxis], (1, 1, uvdata.Npols))
-    else:
-        model = np.ones((uvdata.Nblts, uvdata.Nfreqs, uvdata.Npols), dtype=np.complex64)
+    fobs = freq_GHz_from_ms(msname)
+    pt_dec = h5file.pointing_dec
+    UV = UVData()
+    uvdata = UV.read_uvh5(str(h5file.path))
+    source = calibrator_source_from_name(calname)
+    model = amplitude_sky_model(source, uvdata.lst, pt_dec, fobs)
+    model = np.tile(model[:, :, np.newaxis], (1, 1, uvdata.Npols))
 
     with table(f'{msname}.ms', readonly=False) as tb:
         tb.putcol('MODEL_DATA', model)
         tb.putcol('CORRECTED_DATA', tb.getcol('DATA')[:])
 
 
-def coordinates_differ(meridian, phase, tol=1e-7):
-    """Determine if meridian and phase coordinates differ to within tol."""
-    phase_ra, phase_dec = phase
-    meridian_ra, meridian_dec = meridian
-    if (
-            phase_ra is None
-            or np.abs(phase_ra.to_value(u.rad) - meridian_ra.to_value(u.rad)) < tol):
-        if (
-                phase_dec is None
-                or np.abs(phase_dec.to_value(u.rad) - meridian_dec.to_value(u.rad)) < tol):
-            return False
-    return True
-
-
-def generate_phase_model(uvw, uvw_m, nts, lamb):
-    """Generates a phase model to apply using baseline-based delays.
-
-    Parameters
-    ----------
-    uvw : np.ndarray
-        The uvw coordinates at each time bin (baseline, 3)
-    uvw_m : np.ndarray
-        The uvw coordinates at the meridian, (time, baseline, 3)
-    nts : int
-        The number of unique times.
-    lamb : astropy quantity
-        The observing wavelength of each channel.
-    ant1, ant2 : list
-        The antenna indices in order.
-
-    Returns:
-    --------
-    np.ndarray
-        The phase model to apply.
-    """
-    dw = (uvw[:, -1] - np.tile(uvw_m[np.newaxis, :, -1], (nts, 1, 1)).reshape(-1)) * u.m
-    phase_model = np.exp((2j * np.pi / lamb * dw[:, np.newaxis, np.newaxis]
-                          ).to_value(u.dimensionless_unscaled))
-    return phase_model
-
-
-def generate_phase_model_antbased(uvw, uvw_m, nbls, nts, lamb, ant1, ant2):
-    """Generates a phase model to apply using antenna-based geometric delays.
-
-    Parameters
-    ----------
-    uvw : np.ndarray
-        The uvw coordinates at each time bin (baseline, 3)
-    uvw_m : np.ndarray
-        The uvw coordinates at the meridian, (time, baseline, 3)
-    nbls, nts : int
-        The number of unique baselines, times.
-    lamb : astropy quantity
-        The observing wavelength of each channel.
-    ant1, ant2 : list
-        The antenna indices in order.
-
-    Returns:
-    --------
-    np.ndarray
-        The phase model to apply.
-    """
-    # Need ant1 and ant2 to be passed here
-    # Need to check that this gets the correct refidxs
-    refant = 23  # ant1[0]
-    refidxs = np.where(ant1 == refant)[0]
-
-    antenna_order = list(ant2[refidxs])
-
-    antenna_w_m = uvw_m[refidxs, -1]
-    uvw_delays = uvw.reshape((nts, nbls, 3))
-    antenna_w = uvw_delays[:, refidxs, -1]
-    antenna_dw = antenna_w - antenna_w_m[np.newaxis, :]
-    dw = np.zeros((nts, nbls))
-    for i, a1 in enumerate(ant1):
-        a2 = ant2[i]
-        dw[:, i] = antenna_dw[:, antenna_order.index(a2)] - \
-            antenna_dw[:, antenna_order.index(a1)]
-    dw = dw.reshape(-1) * u.m
-    phase_model = np.exp((2j * np.pi / lamb * dw[:, np.newaxis, np.newaxis]
-                          ).to_value(u.dimensionless_unscaled))
-    return phase_model
-
-
-def get_meridian_coords(pt_dec, time_mjd):
-    """Get coordinates for the meridian in J2000."""
-    pointing = Direction(
-        'HADEC', 0., pt_dec.to_value(u.rad), time_mjd)
-    meridian_ra, meridian_dec = pointing.J2000()
-    meridian_ra = meridian_ra * u.rad
-    meridian_dec = meridian_dec * u.rad
-    return meridian_ra, meridian_dec
-
-
-def add_model_to_ms(
+def add_multisource_model_to_ms(
         msname: str, flux_limit_mJy: float = 50., radius_limit_deg: float = 2.,
         complist_name: str = 'mycomplist.cl'):
     """Add NVSS components to model_data column (overwrite).
@@ -554,3 +458,97 @@ def add_model_to_ms(
     modelft(vis=msdata, complist=complist_name, spw='0', usescratch=True)
 
     return m_ra, m_dec, m_flux
+
+
+def coordinates_differ(meridian, phase, tol=1e-7):
+    """Determine if meridian and phase coordinates differ to within tol."""
+    phase_ra, phase_dec = phase
+    meridian_ra, meridian_dec = meridian
+    if (
+            phase_ra is None
+            or np.abs(phase_ra.to_value(u.rad) - meridian_ra.to_value(u.rad)) < tol):
+        if (
+                phase_dec is None
+                or np.abs(phase_dec.to_value(u.rad) - meridian_dec.to_value(u.rad)) < tol):
+            return False
+    return True
+
+
+def generate_phase_model(uvw, uvw_m, nts, lamb):
+    """Generates a phase model to apply using baseline-based delays.
+
+    Parameters
+    ----------
+    uvw : np.ndarray
+        The uvw coordinates at each time bin (baseline, 3)
+    uvw_m : np.ndarray
+        The uvw coordinates at the meridian, (time, baseline, 3)
+    nts : int
+        The number of unique times.
+    lamb : astropy quantity
+        The observing wavelength of each channel.
+    ant1, ant2 : list
+        The antenna indices in order.
+
+    Returns:
+    --------
+    np.ndarray
+        The phase model to apply.
+    """
+    dw = (uvw[:, -1] - np.tile(uvw_m[np.newaxis, :, -1], (nts, 1, 1)).reshape(-1)) * u.m
+    phase_model = np.exp((2j * np.pi / lamb * dw[:, np.newaxis, np.newaxis]
+                          ).to_value(u.dimensionless_unscaled))
+    return phase_model
+
+
+def generate_phase_model_antbased(uvw, uvw_m, nbls, nts, lamb, ant1, ant2):
+    """Generates a phase model to apply using antenna-based geometric delays.
+
+    Parameters
+    ----------
+    uvw : np.ndarray
+        The uvw coordinates at each time bin (baseline, 3)
+    uvw_m : np.ndarray
+        The uvw coordinates at the meridian, (time, baseline, 3)
+    nbls, nts : int
+        The number of unique baselines, times.
+    lamb : astropy quantity
+        The observing wavelength of each channel.
+    ant1, ant2 : list
+        The antenna indices in order.
+
+    Returns:
+    --------
+    np.ndarray
+        The phase model to apply.
+    """
+    # Need ant1 and ant2 to be passed here
+    # Need to check that this gets the correct refidxs
+    refant = 23  # ant1[0]
+    refidxs = np.where(ant1 == refant)[0]
+
+    antenna_order = list(ant2[refidxs])
+
+    antenna_w_m = uvw_m[refidxs, -1]
+    uvw_delays = uvw.reshape((nts, nbls, 3))
+    antenna_w = uvw_delays[:, refidxs, -1]
+    antenna_dw = antenna_w - antenna_w_m[np.newaxis, :]
+    dw = np.zeros((nts, nbls))
+    for i, a1 in enumerate(ant1):
+        a2 = ant2[i]
+        dw[:, i] = antenna_dw[:, antenna_order.index(a2)] - \
+            antenna_dw[:, antenna_order.index(a1)]
+    dw = dw.reshape(-1) * u.m
+    phase_model = np.exp((2j * np.pi / lamb * dw[:, np.newaxis, np.newaxis]
+                          ).to_value(u.dimensionless_unscaled))
+    return phase_model
+
+
+def get_meridian_coords(pt_dec, time_mjd):
+    """Get coordinates for the meridian in J2000."""
+    pointing = Direction(
+        'HADEC', 0., pt_dec.to_value(u.rad), time_mjd)
+    meridian_ra, meridian_dec = pointing.J2000()
+    meridian_ra = meridian_ra * u.rad
+    meridian_dec = meridian_dec * u.rad
+    return meridian_ra, meridian_dec

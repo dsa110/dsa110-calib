@@ -10,17 +10,18 @@ import astropy.units as u
 from dask.distributed import Client, Future
 from dsautils import dsa_store, dsa_syslog
 
-import dsacalib.constants as ct
+from dsacalib.uvh5_to_ms import add_single_source_model_to_ms, add_multisource_model_to_ms
 from dsacalib.config import Configuration
-from dsacalib.routines import calibrate_measurement_set
+import dsacalib.constants as ct
+from dsacalib.hdf5_io import extract_applied_delays
+from dsacalib.ms_io import caltable_to_etcd
+from dsacalib.plotting import generate_summary_plot, plot_bandpass_phases, plot_beamformer_weights
 from dsacalib.preprocess import first_true
 from dsacalib.realtime_calibration import (
     Scan, ScanCache, H5File, generate_averaged_beamformer_solns
 )
-from dsacalib.plotting import generate_summary_plot, plot_bandpass_phases, plot_beamformer_weights
-from dsacalib.hdf5_io import extract_applied_delays
+from dsacalib.routines import calibrate_measurement_set
 from dsacalib.weights import write_beamformer_solutions
-from dsacalib.ms_io import caltable_to_etcd
 
 SCHEDULER_IP = "10.41.0.104:8786"
 
@@ -30,6 +31,7 @@ class CalibrationManager:
 
     def __init__(self):
         self.logger = dsa_syslog.DsaSyslogger()
+        # TODO: Configuration needs to update the snap start time when they are restarted
         self.config = Configuration()
         self.client = Client(SCHEDULER_IP)
         self.scan_cache = ScanCache(max_scans=12)
@@ -216,8 +218,20 @@ def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
     )
 
 
-def calibrate_scan(scan: Scan, config: Configuration):
-    """Convert a scan to ms and calibrate it."""
+def calibrate_scan(scan: Scan, config: Configuration, caltype: str):
+    """Convert a scan to ms and calibrate it.
+
+    Parameters
+    ----------
+    scan : Scan
+        The scan to include in the measurement set.  Will also include the previous scan.
+    config : Configuration
+        The current configuration.
+    caltype : str
+        Must be either 'calibrator' or 'field'. If 'calibrator', single source model is used
+        and delay/bandpass calibration is done.  If 'field', multi source model is used
+        and delay/bandpass calibration is not done.
+    """
     logger = dsa_syslog.DsaSyslogger()
 
     if scan.source is None:
@@ -225,10 +239,22 @@ def calibrate_scan(scan: Scan, config: Configuration):
             f"No calibrator source defined for scan {scan.start_time.isot}")
 
     msname, cal = scan.convert_to_ms(
-        config.msdir, config.refmjd, logger)
+        config.msdir, config.refmjd, simplemodel=caltype == 'calibrator', logger=logger)
+
+    if caltype == 'calibrator':
+        delay_bandpass_prefix = ''
+    else:
+        delay_bandpass_prefix = config.delay_bandpass_prefix
+        if not delay_bandpass_prefix:
+            return msname, cal, 0
 
     status = calibrate_measurement_set(
-        msname, cal.name, refants=config.refants, logger=logger)
+        msname, cal.name, config.refants, delay_bandpass_prefix, logger=logger)
+
+    if caltype == 'calibrator':
+        add_single_source_model_to_ms(msname, cal.name)
+    else:
+        _ = add_multisource_model_to_ms(msname)
 
     return msname, cal, status
 

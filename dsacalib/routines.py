@@ -23,7 +23,7 @@ from dsacalib.calib import combine_tables
 
 
 def calibrate_measurement_set(
-        msname: str, calname: str, refants: List[str],
+        msname: str, calname: str, caltype: str, refants: List[str],
         delay_bandpass_cal_prefix: str = "", logger: dsl.DsaSyslogger = None,
         throw_exceptions: bool = True, **kwargs
 ) -> int:

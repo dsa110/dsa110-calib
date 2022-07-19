@@ -11,7 +11,6 @@ class Configuration:
     def __init__(self):
         """Set parameters for conf."""
         dsaconf = cnf.Conf()
-        etcd = dsa_store.DsaStore()
 
         cal_params = dsaconf.get('cal')
         corr_params = dsaconf.get('corr')
@@ -41,8 +40,6 @@ class Configuration:
         self.caltime = cal_params['caltime_minutes'] * u.min
         self.filelength = mfs_params['filelength_minutes'] * u.min
         self.refmjd = mfs_params['refmjd']
-        self.snap_start_time = Time(
-            etcd.get_dict("/mon/snap/1/armed_mjd")['armed_mjd'], format="mjd")
 
         # Directories
         self.msdir = cal_params['msdir']
@@ -52,6 +49,21 @@ class Configuration:
         self.tempplots = (
             "/home/user/temp" if socket.gethostname() == "dsa-storage"
             else "/home/ubuntu/data/webPLOTS/calibration/")
+
+    @property
+    def snap_start_time(self) -> Time:
+        etcd = dsa_store.DsaStore()
+        return Time(etcd.get_dict("/mon/snap/1/armed_mjd")['armed_mjd'], format="mjd")
+
+    @property
+    def delay_bandpass_prefix(self) -> str:
+        etcd = dsa_store.DsaStore()
+        applied_weights = etcd.get_dict("/mon/cal/bfweights")
+        weight_times = applied_weights['caltime']
+        if not all(self.snap_start_time.mjd < weight_time for weight_time in weight_times):
+            return ""
+
+        return applied_weights["delay_bandpass_prefix"]
 
     def __repr__(self):
         string_repr = (
