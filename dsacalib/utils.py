@@ -16,6 +16,7 @@ from collections import namedtuple
 from scipy.ndimage.filters import median_filter
 import astropy.units as u
 import casatools as cc
+from casacore.tables import table
 import numpy as np
 from antpos.utils import get_itrf
 from astropy.coordinates import Angle
@@ -77,6 +78,7 @@ def generate_calibrator_source(
 
 NVSS = None
 VLAC = None
+
 
 def update_nvss():
     global NVSS
@@ -460,3 +462,10 @@ def daz_dha(dec, daz=None, dha=None, lat=ct.OVRO_LAT):
     else:
         raise RuntimeError("One of daz or dha must be defined")
     return ans
+
+
+def freq_GHz_from_ms(msname: str) -> np.ndarray:
+    """Return the frequency in GHz in a ms."""
+    with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
+        fobs = (np.array(tb.col("CHAN_FREQ")[:]) / 1e9).reshape(-1)
+    return fobs

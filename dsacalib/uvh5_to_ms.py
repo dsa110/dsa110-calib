@@ -3,7 +3,6 @@ Create a measurement set from a uvh5 file.
 """
 import shutil
 import os
-from dsacalib.ms_io import freq_GHz_from_ms
 
 import numpy as np
 import astropy.units as u
@@ -24,7 +23,7 @@ from dsamfs.fringestopping import calc_uvw_blt
 from dsacalib.preprocess import read_nvss_catalog
 from dsacalib.fringestopping import calc_uvw_interpolate
 from dsacalib import constants as ct
-from dsacalib.utils import Direction, calibrator_source_from_name
+from dsacalib.utils import Direction, calibrator_source_from_name, freq_GHz_from_ms
 from dsacalib.fringestopping import amplitude_sky_model
 
 

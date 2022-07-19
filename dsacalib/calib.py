@@ -19,7 +19,8 @@ import numpy as np
 import casatools as cc
 from casacore.tables import table, tablecopy
 
-from dsacalib.ms_io import read_caltable, freq_GHz_from_ms
+from dsacalib.ms_io import read_caltable
+from dsacalib.utils import freq_GHz_from_ms
 
 
 def delay_calibration_worker(

@@ -16,7 +16,8 @@ import numpy as np
 from casacore.tables import table
 
 import dsacalib.constants as ct
-from dsacalib.ms_io import extract_vis_from_ms, read_caltable, freq_GHz_from_ms
+from dsacalib.ms_io import extract_vis_from_ms, read_caltable
+from dsacalib.utils import freq_GHz_from_ms
 
 
 def plot_dyn_spec(

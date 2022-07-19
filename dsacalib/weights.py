@@ -15,7 +15,8 @@ from antpos.utils import get_itrf
 
 import dsacalib.constants as ct
 from dsacalib.fringestopping import calc_uvw
-from dsacalib.ms_io import get_antenna_gains, get_delays, read_caltable, freq_GHz_from_ms
+from dsacalib.ms_io import get_antenna_gains, get_delays, read_caltable
+from dsacalib.utils import freq_GHz_from_ms
 from dsacalib.config import Configuration
 
 

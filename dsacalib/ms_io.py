@@ -597,7 +597,7 @@ def extract_vis_from_ms(msname, data="data", swapaxes=True, metadataonly=False):
             flags = np.array(tb.FLAG[:])
         time = np.array(tb.TIME[:])
         spw = np.array(tb.DATA_DESC_ID[:])
-    fobs = freq_GHz_from_ms(msname)
+    fobs = du.freq_GHz_from_ms(msname)
 
     baseline = 2048 * (ant1 + 1) + (ant2 + 1) + 2**16
 
@@ -619,13 +619,6 @@ def extract_vis_from_ms(msname, data="data", swapaxes=True, metadataonly=False):
         spw,
         orig_shape,
     )
-
-
-def freq_GHz_from_ms(msname: str) -> np.ndarray:
-    """Return the frequency in GHz in a ms."""
-    with table(f"{msname}.ms/SPECTRAL_WINDOW") as tb:
-        fobs = (np.array(tb.col("CHAN_FREQ")[:]) / 1e9).reshape(-1)
-    return fobs
 
 
 def read_caltable(tablename, cparam=False, reshape=True):
