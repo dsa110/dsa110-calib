@@ -242,8 +242,10 @@ def calibrate_scan(scan: Scan, config: Configuration, caltype: str):
         config.msdir, config.refmjd, simplemodel=caltype == 'calibrator', logger=logger)
 
     if caltype == 'calibrator':
+        # add_single_source_model_to_ms(msname, cal.name, first_true(scan.files))
         delay_bandpass_prefix = ''
     else:
+        _ = add_multisource_model_to_ms(msname)
         delay_bandpass_prefix = config.delay_bandpass_prefix
         if not delay_bandpass_prefix:
             return msname, cal, 0
@@ -251,10 +253,7 @@ def calibrate_scan(scan: Scan, config: Configuration, caltype: str):
     status = calibrate_measurement_set(
         msname, cal.name, config.refants, delay_bandpass_prefix, logger=logger)
 
-    if caltype == 'calibrator':
-        add_single_source_model_to_ms(msname, cal.name, first_true(scan.files))
-    else:
-        _ = add_multisource_model_to_ms(msname)
+
 
     return msname, cal, status
 
