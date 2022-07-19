@@ -128,7 +128,7 @@ def create_field_ms(caltime, calname, config):
 
     # Calibrate the scan
     print(f"Calibrating {caltime.isot}")
-    calibrate_scan(scan, config)
+    calibrate_scan(scan, config, 'field')
 
 
 def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
@@ -151,7 +151,7 @@ def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
         }
     )
 
-    msname, cal, calstatus = calibrate_scan(scan, config)
+    msname, cal, calstatus = calibrate_scan(scan, config, 'calibrator')
 
     store.put_dict(
         "/mon/calibration",
@@ -252,7 +252,7 @@ def calibrate_scan(scan: Scan, config: Configuration, caltype: str):
         msname, cal.name, config.refants, delay_bandpass_prefix, logger=logger)
 
     if caltype == 'calibrator':
-        add_single_source_model_to_ms(msname, cal.name)
+        add_single_source_model_to_ms(msname, cal.name, first_true(scan.files))
     else:
         _ = add_multisource_model_to_ms(msname)
 
