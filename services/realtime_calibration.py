@@ -23,8 +23,6 @@ from dsacalib.realtime_calibration import (
 from dsacalib.routines import calibrate_measurement_set
 from dsacalib.weights import write_beamformer_solutions
 
-SCHEDULER_IP = "10.41.0.104:8786"
-
 
 class CalibrationManager:
     """Manage calibration of files in realtime in the realtime system."""
@@ -32,54 +30,30 @@ class CalibrationManager:
     def __init__(self):
         self.logger = dsa_syslog.DsaSyslogger()
         self.config = Configuration()
-        print(self.config.delay_bandpass_prefix)
-        self.client = Client(SCHEDULER_IP)
         self.scan_cache = ScanCache(max_scans=12)
-        self.futures = []
 
     def process_file(self, hostname: str, remote_path: str):
         """Process an H5File that is newly written on the corr nodes."""
         local_path = Path(self.config.hdf5dir) / Path(remote_path).name
         h5file = H5File(local_path, hostname, remote_path)
 
-        copy_future = self.client.submit(h5file.copy, resources={'MEMORY': 10e9})
+        h5file.copy()
         scan, scan_futures = self.scan_cache.get_scan_from_file(
-            h5file, copy_future)
-
-        self.futures.append(copy_future)
+            h5file)
 
         if scan.nfiles == 16:
             self.scan_cache.remove(scan)
-            assess_future = self.client.submit(assess_scan, scan, *scan_futures,  resources={'MEMORY': 10e9})
-            process_future = self.client.submit(
-                process_scan, scan, self.config, assess_future,  resources={'MEMORY': 60e9})
-            self.futures.append(assess_future)
-            self.futures.append(process_future)
+            assess_scan(scan)
+            process_scan(scan, self.config)
 
     def process_field_request(self, trigname: str, trigmjd: float):
         """Create and calibrate a field ms."""
         caltime = Time(trigmjd, format='mjd')
         print(f"Making field ms for {caltime.isot}")
-        process_future = self.client.submit(create_field_ms, caltime, trigname, self.config, resources={'MEMORY': 60e9})
-        self.futures.append(process_future)
-
-    def remove_done_futures(self):
-        """Remove futures that are done from the list of futures.
-
-        We track futures, instead of using fire_and_forget, so that we can
-        cancel them on keyboard interrupt.  This means we have to remove
-        references to them when they are completed.
-        """
-        for future in self.futures:
-            if future.done():
-                self.futures.remove(future)
-
-    def __del__(self):
-        self.client.cancel(self.futures)
-        self.client.close()
+        create_field_ms(caltime, trigname, self.config)
 
 
-def assess_scan(scan, *futures):
+def assess_scan(scan):
     scan.assess()
 
 
@@ -131,7 +105,7 @@ def create_field_ms(caltime, calname, config):
     calibrate_scan(scan, config, 'field')
 
 
-def process_scan(scan: Scan, config: Configuration, *futures: List[Future]):
+def process_scan(scan: Scan, config: Configuration):
     """Process a scan and calibrate it if it contains a source."
 
     The list of futures is unused but is required to handle the dependencies on the availability of files.
@@ -283,8 +257,7 @@ def handle_etcd_triggers():
     store.add_watch("/cmd/cal", etcd_callback)
 
     while True:
-        calmanager.remove_done_futures()
-        print(f"{len(calmanager.futures)} tasks underway")
+        print(f"tasks underway")
         time.sleep(60)
 
 

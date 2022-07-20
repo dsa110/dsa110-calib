@@ -156,7 +156,7 @@ class ScanCache:
         self.futures = [[] for i in range(max_scans)]
         self.next_index = 0
 
-    def get_scan_from_file(self, h5file: H5File, copy_future: Future) -> Tuple[Scan, List[Future]]:
+    def get_scan_from_file(self, h5file: H5File, copy_future: Future = None) -> Tuple[Scan, List[Future]]:
         """Get the scan and corresponding copy futures for an h5file."""
         for i, scan in enumerate(self.scans):
             if scan is not None:
