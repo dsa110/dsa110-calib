@@ -58,12 +58,14 @@ class Configuration:
     @property
     def delay_bandpass_prefix(self) -> str:
         etcd = dsa_store.DsaStore()
-        applied_weights = etcd.get_dict("/mon/cal/bfweights")
+        applied_weights = etcd.get_dict("/mon/cal/bfweights")['val']
         weight_times = applied_weights['caltime']
         if not all(self.snap_start_time.mjd < weight_time for weight_time in weight_times):
             return ""
-
-        return applied_weights["delay_bandpass_prefix"]
+        try:
+            return applied_weights["delay_bandpass_prefix"]
+        except KeyError:
+            return ""
 
     def __repr__(self):
         string_repr = (
