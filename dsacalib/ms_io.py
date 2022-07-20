@@ -274,7 +274,9 @@ def add_multisource_model_to_ms(
     print(f"Made component list {complist_name}")
 
     # ft into model column
+    print(f"Beginning ft")
     modelft(vis=msdata, complist=complist_name, spw='0', usescratch=True)
+    print(f"ft completed")
 
     return m_ra, m_dec, m_flux
 
