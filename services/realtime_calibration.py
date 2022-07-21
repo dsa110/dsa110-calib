@@ -7,7 +7,6 @@ import yaml
 
 from astropy.time import Time
 import astropy.units as u
-from dask.distributed import Client, Future
 from dsautils import dsa_store, dsa_syslog
 
 # from dsacalib.uvh5_to_ms import add_single_source_model_to_ms, add_multisource_model_to_ms
@@ -21,7 +20,7 @@ from dsacalib.realtime_calibration import (
     Scan, ScanCache, H5File, generate_averaged_beamformer_solns
 )
 from dsacalib.routines import calibrate_measurement_set
-from dsacalib.weights import write_beamformer_solutions
+from dsacalib.weights import write_beamformer_solutions, get_bfnames
 
 
 class CalibrationManager:
@@ -44,7 +43,7 @@ class CalibrationManager:
         if scan.nfiles == 16:
             self.scan_cache.remove(scan)
             assess_scan(scan)
-            process_scan(scan, self.config)
+            process_scan(scan, self.config, "calibrator")
 
     def process_field_request(self, trigname: str, trigmjd: float):
         """Create and calibrate a field ms."""
@@ -59,6 +58,7 @@ def assess_scan(scan):
 
 def create_field_ms(caltime, calname, config):
     """Create a field measurement set."""
+
     hdf5dir = Path(config.hdf5dir)
     callst = caltime.sidereal_time('apparent', longitude=ct.OVRO_LON)
 
@@ -102,14 +102,15 @@ def create_field_ms(caltime, calname, config):
 
     # Calibrate the scan
     print(f"Calibrating {caltime.isot}")
-    calibrate_scan(scan, config, 'field')
+    process_scan(scan, config, 'field')
 
 
-def process_scan(scan: Scan, config: Configuration):
+def process_scan(scan: Scan, config: Configuration, calibration_type: str):
     """Process a scan and calibrate it if it contains a source."
-
-    The list of futures is unused but is required to handle the dependencies on the availability of files.
     """
+    assert calibration_type in ["calibrator", "field"], (
+        "`calibration_type` must be one of `calibrator` or `field`")
+
     store = dsa_store.DsaStore()
     logger = dsa_syslog.DsaSyslogger()
 
@@ -125,7 +126,7 @@ def process_scan(scan: Scan, config: Configuration):
         }
     )
 
-    msname, cal, calstatus = calibrate_scan(scan, config, 'calibrator')
+    msname, cal, calstatus = calibrate_scan(scan, config, calibration_type)
 
     store.put_dict(
         "/mon/calibration",
@@ -152,36 +153,38 @@ def process_scan(scan: Scan, config: Configuration):
     # Write beamformer solutions for one source
     caltime = Time(scan.start_time.isot, precision=0)
     write_beamformer_solutions(
-        msname, cal.name, scan.start_time.mjd, config.antennas, applied_delays, config.beamformer_dir,
+        msname, cal.name, caltime, config.antennas, applied_delays, config.beamformer_dir,
         config.pols, config.nchan, config.nchan_spw, config.bw_GHz,
         config.chan_ascending, config.f0_GHz, config.ch0, config.refmjd,
         flagged_antennas=config.antennas_not_in_bf)
 
-    ref_bfweights = store.get_dict("/mon/cal/bfweights")
-    beamformer_solns, beamformer_names = generate_averaged_beamformer_solns(scan.start_time, config, ref_bfweights)
+    if calibration_type == "field":
+        ref_bfweights = store.get_dict("/mon/cal/bfweights")
+        beamformer_solns, beamformer_names = generate_averaged_beamformer_solns(scan.start_time, config, ref_bfweights)
 
-    if not beamformer_solns:
-        return
+        if beamformer_solns:
+            with open(
+                    f"{config.beamformer_dir}/beamformer_weights_{caltime.isot}.yaml",
+                    "w",
+                    encoding="utf-8"
+            ) as file:
+                yaml.dump(beamformer_solns, file)
 
-    with open(
-            f"{config.beamformer_dir}/beamformer_weights_{caltime.isot}.yaml",
-            "w",
-            encoding="utf-8"
-    ) as file:
-        yaml.dump(beamformer_solns, file)
+            store.put_dict(
+                "/mon/cal/bfweights",
+                {
+                    "cmd": "update_weights",
+                    "val": beamformer_solns["cal_solutions"]})
 
-    store.put_dict(
-        "/mon/cal/bfweights",
-        {
-            "cmd": "update_weights",
-            "val": beamformer_solns["cal_solutions"]})
+            # Plot the beamformer solutions
+            figure_prefix = f"{config.tempplots}/{caltime}"
+            plot_beamformer_weights(
+                beamformer_names, config.antennas, config.beamformer_dir,
+                outname=figure_prefix, show=False)
 
-    # Plot the beamformer solutions
-    figure_prefix = f"{config.tempplots}/{caltime}"
-    plot_beamformer_weights(
-        beamformer_names, config.antennas, config.beamformer_dir,
-        outname=figure_prefix, show=False)
-
+    beamformer_names = get_bfnames(
+        config.beamformer_dir, select=[caltime.strftime("%Y-%m-%d"), (caltime - 1 * u.d).strftime("%Y-%m-%d")]
+    )
     # Plot evolution of the phase over the day
     plot_bandpass_phases(
         beamformer_names,
