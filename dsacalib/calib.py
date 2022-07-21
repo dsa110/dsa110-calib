@@ -690,7 +690,7 @@ def calculate_bandpass_from_all_tables(
     if not delay_bandpass_table_prefix:
         delay_bandpass_table_prefix = table_prefixes[0]
 
-    msname = delay_bandpass_table_prefix.rsplit('_')[0]
+    msname = delay_bandpass_table_prefix.rsplit('_', 1)[0]
     fobs = freq_GHz_from_ms(msname)
     fmean = np.mean(fobs)
 
@@ -711,7 +711,7 @@ def calculate_bandpass_from_all_tables(
         gacal_tmp, _, gaflags_tmp, *_ = read_caltable(f"{table_prefix}_gacal", reshape=False, cparam=True)
         gpcal_tmp, _, gpflags_tmp, *_ = read_caltable(f"{table_prefix}_gpcal", reshape=False, cparam=True)
 
-        toadd = not (gpflags_tmp | gaflags_tmp)
+        toadd = ~(gpflags_tmp | gaflags_tmp)
         gcal[toadd] += (gacal_tmp * gpcal_tmp)[toadd]
         gcounts[toadd] += 1
 
@@ -740,7 +740,8 @@ def combine_tables(
         table_prefix, delay_bandpass_table_prefix, filter_phase)
 
     if not os.path.exists(f"{table_prefix}_bcal"):
-        tablecopy(f"{table_prefix}_bpcal", f"{table_prefix}_bcal")
+        copy_prefix = delay_bandpass_table_prefix if delay_bandpass_table_prefix else table_prefix
+        tablecopy(f"{copy_prefix}_bpcal", f"{table_prefix}_bcal")
 
     with table(f"{table_prefix}_bcal", readonly=False) as tb:
         tb.putcol("CPARAM", bandpass)

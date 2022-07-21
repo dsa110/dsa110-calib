@@ -1,3 +1,4 @@
+import os
 import socket
 import astropy.units as u
 from astropy.time import Time
@@ -63,7 +64,7 @@ class Configuration:
         if not all(self.snap_start_time.mjd < weight_time for weight_time in weight_times):
             prefix = ""
         try:
-            prefix = applied_weights["delay_bandpass_prefix"]
+            prefix = applied_weights['delay_bandpass_prefix']
         except KeyError:
             prefix = ""
         return prefix

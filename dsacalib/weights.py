@@ -433,7 +433,7 @@ def consistent_correlator(full_solns, full_latest_solns, start_time):
             solns['eastings'] != latest_solns['eastings'] or
             solns['caltime'] < latest_solns['caltime'] - 1 or
             solns['caltime'] < start_time or
-            solns['delay_bandpass_prefix'] != solns['delay_bandpass_prefix']
+            solns['delay_bandpass_prefix'] != latest_solns['delay_bandpass_prefix']
     ):
         return False
 

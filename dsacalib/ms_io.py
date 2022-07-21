@@ -168,6 +168,7 @@ def convert_calibrator_pass_to_ms(
             logger.info(message)
         print(message)
 
+
 def add_single_source_model_to_ms(
         msname: str, calname: str, h5file: "H5File") -> None:
     """Set the measurement model column."""
@@ -178,11 +179,11 @@ def add_single_source_model_to_ms(
     source = du.calibrator_source_from_name(calname)
     model = amplitude_sky_model(source, uvdata.lst, pt_dec, fobs)
     model = np.tile(model[:, :, np.newaxis], (1, 1, uvdata.Npols))
-    
+
     with table(f'{msname}.ms', readonly=False) as tb:
         tb.putcol('MODEL_DATA', model)
         tb.putcol('CORRECTED_DATA', tb.getcol('DATA')[:])
-        
+
 
 def add_multisource_model_to_ms(
         msname: str, flux_limit_mJy: float = 50., radius_limit_deg: float = 2.,
@@ -207,7 +208,7 @@ def add_multisource_model_to_ms(
     """
     msdata = f"{msname}.ms"
     nvss_sources = read_nvss_catalog()
-    
+
     # get ra and dec
     ms = cc.ms()
     ms.open(msdata)
@@ -217,14 +218,14 @@ def add_multisource_model_to_ms(
         ra_pt = 360. - ra_pt
     dec_pt = hdr['field_0']['direction']['m1']['value'] * 180. / np.pi
     ms.close()
-    
+
     # do cross match
     ra = nvss_sources['ra']
     dec = nvss_sources['dec']
     nvss_coords = SkyCoord(ra, dec, frame='icrs', unit='deg')
     pointing_coords = SkyCoord([ra_pt], [dec_pt], frame='icrs', unit='deg')
     _, sep_2d, _ = nvss_coords.match_to_catalog_sky(pointing_coords)
-    
+
     # select sources from NVSS
     flux = nvss_sources['flux_20_cm']
     nvss_sources = (nvss_sources.iloc[np.where(
@@ -243,14 +244,14 @@ def add_multisource_model_to_ms(
     m_maj = nvss_sources['major_axis']
     m_min = nvss_sources['minor_axis']
     m_pa = nvss_sources['position_angle'] * np.pi / 180.
-    
+
     m_maj[np.isnan(m_pa)] = 0.
     m_min[np.isnan(m_pa)] = 0.
     m_min[m_maj < 30.] = 0.
     m_pa[m_maj < 30.] = 0.
     m_maj[m_maj < 30.] = 0.
     m_pa[np.isnan(m_pa)] = 0.
-    
+
     # make component list
     if os.path.exists(complist_name):
         shutil.rmtree(complist_name)
@@ -268,22 +269,23 @@ def add_multisource_model_to_ms(
             minn = "%.1farcsec" % (m_min[i])
             posang = "%.1fdeg" % (m_pa[i])
             a.addcomponent(
-                shape="Gaussian", dir=direct, flux=m_flux[i] * 0.001,                      fluxunit='Jy', freq='1.405GHz', majoraxis=majj, minoraxis=minn, positionangle=posang)
+                shape="Gaussian", dir=direct, flux=m_flux[i] * 0.001, fluxunit='Jy', freq='1.405GHz', majoraxis=majj,
+                minoraxis=minn, positionangle=posang)
     a.rename(complist_name)
     a.close()
     print(f"Made component list {complist_name}")
 
     # ft into model column
-    print(f"Beginning ft")
+    print(f"Beginning ft of {msdata}")
     modelft(vis=msdata, complist=complist_name, spw='0', usescratch=True)
-    print(f"ft completed")
+    print(f"ft of {msdata} completed")
 
     return m_ra, m_dec, m_flux
 
-        
+
 def simulate_ms(
         ofile, tname, anum, xx, yy, zz, diam, mount, pos_obs, spwname, freq, deltafreq,
-        freqresolution, nchannels, integrationtime, obstm, dt, source, stoptime, 
+        freqresolution, nchannels, integrationtime, obstm, dt, source, stoptime,
         autocorr, fullpol):
     """Simulates a measurement set with cross-correlations only.
 
@@ -1039,7 +1041,7 @@ def caltable_to_etcd(msname, calname, caltime, status, pols=None, logger=None):
         du.exception_logger(logger, "caltable_to_etcd", exc, throw=False)
 
     antenna_order = np.unique(
-        np.array([antenna_order_amps, antenna_order_delays]))
+        np.array(np.concatenate((antenna_order_amps, antenna_order_delays))))
 
     for antnum in antenna_order:
 
