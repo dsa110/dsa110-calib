@@ -145,9 +145,9 @@ def process_scan(scan: Scan, config: Configuration, calibration_type: str):
     #     msname, cal.name, scan.start_time.mjd, calstatus, logger=logger)
 
     # Make summary plots
-    generate_summary_plot(
-        scan.start_time.strftime("%Y-%m-%d"), msname, cal.name, config.antennas, config.tempplots,
-        config.webplots)
+    # generate_summary_plot(
+    #     scan.start_time.strftime("%Y-%m-%d"), msname, cal.name, config.antennas, config.tempplots,
+    #     config.webplots)
 
     # Make beamformer weights
     applied_delays = extract_applied_delays(

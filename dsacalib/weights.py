@@ -105,8 +105,11 @@ def get_bfnames(beamformer_dir: str, refsb: str = "sb01", select: List[str] = No
                 bfnames.append(sp[1].rstrip(".dat"))
 
     # select subset
+    print(bfnames)
     if select is not None:
-        bfnames2 = [bfn for bfn in bfnames if select in bfn]
+        bfnames2 = []
+        for select_item in select:
+            bfnames2.extend([bfn for bfn in bfnames if select_item in bfn])
         print(f"Selecting {len(bfnames2)} from {len(bfnames)} gain files.")
         return bfnames2
 
@@ -504,7 +507,7 @@ def average_beamformer_solutions(
     if eastings is not None:
         for subband in range(nsubbands):
             fnameout = f"beamformer_weights_sb{subband:02d}_{ttime.isot}"
-            wcorr = gains[:, i, ...].flatten()
+            wcorr = gains[:, subband, ...].flatten()
             wcorr = np.concatenate([eastings, wcorr], axis=0)
             with open(f"{beamformer_dir}/{fnameout}.dat", "wb") as f:
                 f.write(bytes(wcorr))
