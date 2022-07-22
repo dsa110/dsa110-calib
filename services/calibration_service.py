@@ -66,6 +66,7 @@ def calibrate_file(calname, flist, **kwargs):
 
     # Get the list of sources at the current pointing dec
     caltable = update_caltable(pt_dec)
+    print(caltable,pt_dec)
     # Find the ones that have files
     filenames = get_files_for_cal(
         caltable,
