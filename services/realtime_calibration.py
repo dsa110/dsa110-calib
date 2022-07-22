@@ -21,7 +21,7 @@ from dsacalib.realtime_calibration import (
 from dsacalib.routines import calibrate_measurement_set
 from dsacalib.weights import write_beamformer_solutions, get_bfnames
 
-USE_DASK = True
+USE_DASK = False
 
 if USE_DASK:
     from dask.distributed import Client, Future
