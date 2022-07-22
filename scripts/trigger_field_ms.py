@@ -13,7 +13,7 @@ def trigger_field_ms():
         {
             "cmd": "field",
             "val": {
-                "trigname": f"field_{nowstr}",
+                "trigname": f"field{nowstr}",
                 "mjds": nowmjd
     }})
 
