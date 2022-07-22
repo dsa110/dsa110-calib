@@ -155,7 +155,7 @@ def create_field_ms(caltime, calname, config):
     process_scan(scan, config, 'field')
 
 
-def process_scan(scan: Scan, config: Configuration, calibration_type: str):
+def process_scan(scan: Scan, config: Configuration, calibration_type: str, *futures):
     """Process a scan and calibrate it if it contains a source."
     """
     assert calibration_type in ["calibrator", "field"], (
