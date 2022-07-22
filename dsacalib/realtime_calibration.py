@@ -267,7 +267,7 @@ def generate_averaged_beamformer_solns(
     were restarted.
     """
 
-    if caltime - config.start_time > 24 * u.h:
+    if caltime - config.snap_start_time > 24 * u.h:
         start_time = caltime - 24 * u.h
 
     # Now we want to find all sources in the last 24 hours

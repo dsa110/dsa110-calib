@@ -126,7 +126,7 @@ def process_scan(scan: Scan, config: Configuration, calibration_type: str):
         }
     )
 
-    msname, cal, calstatus = calibrate_scan(scan, config, calibration_type)
+    msname, cal, calstatus, delay_bandpass_prefix = calibrate_scan(scan, config, calibration_type)
 
     store.put_dict(
         "/mon/calibration",
@@ -137,9 +137,12 @@ def process_scan(scan: Scan, config: Configuration, calibration_type: str):
         }
     )
 
+    if calstatus < 0:
+        return
+
     # Upload solutions to etcd
-    caltable_to_etcd(
-        msname, cal.name, scan.start_time.mjd, calstatus, logger=logger)
+    # caltable_to_etcd(
+    #     msname, cal.name, scan.start_time.mjd, calstatus, logger=logger)
 
     # Make summary plots
     generate_summary_plot(
@@ -152,11 +155,7 @@ def process_scan(scan: Scan, config: Configuration, calibration_type: str):
 
     # Write beamformer solutions for one source
     caltime = Time(scan.start_time.isot, precision=0)
-    write_beamformer_solutions(
-        msname, cal.name, caltime, config.antennas, applied_delays, config.beamformer_dir,
-        config.pols, config.nchan, config.nchan_spw, config.bw_GHz,
-        config.chan_ascending, config.f0_GHz, config.ch0, config.refmjd,
-        flagged_antennas=config.antennas_not_in_bf)
+    write_beamformer_solutions(delay_bandpass_prefix, f"{msname}_{cal.name}", caltime, applied_delays, config)
 
     if calibration_type == "field":
         ref_bfweights = store.get_dict("/mon/cal/bfweights")
@@ -220,18 +219,19 @@ def calibrate_scan(scan: Scan, config: Configuration, caltype: str):
 
     if caltype == 'calibrator':
         add_single_source_model_to_ms(msname, cal.name, first_true(scan.files))
-        delay_bandpass_prefix = ''
+        delay_bandpass_prefix = f"{msname}_{cal.name}"
     else:
         # _ = add_multisource_model_to_ms(msname)
         delay_bandpass_prefix = config.delay_bandpass_prefix
         print(delay_bandpass_prefix)
         if not delay_bandpass_prefix:
-            return msname, cal, 0
+            return msname, cal, -1, ''
 
-    status = calibrate_measurement_set(
-        msname, cal.name, config.refants, delay_bandpass_prefix, logger=logger)
+    # status = calibrate_measurement_set(
+    #     msname, cal.name, config.refants, delay_bandpass_prefix, logger=logger)
+    status = 0
 
-    return msname, cal, status
+    return msname, cal, status, delay_bandpass_prefix
 
 
 class UndefinedcalError(RuntimeError):

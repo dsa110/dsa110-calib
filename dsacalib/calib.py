@@ -694,7 +694,7 @@ def calculate_bandpass_from_all_tables(
     fobs = freq_GHz_from_ms(msname)
     fmean = np.mean(fobs)
 
-    kcal, _, kflags, *_ = read_caltable(f"{delay_bandpass_table_prefix}_kcal", reshape=False)
+    kcal, _, kflags, ant1, ant2 = read_caltable(f"{delay_bandpass_table_prefix}_kcal", reshape=False)
     bacal, _, baflags, *_ = read_caltable(
         f"{delay_bandpass_table_prefix}_bacal", reshape=False, cparam=True)
     bpcal, _, bpflags, *_ = read_caltable(
@@ -728,7 +728,7 @@ def calculate_bandpass_from_all_tables(
         bacal * bpcal * gcal *
         np.exp(2j*np.pi * (fobs[:, np.newaxis] - fmean) * kcal))
 
-    return bandpass, flags
+    return bandpass, flags, ant1, ant2
 
 
 def combine_tables(
