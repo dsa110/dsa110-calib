@@ -9,7 +9,6 @@ from astropy.time import Time
 import astropy.units as u
 from dsautils import dsa_store, dsa_syslog
 
-# from dsacalib.uvh5_to_ms import add_single_source_model_to_ms, add_multisource_model_to_ms
 from dsacalib.config import Configuration
 import dsacalib.constants as ct
 from dsacalib.hdf5_io import extract_applied_delays
@@ -22,6 +21,12 @@ from dsacalib.realtime_calibration import (
 from dsacalib.routines import calibrate_measurement_set
 from dsacalib.weights import write_beamformer_solutions, get_bfnames
 
+USE_DASK = False
+
+if USE_DASK:
+    from dask.distributed import Client, Future
+    SCHEDULER_IP = "10.41.0.104:8786"
+
 
 class CalibrationManager:
     """Manage calibration of files in realtime in the realtime system."""
@@ -30,26 +35,72 @@ class CalibrationManager:
         self.logger = dsa_syslog.DsaSyslogger()
         self.config = Configuration()
         self.scan_cache = ScanCache(max_scans=12)
+        if USE_DASK:
+            self.client = Client(SCHEDULER_IP)
+            self.futures = []
+        else:
+            self.client = None
+            self.futures = None
 
     def process_file(self, hostname: str, remote_path: str):
         """Process an H5File that is newly written on the corr nodes."""
         local_path = Path(self.config.hdf5dir) / Path(remote_path).name
         h5file = H5File(local_path, hostname, remote_path)
 
-        h5file.copy()
+        if USE_DASK:
+            copy_future = self.client.submit(h5file.copy, resources={'MEMORY': 10e9})
+        else:
+            h5file.copy()
+            copy_future = None
+
         scan, scan_futures = self.scan_cache.get_scan_from_file(
-            h5file)
+            h5file, copy_future)
+
+        if USE_DASK:
+            self.futures.append(copy_future)
 
         if scan.nfiles == 16:
             self.scan_cache.remove(scan)
-            assess_scan(scan)
-            process_scan(scan, self.config, "calibrator")
+
+            if USE_DASK:
+                assess_future = self.client.submit(assess_scan, scan, *scan_futures,  resources={'MEMORY': 10e9})
+                self.futures.append(assess_future)
+                process_future = self.client.submit(
+                    process_scan, scan, self.config, "calibrator", assess_future,  resources={'MEMORY': 60e9})
+                self.futures.append(process_future)
+            else:
+                assess_scan(scan)
+                process_scan(scan, self.config, "calibrator")
+                self.futures.append(process_future)
 
     def process_field_request(self, trigname: str, trigmjd: float):
         """Create and calibrate a field ms."""
         caltime = Time(trigmjd, format='mjd')
         print(f"Making field ms for {caltime.isot}")
-        create_field_ms(caltime, trigname, self.config)
+        if USE_DASK:
+            process_future = self.client.submit(create_field_ms, caltime, trigname, self.config, resources={'MEMORY': 60e9})
+            self.futures.append(process_future)
+        else:
+            create_field_ms(caltime, trigname, self.config)
+
+    def remove_done_futures(self):
+        """Remove futures that are done from the list of futures.
+
+        We track futures, instead of using fire_and_forget, so that we can
+        cancel them on keyboard interrupt.  This means we have to remove
+        references to them when they are completed.
+        """
+        if not USE_DASK:
+            return
+        for future in self.futures:
+            if future.done():
+                self.futures.remove(future)
+
+    def __del__(self):
+        if not USE_DASK:
+            return
+        self.client.cancel(self.futures)
+        self.client.close()
 
 
 def assess_scan(scan):
@@ -141,13 +192,13 @@ def process_scan(scan: Scan, config: Configuration, calibration_type: str):
         return
 
     # Upload solutions to etcd
-    # caltable_to_etcd(
-    #     msname, cal.name, scan.start_time.mjd, calstatus, logger=logger)
+    caltable_to_etcd(
+        msname, cal.name, scan.start_time.mjd, calstatus, logger=logger)
 
     # Make summary plots
-    # generate_summary_plot(
-    #     scan.start_time.strftime("%Y-%m-%d"), msname, cal.name, config.antennas, config.tempplots,
-    #     config.webplots)
+    generate_summary_plot(
+        scan.start_time.strftime("%Y-%m-%d"), msname, cal.name, config.antennas, config.tempplots,
+        config.webplots)
 
     # Make beamformer weights
     applied_delays = extract_applied_delays(
@@ -221,14 +272,14 @@ def calibrate_scan(scan: Scan, config: Configuration, caltype: str):
         add_single_source_model_to_ms(msname, cal.name, first_true(scan.files))
         delay_bandpass_prefix = f"{msname}_{cal.name}"
     else:
-        # _ = add_multisource_model_to_ms(msname)
+        _ = add_multisource_model_to_ms(msname)
         delay_bandpass_prefix = config.delay_bandpass_prefix
         print(delay_bandpass_prefix)
         if not delay_bandpass_prefix:
             return msname, cal, -1, ''
 
-    # status = calibrate_measurement_set(
-    #     msname, cal.name, config.refants, delay_bandpass_prefix, logger=logger)
+    status = calibrate_measurement_set(
+        msname, cal.name, config.refants, delay_bandpass_prefix, logger=logger)
     status = 0
 
     return msname, cal, status, delay_bandpass_prefix
@@ -252,15 +303,18 @@ def handle_etcd_triggers():
         cmd = etcd_dict['cmd']
         val = etcd_dict['val']
         if cmd == 'rsync':
-            pass
-            # calmanager.process_file_request(val['hostname'], val['filename'])
+            calmanager.process_file_request(val['hostname'], val['filename'])
         elif cmd == 'field':
             calmanager.process_field_request(val['trigname'], val['mjds'])
 
     store.add_watch("/cmd/cal", etcd_callback)
 
     while True:
-        print(f"tasks underway")
+        if USE_DASK:
+            calmanager.remove_done_futures()
+            print(f"{len(calmanager.futures)} tasks underway")
+        else:
+            print("tasks underway")
         time.sleep(60)
 
 

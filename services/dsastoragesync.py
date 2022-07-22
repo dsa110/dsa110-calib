@@ -59,7 +59,7 @@ def rsync_file(source: str, dest: str, remove_source_files: bool = False) -> Non
     LOGGER.info(proc_stdout)
 
 
-if __name__=="__main__":
+if __name__ == "__main__":
 
     ETCD.add_watch('/cmd/store', rsync_handler)
 
