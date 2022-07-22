@@ -303,7 +303,7 @@ def handle_etcd_triggers():
         cmd = etcd_dict['cmd']
         val = etcd_dict['val']
         if cmd == 'rsync':
-            calmanager.process_file_request(val['hostname'], val['filename'])
+            calmanager.process_file(val['hostname'], val['filename'])
         elif cmd == 'field':
             calmanager.process_field_request(val['trigname'], val['mjds'])
 
