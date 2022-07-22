@@ -71,7 +71,6 @@ class CalibrationManager:
             else:
                 assess_scan(scan)
                 process_scan(scan, self.config, "calibrator")
-                self.futures.append(process_future)
 
     def process_field_request(self, trigname: str, trigmjd: float):
         """Create and calibrate a field ms."""
