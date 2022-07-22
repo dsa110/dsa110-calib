@@ -279,7 +279,6 @@ def calibrate_scan(scan: Scan, config: Configuration, caltype: str):
 
     status = calibrate_measurement_set(
         msname, cal.name, config.refants, delay_bandpass_prefix, logger=logger)
-    status = 0
 
     return msname, cal, status, delay_bandpass_prefix
 
