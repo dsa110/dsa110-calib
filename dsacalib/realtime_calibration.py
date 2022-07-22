@@ -229,11 +229,11 @@ class CalibratorScan(Scan):
         if not isinstance(ras[0], str):
             ras = [ra * u.deg for ra in ras]
 
-        delta_lst_start = [
-            sidereal_time_delta(self.start_sidereal_time, Angle(ra)) for ra in ras]
-        delta_lst_end = [
-            sidereal_time_delta(self.end_sidereal_time, Angle(ra)) for ra in ras]
-        delta_lst = [delta_lst_end[i] - delta_lst_start[i] for i in range(len(delta_lst_start))]
+        delta_lst_start = np.array([
+            sidereal_time_delta(self.start_sidereal_time, Angle(ra)) for ra in ras])
+        delta_lst_end = np.array([
+            sidereal_time_delta(self.end_sidereal_time, Angle(ra)) for ra in ras])
+        delta_lst = delta_lst_end - delta_lst_start
 
         source_index = abs(delta_lst_start) < delta_lst // 2
         if True in source_index:
