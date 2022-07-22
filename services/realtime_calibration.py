@@ -103,7 +103,7 @@ class CalibrationManager:
         self.client.close()
 
 
-def assess_scan(scan):
+def assess_scan(scan, *futures):
     scan.assess()
 
 
