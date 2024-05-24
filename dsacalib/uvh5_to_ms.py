@@ -117,7 +117,16 @@ def phase_visibilities(
         phase_model = generate_phase_model_antbased(
             uvw, uvw_m, uvdata.Nbls, 1, lamb, uvdata.ant_1_array[:uvdata.Nbls],
             uvdata.ant_2_array[:uvdata.Nbls])
-        uvdata.data_array = uvdata.data_array / phase_model[..., np.newaxis]
+
+        uvw_bad = calc_uvw_blt(
+            blen, np.tile(np.mean(time.mjd), (uvdata.Nbls)), 'HADEC',
+            np.tile(0.0*u.deg, (uvdata.Nbls)), np.tile(1.34901562*u.deg, (uvdata.Nbls)))
+        phase_model_bad = generate_phase_model_antbased(
+            uvw_bad, uvw_m, uvdata.Nbls, 1, lamb, uvdata.ant_1_array[:uvdata.Nbls],
+            uvdata.ant_2_array[:uvdata.Nbls])        
+
+
+        uvdata.data_array = uvdata.data_array * phase_model_bad[..., np.newaxis] / phase_model[..., np.newaxis]
         uvw = np.tile(uvw.reshape((1, uvdata.Nbls, 3)),
                       (1, uvdata.Ntimes, 1)).reshape((uvdata.Nblts, 3))
 
