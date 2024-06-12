@@ -64,9 +64,9 @@ def rsync_file(rsync_string, remove_source_files=True):
     """
     fname, fdir = rsync_string.split(" ")
     if remove_source_files:
-        command = f". ~/.keychain/calibration-sh; rsync -avv --remove-source-files {fname} {fdir}"
+        command = f"rsync -avv --remove-source-files {fname} {fdir}" #f". ~/.keychain/calibration-sh; rsync -avv --remove-source-files {fname} {fdir}"
     else:
-        command = f". ~/.keychain/calibration-sh; rsync -avv {fname} {fdir}"
+        command = f"rsync -avv {fname} {fdir}"#f". ~/.keychain/calibration-sh; rsync -avv {fname} {fdir}"
     with subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True
     ) as process:
