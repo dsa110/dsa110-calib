@@ -1,5 +1,6 @@
 from setuptools import setup
-from dsautils.version import get_git_version
+#from dsautils.version import get_git_version
+from version import get_git_version
 
 setup(name='dsa110-calib',
       version=get_git_version(),
