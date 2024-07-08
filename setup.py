@@ -31,6 +31,6 @@ setup(name='dsa110-calib',
                         'pyyaml',
                         'scipy',
                         'etcd3',
-                        'structlog',
+                        'structlog'
       ],
 )
