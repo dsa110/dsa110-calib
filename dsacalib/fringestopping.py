@@ -13,7 +13,8 @@ from scipy.special import j1
 import astropy.units as u
 import casatools as cc
 import numpy as np
-from astropy.coordinates.angle_utilities import angular_separation
+#from astropy.coordinates.angle_utilities import angular_separation
+from astropy.coordinates import angular_separation
 from numba import jit
 
 from dsacalib import constants as ct
