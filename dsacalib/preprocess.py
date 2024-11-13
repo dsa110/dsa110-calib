@@ -10,26 +10,12 @@ from collections import namedtuple
 
 import astropy.units as u
 from astropy.coordinates import Angle
-from dsautils import cnf
-import dsautils.dsa_syslog as dsl
 import numpy as np
 import pandas
 from pkg_resources import resource_exists, resource_filename
 from pyuvdata import UVData
 
 from dsacalib.fringestopping import pb_resp
-
-LOGGER = dsl.DsaSyslogger()
-LOGGER.subsystem("software")
-LOGGER.app("dsamfs")
-
-CONF = cnf.Conf()
-MFS_CONF = CONF.get("fringe")
-# parameters for freq scrunching
-NFREQ = MFS_CONF["nfreq_scrunch"]
-# Outrigger delays are those estimated by Morgan Catha based on the cable
-# length.
-OUTRIGGER_DELAYS = MFS_CONF["outrigger_delays"]
 
 
 def first_true(iterable, default=False, pred=None):
@@ -55,7 +41,7 @@ def first_true(iterable, default=False, pred=None):
     return next(filter(pred, iterable), default)
 
 
-def rsync_file(rsync_string, remove_source_files=True):
+def rsync_file(rsync_string, remove_source_files=True, logger=None):
     """Rsyncs a file from the correlator machines to dsastorage.
 
     Parameters
@@ -66,24 +52,27 @@ def rsync_file(rsync_string, remove_source_files=True):
     """
     fname, fdir = rsync_string.split(" ")
     if remove_source_files:
-        command = f". ~/.keychain/calibration-sh; rsync -avv --remove-source-files {fname} {fdir}"
+        command = (
+            f". ~/.keychain/calibration-sh; rsync -avv --remove-source-files "
+            f"{fname} {fdir}")
     else:
         command = f". ~/.keychain/calibration-sh; rsync -avv {fname} {fdir}"
     with subprocess.Popen(
-            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT, shell=True
+            command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
+            shell=True
     ) as process:
         proc_stdout = str(process.communicate()[0].strip())
 
-    print(proc_stdout)
-    LOGGER.info(proc_stdout)
+    if logger:
+        logger.info(proc_stdout)
+
     fname = fname.split("/")[-1]
-    # if output.returncode != 0:
-    #    print(output)
     return f"{fdir}{fname}"
 
 
-def remove_outrigger_delays(UVhandler, outrigger_delays=OUTRIGGER_DELAYS):
+def remove_outrigger_delays(UVhandler, outrigger_delays):
     """Remove outrigger delays from open UV object."""
+
     if "applied_delays_ns" in UVhandler.extra_keywords.keys():
         applied_delays = (
             np.array(UVhandler.extra_keywords["applied_delays_ns"].split(" "))
@@ -115,11 +104,11 @@ def remove_outrigger_delays(UVhandler, outrigger_delays=OUTRIGGER_DELAYS):
         )
 
 
-def fscrunch_file(fname):
+def fscrunch_file(fname, nfreq_scrunch, outrigger_delays):
     """Removes outrigger delays before averaging in frequency.
 
     Leaves file untouched if the number of frequency bins is not divisible
-    by the desired number of frequency bins (NFREQ), or is equal to the desired
+    by the desired number of frequency bins (nfreq), or is equal to the desired
     number of frequency bins.
 
     Parameters
@@ -131,23 +120,15 @@ def fscrunch_file(fname):
     # print(fname)
     UV = UVData()
     UV.read_uvh5(fname, run_check_acceptability=False)
-    nint = UV.Nfreqs // NFREQ
+    nint = UV.Nfreqs // nfreq_scrunch
     if nint > 1 and UV.Nfreqs % nint == 0:
-        remove_outrigger_delays(UV)
+        remove_outrigger_delays(UV, outrigger_delays)
         # Scrunch in frequency by factor of nint
         UV.frequency_average(n_chan_to_avg=nint)
         if os.path.exists(fname.replace(".hdf5", "_favg.hdf5")):
             os.remove(fname.replace(".hdf5", "_favg.hdf5"))
-        UV.write_uvh5(
-            fname.replace(".hdf5", "_favg.hdf5"), run_check_acceptability=False
-        )
-        # Move the original data to a new directory
-        corrname = re.findall(r"corr\d\d", fname)[0]
-        os.rename(
-            fname,
-            fname.replace(f"{corrname}", f"{corrname}/full_freq_resolution/"),
-        )
-        os.rename(fname.replace(".hdf5", "_favg.hdf5"), fname)
+        # Overwrite
+        UV.write_uvh5(fname, run_check_acceptability=False)
     return fname
 
 
@@ -158,10 +139,14 @@ def read_nvss_catalog():
     """
     if not resource_exists("dsacalib", "data/heasarc_nvss.tdat"):
         urlretrieve(
-            "https://heasarc.gsfc.nasa.gov/FTP/heasarc/dbase/tdat_files/heasarc_nvss.tdat.gz",
+            (
+                "https://heasarc.gsfc.nasa.gov/FTP/heasarc/dbase/tdat_files/"
+                "heasarc_nvss.tdat.gz"),
             resource_filename("dsacalib", "data/heasarc_nvss.tdat.gz"),
         )
-        os.system(f"gunzip {resource_filename('dsacalib', 'data/heasarc_nvss.tdat.gz')}")
+        os.system((
+            f"gunzip "
+            f"{resource_filename('dsacalib', 'data/heasarc_nvss.tdat.gz')}"))
 
     df = pandas.read_csv(
         resource_filename("dsacalib", "data/heasarc_nvss.tdat"),
@@ -203,12 +188,14 @@ def read_nvss_catalog():
 
 def read_vla_catalog():
     """Read the VLA calibrator list into a dataframe.
+
     Kept source, ra, dec, flux_20_cm keys in the NVSS catalog
     so we can easily switch the two of them out.
     flux is in mJy.
     """
 
-    Calibrator = namedtuple("Calibrator", "source ra dec flux_20_cm code_20_cm")
+    Calibrator = namedtuple(
+        "Calibrator", "source ra dec flux_20_cm code_20_cm")
     filename = resource_filename("dsacalib", "data/vlacalibrators.txt")
     calsources = []
     with open(filename) as file:
@@ -232,17 +219,24 @@ def read_vla_catalog():
                 if line.isspace() or not line:
                     # We've reached the end of an entry
                     if flux_20_cm not in [None, '?']:
-                        calsources += [Calibrator(source, ra, dec, 1000*float(flux_20_cm), code_20_cm)]
+                        calsources += [
+                            Calibrator(
+                                source, ra, dec, 1000 * float(flux_20_cm),
+                                code_20_cm)]
                     break
                 if "20cm " in line:
-                    _, _, code_a, code_b, code_c, code_d, flux_20_cm, *_ = line.split()
-                    code_20_cm = code_a+code_b+code_c+code_d
+                    (
+                        _, _, code_a, code_b, code_c, code_d, flux_20_cm, *_
+                    ) = line.split()
+                    code_20_cm = code_a + code_b + code_c + code_d
     df = pandas.DataFrame.from_records(calsources, columns=Calibrator._fields)
     df.set_index('source', inplace=True)
     return df
 
 
-def generate_caltable(pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*u.Jy, min_percent_flux=0.15, codes=["P", "S"]):
+def generate_caltable(
+        pt_dec, csv_string, radius=2.5 * u.deg, min_weighted_flux=1 * u.Jy,
+        min_percent_flux=0.15, codes=None):
     """Generate a table of calibrators at a given declination.
 
     Parameters
@@ -259,6 +253,8 @@ def generate_caltable(pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*
         The minimum ratio of the calibrator weighted flux to the weighted flux
         in the primary beam for which to include the calibrator.
     """
+    if codes is None:
+        codes = ["P", "S"]
 
     df = read_vla_catalog()
     calibrators = df[
@@ -297,8 +293,7 @@ def generate_caltable(pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*
                 )
             )
         calibrators.loc[name, "field_flux"] = sum(field["weighted_flux"])
- 
-    print(calibrators.head())
+
     # Calculate percent of the field flux that is contained in the
     # main calibrator
     calibrators = calibrators.assign(
@@ -308,12 +303,14 @@ def generate_caltable(pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*
     calibrators = calibrators[
         (calibrators["weighted_flux"] > min_weighted_flux.to_value(u.Jy))
         & (calibrators["percent_flux"] > min_percent_flux)
-        & [v[2] in codes for v in  calibrators.loc[:, 'code_20_cm']]
-#        & (calibrators["code_20_cm"][2] == code)  # c-config code match
+        & [v[2] in codes for v in calibrators.loc[:, 'code_20_cm']]
+        #       & (calibrators["code_20_cm"][2] == code)  # c-config code match
     ]
-    print(calibrators.head())
+
     # Create the caltable needed by the calibrator service
-    caltable = calibrators[["ra", "dec", "flux_20_cm", "weighted_flux", "percent_flux", "code_20_cm"]]
+    caltable = calibrators[[
+        "ra", "dec", "flux_20_cm", "weighted_flux", "percent_flux",
+        "code_20_cm"]]
     caltable.reset_index(inplace=True)
     caltable.rename(
         columns={
@@ -323,10 +320,11 @@ def generate_caltable(pt_dec, csv_string, radius=2.5*u.deg, min_weighted_flux=1*
             "percent_flux": "percent flux"},
         inplace=True)
     caltable.loc[:, "flux (Jy)"] = caltable["flux (Jy)"] / 1e3
-    caltable.loc[:, "source"] = [sname.strip("NVSS ") for sname in caltable["source"]]
+    caltable.loc[:, "source"] = [sname.strip(
+        "NVSS ") for sname in caltable["source"]]
     caltable.loc[:, "ra"] = caltable["ra"] * u.deg
     caltable.loc[:, "dec"] = caltable["dec"] * u.deg
-    print(caltable.head())
+
     caltable.to_csv(resource_filename("dsacalib", csv_string))
 
 
