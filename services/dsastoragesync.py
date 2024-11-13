@@ -1,16 +1,14 @@
-"""A service to preprcocess hdf5 files before calibration.
+"""Sync files from other machines to dsastorage on change of /cmd/store key.
 """
 import datetime
-import sys
 import warnings
 import time
+import subprocess
 
 from astropy.time import Time
 
 import dsautils.dsa_store as ds
-
-import dsacalib.constants as ct
-from dsacalib.preprocess import rsync_file, first_true
+import dsautils.dsa_syslog as dsl
 
 # make sure warnings do not spam syslog
 warnings.filterwarnings("ignore")
@@ -24,7 +22,7 @@ LOGGER.app("dsacalib")
 ETCD = ds.DsaStore()
 
 
-def callback_function(etcd_dict: dict):
+def rsync_handler(etcd_dict: dict):
     """Etcd watch callback function.
 
     Rsyncs the file if requested.
@@ -47,7 +45,6 @@ def rsync_file(source: str, dest: str, remove_source_files: bool = False) -> Non
     remove_source_files : bool
         If true, source files are removed after the rsync.
     """
-    fname, fdir = rsync_string.split(" ")
     command = " ".join([
         ". ~/.keychain/dsa-storage-sh; rsync -avv ",
         "--remove-source-files " if remove_source_files else "",
@@ -65,10 +62,10 @@ def rsync_file(source: str, dest: str, remove_source_files: bool = False) -> Non
 if __name__=="__main__":
 
     ETCD.add_watch('/cmd/store', rsync_handler)
-    
+
     while True:
         ETCD.put_dict(
-            f'/mon/service/store',
+            '/mon/service/store',
             {
                 "cadence": 60,
                 "time": Time(datetime.datetime.utcnow()).mjd
