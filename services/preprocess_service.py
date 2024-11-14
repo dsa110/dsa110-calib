@@ -24,6 +24,8 @@ from dsacalib.preprocess import rsync_file, first_true
 from dsacalib.preprocess import update_caltable
 from dsacalib.utils import exception_logger
 
+import fnmatch
+
 # make sure warnings do not spam syslog
 warnings.filterwarnings("ignore")
 
@@ -54,7 +56,7 @@ TSLEEP = 10
 
 # Configuration
 CONFIG = config.Configuration()
-
+print(CONFIG)
 
 def populate_queue(etcd_dict, queue=GATHER_Q, hdf5dir=CONFIG.hdf5dir, subband_def=CONFIG.ch0):
     """Populates the fscrunch and rsync queues using etcd.
@@ -63,6 +65,7 @@ def populate_queue(etcd_dict, queue=GATHER_Q, hdf5dir=CONFIG.hdf5dir, subband_de
     """
     cmd = etcd_dict['cmd']
     val = etcd_dict['val']
+    print(cmd,val)
     if cmd != 'rsync':
         return
     time.sleep(30) # wait for the staged files to be moved to the correct directory
@@ -87,7 +90,8 @@ def task_handler(task_fn, inqueue, outqueue=None):
             try:
                 fname = task_fn(fname)
                 if outqueue is not None:
-                    outqueue.put(fname)
+                    if not fnmatch.fnmatch(fname,"*spl*"):
+                        outqueue.put(fname)
             except Exception as exc:
                 exception_logger(
                     LOGGER,
