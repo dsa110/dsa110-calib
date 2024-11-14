@@ -1345,7 +1345,9 @@ def plot_beamformer_weights(
     show=True,
     nsubbands: int = 16,
     nchan_spw: int = 48,
-    npol: int = 2
+    npol: int = 2,
+    current_weights=None,
+    current_weights_dir="/operations/beamformer_weights/applied"    
 ):
     """Plot beamformer weights from a number of beamformer solutions.
 
@@ -1364,6 +1366,10 @@ def plot_beamformer_weights(
         The prefix of the file to save the plot to. If None, no figure is saved.
     pols : list(str)
         The order of the pols in the beamformer weight files.
+    current_weights : list(str)
+        The existing weights
+    current_weights_dir : str
+        Where the applied weights are kept
     show : bool
         If False, the plot is closed after saving.
     gaindir : str
@@ -1378,7 +1384,7 @@ def plot_beamformer_weights(
     
     if pols is None:
         pols = ["B", "A"]
-    assert len(antennas) == 64
+    assert len(antennas) == 96
     if antennas_to_plot is None:
         antennas_to_plot = antennas
     else:
@@ -1390,6 +1396,8 @@ def plot_beamformer_weights(
     ny = len(antennas_to_plot) // nx
     if len(antennas_to_plot) % nx != 0:
         ny += 1
+
+    # read in data
     gains = np.zeros(
         (len(beamformer_names), len(antennas), nsubbands, nchan_spw, npol), dtype=np.complex
     )
@@ -1400,10 +1408,30 @@ def plot_beamformer_weights(
                     "rb",
             ) as f:
                 data = np.fromfile(f, "<f4")
-            temp = data[64:].reshape(64, 48, 2, 2)
-            gains[i, :, subband, :, :] = temp[..., 0] + 1.0j * temp[..., 1]
+                print("New weights shape:",data.shape)
+                temp = data[2*96:].reshape(96, 48, 2, 2)
+                gains[i, :, subband, :, :] = temp[..., 0] + 1.0j * temp[..., 1]
     gains = gains.reshape((len(beamformer_names), len(antennas), nsubbands*nchan_spw, npol))
     gains = gains / gains[:, [0], :, :]
+
+    # read in current weights
+    if current_weights is not None:
+
+        # read in data
+        cgains = np.zeros(
+            (len(antennas), nsubbands, nchan_spw, npol), dtype=np.complex
+        )
+        for subband in range(nsubbands):
+            with open(
+                    f"{current_weights_dir}/{current_weights[subband]}","rb"
+            ) as f:
+                data = np.fromfile(f, "<f4")
+                print("Current weights shape:",data.shape)
+                temp = data[2*96:].reshape(96, 48, 2, 2)
+                cgains[:, subband, :, :] = temp[..., 0] + 1.0j * temp[..., 1]
+        cgains = cgains.reshape((len(antennas), nsubbands*nchan_spw, npol))
+        cgains = cgains / cgains[[0], :, :]        
+    
     # Phase, polarization B
     fig, ax = plt.subplots(
         nplots * ny, nx, figsize=(6 * nx, 2.5 * ny * nplots), sharex=True, sharey=False
@@ -1419,7 +1447,12 @@ def plot_beamformer_weights(
         axi = axi.flatten()
         for i, ant in enumerate(antennas_to_plot):
             for bnidx, beamformer_name in enumerate(beamformer_names):
+
                 idx = np.where(antennas == ant)[0][0]
+                a1 = np.angle(gains[bnidx, idx, :, polidx])
+                a2 = np.angle(cgains[idx, :, polidx])
+                ang = np.nanmean((180./np.pi)*np.abs(a1-a2))                
+                                
                 axi[i].plot(
                     np.angle(gains[bnidx, idx, :, polidx])
                     if angle
@@ -1427,17 +1460,27 @@ def plot_beamformer_weights(
                     alpha=0.4,
                     ls="None",
                     marker=".",
-                    label=beamformer_name,
+                    label='PHASE DIFF %0.2f deg'%(ang),
                 )
+                axi[i].plot(
+                    np.angle(cgains[idx, :, polidx])
+                    if angle
+                    else np.abs(cgains[idx, :, polidx]),
+                    alpha=0.6,
+                    ls="-",
+                    lw=1.,
+                    color='black',
+                    label="applied",
+                )                
                 axi[i].set_title(f"{ant} {pols[polidx]}: {'phase' if angle else 'amp'}")
             if angle:
                 axi[i].set_ylim(-np.pi, np.pi)
 
-        axi[0].legend()
+            axi[i].legend()
 
     if outname is not None:
         plt.savefig(f"{outname}_averagedweights.png")
     if not show:
         plt.close(fig)
 
-    return gains
+    return gains, cgains

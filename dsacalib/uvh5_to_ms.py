@@ -425,7 +425,7 @@ def generate_phase_model_antbased(uvw, uvw_m, nbls, nts, lamb, ant1, ant2):
     """
     # Need ant1 and ant2 to be passed here
     # Need to check that this gets the correct refidxs
-    refant = 23  # ant1[0]
+    refant = 0  # ant1[0]
     refidxs = np.where(ant1 == refant)[0]
 
     antenna_order = list(ant2[refidxs])

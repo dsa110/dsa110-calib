@@ -11,7 +11,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import yaml
 from antpos.utils import get_itrf
-import scipy  # noqa
 
 import dsacalib.constants as ct
 from dsacalib.fringestopping import calc_uvw
@@ -159,10 +158,10 @@ def read_gains(
                     "rb",
             ) as f:
                 data = np.fromfile(f, "<f4")
-            temp = data[64:].reshape(64, 48, 2, 2)
+            temp = data[2*96:].reshape(96, 48, 2, 2)
             gains[i, :, subband, :, :] = temp[..., 0] + 1.0j * temp[..., 1]
     gains = gains.reshape((len(bfnames), len(antennas), nsubbands * 48, 2))
-    select = [antennas.tolist().index(i) for i in selectants]
+    select = [list(antennas).index(i) for i in selectants]
     print(f"Using {len(bfnames)} to get gain array of shape {gains.shape}.")
     return gains.take(select, axis=1)
 
@@ -329,8 +328,8 @@ def show_gains(
         return fig
 
 
-def calc_eastings(antennas, refmjd):
-    """Calculate the eastings (u).
+def calc_eastings_northings(antennas, refmjd):
+    """Calculate the eastings (u) and northings (v).
 
     Generates them for baselines composed of antennas in `antennas`.
     """
@@ -342,9 +341,10 @@ def calc_eastings(antennas, refmjd):
         blen[i, 0] = antpos_df["x_m"].loc[ant] - antpos_df["x_m"].loc[24]
         blen[i, 1] = antpos_df["y_m"].loc[ant] - antpos_df["y_m"].loc[24]
         blen[i, 2] = antpos_df["z_m"].loc[ant] - antpos_df["z_m"].loc[24]
-    bu, _, _ = calc_uvw(blen, refmjd, "HADEC", 0.0 * u.rad, 0.6 * u.rad)
+    bu, bv, _ = calc_uvw(blen, refmjd, "HADEC", 0.0 * u.rad, 0.6 * u.rad)
     bu = bu.squeeze().astype(np.float32)
-    return bu
+    bv = bv.squeeze().astype(np.float32)
+    return bu,bv
 
 
 def sort_beamformer_names(beamformer_names):
@@ -480,7 +480,7 @@ def average_beamformer_solutions(
                     tmp_antflags.append(antenna_order.index(antname))
         antenna_flags[i] = sorted(tmp_antflags)
         gains[i, antenna_flags[i], ...] = np.nan
-    eastings = calc_eastings(antenna_order, refmjd)
+    eastings,northings = calc_eastings_northings(antenna_order, refmjd)
 
     gains = np.nanmean(gains, axis=0)
     fracflagged = np.sum(np.isnan(gains), axis=1) / (gains.shape[1])
@@ -492,8 +492,8 @@ def average_beamformer_solutions(
     if eastings is not None:
         for subband in range(nsubbands):
             fnameout = f"beamformer_weights_sb{subband:02d}_{ttime.isot}"
-            wcorr = gains[:, i, ...].flatten()
-            wcorr = np.concatenate([eastings, wcorr], axis=0)
+            wcorr = gains[:, subband, ...].flatten()
+            wcorr = np.concatenate([eastings, northings, wcorr], axis=0)
             with open(f"{beamformer_dir}/{fnameout}.dat", "wb") as f:
                 f.write(bytes(wcorr))
             written_files += [f"{fnameout}.dat"]
@@ -557,7 +557,8 @@ def write_beamformer_weights(
 
     fweights = set_freq_beamformer_weights(
         nchan, nchan_spw, bw_GHz, chan_ascending, f0_GHz, ch0)
-    bu = calc_eastings(antennas, refmjd)
+    
+    bu,bv = calc_eastings_northings(antennas, refmjd)
 
     fobs = freq_GHz_from_ms(msname)
     fobs = fobs.reshape(fweights.size, -1).mean(axis=1)
@@ -588,7 +589,7 @@ def write_beamformer_weights(
     filenames = []
     for i in range(ncorr):
         wcorr = weights[i, ...].view(np.float32).flatten()
-        wcorr = np.concatenate([bu, wcorr], axis=0)
+        wcorr = np.concatenate([bu, bv, wcorr], axis=0)
         fname = f"beamformer_weights_sb{i:02d}"
         fname = f"{fname}_{calname}_{caltime.isot}"
         if os.path.exists(f"{beamformer_dir}/{fname}.dat"):
@@ -598,7 +599,7 @@ def write_beamformer_weights(
             f.write(bytes(wcorr))
         filenames += [f"{fname}.dat".format(fname)]
 
-    return bu, filenames, antenna_flags_badsolns
+    return bu, bv, filenames, antenna_flags_badsolns
 
 
 def write_beamformer_solutions(
@@ -654,7 +655,7 @@ def write_beamformer_solutions(
     #    delays = delays-np.min(delays[~flags])
 
     caltime.precision = 0
-    eastings, weights_files, flags_badsolns = write_beamformer_weights(
+    eastings, northings, weights_files, flags_badsolns = write_beamformer_weights(
         msname, calname, caltime, antennas, beamformer_dir, nchan, nchan_spw, bw_GHz,
         chan_ascending, f0_GHz, ch0, refmjd)
 
@@ -673,6 +674,7 @@ def write_beamformer_solutions(
             "pol_order": ["B", "A"],
             "delays": [[int(delay[0] // 2), int(delay[1] // 2)] for delay in delays],
             "eastings": [float(easting) for easting in eastings],
+            "northings": [float(northing) for northing in northings],
             "weights_axis0": "antenna",
             "weights_axis1": "frequency",
             "weights_axis2": "pol",

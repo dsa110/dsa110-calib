@@ -303,7 +303,7 @@ def generate_caltable(
     calibrators = calibrators[
         (calibrators["weighted_flux"] > min_weighted_flux.to_value(u.Jy))
         & (calibrators["percent_flux"] > min_percent_flux)
-        & [v[2] in codes for v in calibrators.loc[:, 'code_20_cm']]
+#        & [v[2] in codes for v in calibrators.loc[:, 'code_20_cm']]
         #       & (calibrators["code_20_cm"][2] == code)  # c-config code match
     ]
 

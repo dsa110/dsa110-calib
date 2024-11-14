@@ -10,7 +10,7 @@ class Configuration:
 
     def __init__(self):
         """Set parameters for conf."""
-        dsaconf = cnf.Conf()
+        dsaconf = cnf.Conf(use_etcd=True)
         etcd = dsa_store.DsaStore()
 
         cal_params = dsaconf.get('cal')
@@ -48,7 +48,7 @@ class Configuration:
         self.msdir = cal_params['msdir']
         self.beamformer_dir = cal_params['beamformer_dir']
         self.hdf5dir = cal_params['hdf5_dir']
-        self.webplots = "/mnt/data/dsa110/webPLOTS/calibration/"
+        self.webplots = "/operations/webPLOTS/calibration/"
         self.tempplots = (
             "/home/user/temp" if socket.gethostname() == "dsa-storage"
             else "/home/ubuntu/data/webPLOTS/calibration/")
