@@ -57,7 +57,7 @@ def rsync_file(rsync_string, remove_source_files=True, logger=None):
             f"{fname} {fdir}")
     else:
         command = f". ~/.keychain/calibration-sh; rsync -avv {fname} {fdir}"
-    print(f"RSYNCING with command: {command}")
+    #print(f"RSYNCING with command: {command}")
     with subprocess.Popen(
             command, stdout=subprocess.PIPE, stderr=subprocess.STDOUT,
             shell=True
