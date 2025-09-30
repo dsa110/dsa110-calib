@@ -32,7 +32,7 @@ TSAMP = 8.192e-6 * 128 * 384
 # The longitude and latitude of the OVRO site
 # in radians
 me = cc.measures()
-ovro_loc = me.observatory("OVRO")
+ovro_loc = me.observatory("OVRO_MMA")
 OVRO_LON = ovro_loc["m0"]["value"]
 OVRO_LAT = ovro_loc["m1"]["value"]
 OVRO_ALT = ovro_loc["m2"]["value"]
