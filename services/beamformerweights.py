@@ -68,8 +68,8 @@ def update_beamformer_weights(etcd_dict):
         for i, corr in enumerate(CORR_LIST):
             fname = f"{BFDIR}/{bfsolns['weight_files'][i]}"
             fnamearchive = f"{BFARCHIVEDIR}/beamformer_weights_sb{i:02d}_{tstamp.isot}.dat"
-            fnameout = f"{corr}.sas.pvt:{WEIGHTFILE}"
-            flagsout = f"{corr}.sas.pvt:{FLAGFILE}"
+            fnameout = f"{corr}.pro.pvt:{WEIGHTFILE}"
+            flagsout = f"{corr}.pro.pvt:{FLAGFILE}"
             print(f"rsyncing {fname} to {fnameout}")
             rsync_file(
                 f"{fname} {fnameout}",
