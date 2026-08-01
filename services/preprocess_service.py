@@ -45,7 +45,10 @@ CALIB_Q = Queue()
 
 # Maximum number of files per correlator that can be assessed for calibration
 # needs at one time.
-MAX_ASSESS = 4
+MAX_ASSESS = 8   # was 4: must exceed the number of workers that can be
+                 # alive at once (MAX_WAIT / set cadence), or the ring
+                 # wraps onto a live worker and its queue gets drained
+                 # by two processes at once.
 
 # Maximum amount of time that gather_files will wait for all correlator files
 # to be gathered, in seconds
@@ -53,6 +56,11 @@ MAX_WAIT = 10 * 60
 
 # Time to sleep if a queue is empty before trying to get an item
 TSLEEP = 30
+
+# Tolerance, in seconds, for deciding that two correlator files belong to the
+# same set. Each node stamps the filename from its own clock, so a set is
+# routinely spread over a few seconds.
+GATHER_TOL = 60.0
 
 # Configuration
 CONFIG = config.Configuration()
@@ -107,8 +115,8 @@ def rsync_handler(inqueue, outqueue=None):
 def gather_worker(inqueue, outqueue, ncorr=CONFIG.ncorr):
     """Gather all files that match a filename.
 
-    Will wait for a maximum of 15 minutes from the time the first file is
-    received.
+    Will wait for a maximum of MAX_WAIT (10 min) from the time the first
+    file is received.
 
     Parameters
     ----------
@@ -120,8 +128,10 @@ def gather_worker(inqueue, outqueue, ncorr=CONFIG.ncorr):
     """
     nfiles = 0
     filelist = []
-    # Times out after 15 minutes
-    end = time.time() + 60 * 15
+    # Honour the module-level MAX_WAIT (10 min) instead of a hardcoded
+    # 15 min. The hardcoded value exceeded 3x the ~5 min set cadence, so
+    # three workers were always holding slots concurrently.
+    end = time.time() + MAX_WAIT
     while nfiles < ncorr and time.time() < end:
         if not inqueue.empty():
             fname = inqueue.get()
@@ -131,11 +141,37 @@ def gather_worker(inqueue, outqueue, ncorr=CONFIG.ncorr):
     outqueue.put(filelist)
 
 
+def gather_key(fname):
+    """Timestamp of a correlator file, used to group files into one set.
+
+    Parsed as a naive UTC datetime so that sets are matched on how far apart
+    they actually are. The previous key was the filename truncated to the
+    minute (``basename.split('_')[0][:-2]``), which grouped by string
+    equality: files a second apart but on opposite sides of a minute
+    boundary landed in different sets, and each partial set was then
+    assessed on its own once MAX_WAIT expired. Observed 2026-08-01, where
+    02:23:59 and 02:24:00 gathered as 7 and 9 files instead of 16.
+
+    Parameters
+    ----------
+    fname : str
+        Path to a correlator hdf5 file, e.g. ``.../2026-08-01T02:24:00_sb03.hdf5``.
+
+    Returns
+    -------
+    datetime.datetime
+        The timestamp encoded in the filename.
+    """
+    basename = os.path.splitext(os.path.basename(fname))[0]
+    return datetime.datetime.strptime(
+        basename.split('_')[0], "%Y-%m-%dT%H:%M:%S")
+
+
 def gather_files(inqueue, outqueue, ncorr=CONFIG.ncorr, max_assess=MAX_ASSESS, tsleep=TSLEEP):
     """Gather files from all correlators.
 
-    Will wait for a maximum of 15 minutes from the time the first file is
-    received.
+    Will wait for a maximum of MAX_WAIT (10 min) from the time the first
+    file is received.
 
     Parameters
     ----------
@@ -153,22 +189,54 @@ def gather_files(inqueue, outqueue, ncorr=CONFIG.ncorr, max_assess=MAX_ASSESS, t
             try:
                 fname = inqueue.get()
                 print(fname)
-                basename = os.path.splitext(os.path.basename(fname))[0]
-                basename = basename.split('_')[0][:-2]
-                if not basename in gather_names:
-                    gather_names[nfiles_assessed % max_assess] = basename
-                    gather_processes[nfiles_assessed % max_assess] = Process(
+                key = gather_key(fname)
+                # Reclaim slots whose worker has exited. gather_worker holds
+                # its slot for up to MAX_WAIT while waiting for files that may
+                # never arrive, so several slots can be occupied at once by
+                # finished-but-uncleared or still-waiting workers. Without
+                # this, `nfiles_assessed % max_assess` eventually lands on a
+                # slot whose worker is STILL ALIVE, and that slot's queue is
+                # then drained by two processes at once: each takes some of
+                # the files, neither ever reaches ncorr, and no set is
+                # assessed again. Observed 2026-08-01 03:30, where all 16
+                # subbands were on disk but no gather ever fired.
+                for idx, proc in enumerate(gather_processes):
+                    if proc is not None and not proc.is_alive():
+                        proc.join(timeout=0)
+                        gather_names[idx] = None
+                        gather_processes[idx] = None
+                # Match against an open set by proximity rather than by an
+                # exact key, so that a set spanning a minute boundary is not
+                # split in two.
+                islot = next(
+                    (
+                        idx for idx, open_key in enumerate(gather_names)
+                        if open_key is not None
+                        and abs((open_key - key).total_seconds()) < GATHER_TOL
+                    ),
+                    None
+                )
+                if islot is None:
+                    # Prefer a genuinely free slot; only fall back to the
+                    # round-robin index when every worker is still busy.
+                    try:
+                        islot = gather_names.index(None)
+                    except ValueError:
+                        islot = nfiles_assessed % max_assess
+                        LOGGER.warning(
+                            "all %d gather slots busy; reusing slot %d whose "
+                            "worker is still alive", max_assess, islot)
+                    gather_names[islot] = key
+                    gather_processes[islot] = Process(
                         target=gather_worker,
                         args=(
-                            gather_queues[nfiles_assessed % max_assess],
+                            gather_queues[islot],
                             outqueue
                         ),
                         daemon=True)
-                    gather_processes[nfiles_assessed % max_assess].start()
+                    gather_processes[islot].start()
                     nfiles_assessed += 1
-                gather_queues[
-                    gather_names.index(basename)
-                ].put(fname)
+                gather_queues[islot].put(fname)
             except Exception as exc:
                 exception_logger(
                     LOGGER,
