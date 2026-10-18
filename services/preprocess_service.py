@@ -1,7 +1,9 @@
 """A service to preprcocess hdf5 files before calibration.
 """
 import datetime
+import json
 import sys
+import threading
 import warnings
 from multiprocessing import Process, Queue
 import time
@@ -15,6 +17,7 @@ from astropy.time import Time
 from astropy.coordinates import Angle
 import astropy.units as u
 
+import etcd3
 import dsautils.dsa_store as ds
 import dsautils.dsa_syslog as dsl
 
@@ -78,6 +81,57 @@ def populate_queue(etcd_dict, queue=RSYNC_Q):
     rsync_string = f"{val['hostname']}.pro.pvt:{val['filename']} {CONFIG.hdf5dir}/"
     print(rsync_string)
     queue.put(rsync_string)
+
+
+def watch_announcements(callback, key='/cmd/cal', retry_s=5.0):
+    """Feed the value of every put on ``key`` to ``callback``, forever.
+
+    Replaces ``ETCD.add_watch``. On any etcd/gRPC error python-etcd3 hands the
+    error object to the watch callback, dsautils' wrapper raises
+    AttributeError on it, the watch thread exits and nothing restarts it:
+    systemd, the children and the heartbeat all stay healthy while no file
+    is ever pulled again (2026-09-13, 2026-10-08, 2026-10-16). Here an error
+    ends the event iterator; a fresh client re-opens the watch at the
+    revision after the last event seen, so announcements made while
+    reconnecting are replayed rather than lost (unless etcd has compacted
+    them, in which case it resumes from the oldest revision still held).
+
+    Runs in a daemon thread of the main process; start it after the worker
+    processes are forked so they never inherit its connection.
+    """
+    last_rev = None
+    while True:
+        client = None
+        try:
+            client = ds.DsaStore().get_etcd()
+            kwargs = {} if last_rev is None else {'start_revision': last_rev + 1}
+            events, _cancel = client.watch(key, **kwargs)
+            print(f"watching {key} from revision "
+                  f"{kwargs.get('start_revision', 'now')}", flush=True)
+            for event in events:
+                last_rev = event.mod_revision
+                if not isinstance(event, etcd3.events.PutEvent):
+                    continue
+                try:
+                    callback(json.loads(event.value))
+                except Exception as exc:
+                    exception_logger(
+                        LOGGER, f"{key} watch callback", exc, throw=False)
+        except etcd3.exceptions.RevisionCompactedError as exc:
+            print(f"{key} watch: revisions up to {exc.compacted_revision - 1} "
+                  "were compacted; resuming from the oldest held", flush=True)
+            last_rev = exc.compacted_revision - 1
+        except Exception as exc:
+            print(f"{key} watch ended ({type(exc).__name__}: {exc}); "
+                  f"reconnecting in {retry_s:.0f} s", flush=True)
+            LOGGER.warning(f"{key} watch ended ({type(exc).__name__}); reconnecting")
+        finally:
+            if client is not None:
+                try:
+                    client.close()
+                except Exception:
+                    pass
+        time.sleep(retry_s)
 
 
 def rsync_handler(inqueue, outqueue=None):
@@ -323,8 +377,6 @@ def assess_file(inqueue, outqueue, caltime=CONFIG.caltime, filelength=CONFIG.fil
 
 
 if __name__ == "__main__":
-    # Start etcd watch
-    ETCD.add_watch('/cmd/cal', populate_queue)
     processes = {
         'rsync': {
             'task_fn': rsync_handler,
@@ -360,6 +412,12 @@ if __name__ == "__main__":
                 daemon=pdict['daemon']
             )
             pdict['process'].start()
+
+        # Start the /cmd/cal watch only now, after the forks (see
+        # watch_announcements).
+        threading.Thread(
+            target=watch_announcements, args=(populate_queue,),
+            name='cmd-cal-watch', daemon=True).start()
 
         while True:
             for name, pinfo in processes.items():
